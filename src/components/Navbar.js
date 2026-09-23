@@ -43,14 +43,22 @@ export default function Navbar() {
                         {item.label}
                     </Link>
                 ))}
-                {/* Menu Audit Log: hanya tampil untuk admin, tidak ada di DOM untuk operator */}
+                {/* Menu khusus admin: tidak ada di DOM untuk operator */}
                 {isAdmin && (
-                    <Link
-                        href="/audit-log"
-                        className="text-sm text-slate-300 hover:text-white font-medium transition-colors"
-                    >
-                        Audit Log
-                    </Link>
+                    <>
+                        <Link
+                            href="/audit-log"
+                            className="text-sm text-slate-300 hover:text-white font-medium transition-colors"
+                        >
+                            Audit Log
+                        </Link>
+                        <Link
+                            href="/users"
+                            className="text-sm text-slate-300 hover:text-white font-medium transition-colors"
+                        >
+                            Kelola User
+                        </Link>
+                    </>
                 )}
             </div>
 
