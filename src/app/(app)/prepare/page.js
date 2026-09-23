@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 const EMPTY_FORM = {
     batchNo: "",
     loadingNo: "",
-    operator: "",
     machineId: "",
     productName: "",
     productSpec: "",
@@ -20,16 +19,20 @@ export default function PreparePage() {
     const [loadingFormulas, setLoadingFormulas] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
+    const [userFullName, setUserFullName] = useState("");
 
-    // Ambil daftar formula dari API saat halaman dimuat
+    // Ambil daftar formula dan info user dari session
     useEffect(() => {
         fetch("/api/formulas")
             .then((r) => r.json())
-            .then((data) => {
-                setFormulas(Array.isArray(data) ? data : []);
-            })
+            .then((data) => setFormulas(Array.isArray(data) ? data : []))
             .catch(() => setFormulas([]))
             .finally(() => setLoadingFormulas(false));
+
+        fetch("/api/auth/me")
+            .then((r) => r.json())
+            .then((json) => { if (json.ok) setUserFullName(json.user.fullName ?? json.user.username); })
+            .catch(() => {});
     }, []);
 
     function handleChange(key, value) {
@@ -37,7 +40,7 @@ export default function PreparePage() {
         setError(null);
     }
 
-    // Tombol submit disabled jika ada field yang kosong
+    // Tombol submit disabled jika ada field yang kosong (operator dari session, tidak perlu cek)
     const allFilled = Object.values(form).every((v) => String(v).trim() !== "");
 
     async function handleSubmit(e) {
@@ -51,10 +54,7 @@ export default function PreparePage() {
             const res = await fetch("/api/batch/start", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    ...form,
-                    actor: form.operator, // sementara pakai operator sebagai actor
-                }),
+                body: JSON.stringify(form), // operator & actor ditentukan server dari session
             });
             const json = await res.json();
 
@@ -120,17 +120,14 @@ export default function PreparePage() {
                         </div>
                     </div>
 
-                    {/* Baris 2: Operator & Mach. ID */}
+                    {/* Baris 2: Operator (dari session, read-only) & Mach. ID */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <label className={labelBase}>Operator</label>
-                            <input
-                                type="text"
-                                className={inputBase}
-                                placeholder="Nama operator"
-                                value={form.operator}
-                                onChange={(e) => handleChange("operator", e.target.value)}
-                            />
+                            <div className="px-3 py-2 bg-slate-700/50 border border-slate-600 rounded text-sm text-slate-300">
+                                {userFullName || <span className="text-slate-500 italic">Memuat…</span>}
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">Diisi otomatis dari akun yang login</p>
                         </div>
                         <div>
                             <label className={labelBase}>Mach. ID</label>

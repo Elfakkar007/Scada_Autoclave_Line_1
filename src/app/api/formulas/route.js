@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAuth, requireAdmin } from "@/lib/auth";
 
 // ── Helper: konversi row snake_case → camelCase ──────────────────────────────
 function rowToFormula(row) {
@@ -20,9 +22,13 @@ function rowToFormula(row) {
     };
 }
 
-// ── GET /api/formulas ─────────────────────────────────────────────────────────
+// ── GET /api/formulas — semua role yang login boleh akses ─────────────────────
 export async function GET() {
     try {
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAuth(cookieStore);
+        if (errorResponse) return errorResponse;
+
         const result = await pool.query(
             "SELECT * FROM recipes ORDER BY formula_no ASC"
         );
@@ -33,14 +39,20 @@ export async function GET() {
     }
 }
 
-// ── POST /api/formulas ────────────────────────────────────────────────────────
+// ── POST /api/formulas — KHUSUS ADMIN ─────────────────────────────────────────
 export async function POST(request) {
     try {
+        // ▼ PROTEKSI SERVER-SIDE: hanya admin yang boleh
+        const cookieStore = await cookies();
+        const { session, errorResponse } = await requireAdmin(cookieStore);
+        if (errorResponse) return errorResponse;
+
         const body = await request.json();
         const {
             formulaNo, controlTemp, spaceTemp, sterilTemp, sterilTime,
             alarmPres, coolingTemp1, coolingTemp2, foValSetting,
-            controlType, sterilMaterial, actor = "unknown",
+            controlType, sterilMaterial,
+            // "actor" dari body diabaikan — diambil dari session
         } = body;
 
         // Validasi: formulaNo tidak boleh kosong
@@ -90,16 +102,20 @@ export async function POST(request) {
 
         const newFormula = rowToFormula(insertResult.rows[0]);
 
-        // Tulis audit log
+        // Tulis audit log — actor dari session (tidak bisa dipalsukan)
         await pool.query(
             `INSERT INTO audit_log
-                (actor, action, entity_type, entity_id, new_value, source, description)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+                (actor, actor_role, action, entity_type, entity_id, new_value, source, description)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
             [
-                actor, "create", "formula", newFormula.formulaNo,
+                session.username,
+                session.role,
+                "create",
+                "formula",
+                newFormula.formulaNo,
                 JSON.stringify(newFormula),
                 "web",
-                `Formula ${newFormula.formulaNo} dibuat baru`,
+                `Formula ${newFormula.formulaNo} dibuat oleh ${session.username}`,
             ]
         );
 

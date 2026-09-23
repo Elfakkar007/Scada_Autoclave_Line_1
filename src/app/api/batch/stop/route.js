@@ -1,9 +1,13 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAuth } from "@/lib/auth";
 
-export async function POST(request) {
+export async function POST() {
     try {
-        const body = await request.json().catch(() => ({}));
-        const actor = body.actor ?? "unknown";
+        // ▼ PROTEKSI SERVER-SIDE: wajib login (admin atau operator boleh)
+        const cookieStore = await cookies();
+        const { session, errorResponse } = await requireAuth(cookieStore);
+        if (errorResponse) return errorResponse;
 
         // Cari batch yang sedang running
         const runningResult = await pool.query(
@@ -26,16 +30,20 @@ export async function POST(request) {
             [batch.id]
         );
 
-        // Tulis audit log
+        // Tulis audit log — actor dari session
         await pool.query(
             `INSERT INTO audit_log
-                (actor, action, entity_type, entity_id, old_value, source, description)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+                (actor, actor_role, action, entity_type, entity_id, old_value, source, description)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
             [
-                actor, "stop_batch", "batch", batch.batch_no,
+                session.username,
+                session.role,
+                "stop_batch",
+                "batch",
+                batch.batch_no,
                 JSON.stringify({ batchNo: batch.batch_no, operator: batch.operator, runBegin: batch.run_begin }),
                 "web",
-                `Batch ${batch.batch_no} diselesaikan oleh ${actor}`,
+                `Batch ${batch.batch_no} diselesaikan oleh ${session.username}`,
             ]
         );
 

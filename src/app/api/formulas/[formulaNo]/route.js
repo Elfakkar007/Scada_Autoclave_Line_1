@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAdmin } from "@/lib/auth";
 
 // ── Helper: konversi row snake_case → camelCase ──────────────────────────────
 function rowToFormula(row) {
@@ -20,16 +22,22 @@ function rowToFormula(row) {
     };
 }
 
-// ── PUT /api/formulas/[formulaNo] ─────────────────────────────────────────────
+// ── PUT /api/formulas/[formulaNo] — KHUSUS ADMIN ──────────────────────────────
 export async function PUT(request, { params }) {
     try {
+        // ▼ PROTEKSI SERVER-SIDE: hanya admin yang boleh
+        const cookieStore = await cookies();
+        const { session, errorResponse } = await requireAdmin(cookieStore);
+        if (errorResponse) return errorResponse;
+
         const { formulaNo: rawNo } = await params;
         const formulaNo = decodeURIComponent(rawNo);
         const body = await request.json();
         const {
             controlTemp, spaceTemp, sterilTemp, sterilTime,
             alarmPres, coolingTemp1, coolingTemp2, foValSetting,
-            controlType, sterilMaterial, actor = "unknown",
+            controlType, sterilMaterial,
+            // "actor" dari body diabaikan
         } = body;
 
         // Ambil data lama (untuk old_value di audit log)
@@ -85,16 +93,20 @@ export async function PUT(request, { params }) {
         if (oldFormula.controlTemp !== updatedFormula.controlTemp)
             changes.push(`control_temp dari ${oldFormula.controlTemp} menjadi ${updatedFormula.controlTemp}`);
         const description = changes.length > 0
-            ? `Formula ${formulaNo} diubah: ${changes.join("; ")}`
-            : `Formula ${formulaNo} diperbarui`;
+            ? `Formula ${formulaNo} diubah oleh ${session.username}: ${changes.join("; ")}`
+            : `Formula ${formulaNo} diperbarui oleh ${session.username}`;
 
-        // Tulis audit log
+        // Tulis audit log — actor dari session
         await pool.query(
             `INSERT INTO audit_log
-                (actor, action, entity_type, entity_id, old_value, new_value, source, description)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)`,
+                (actor, actor_role, action, entity_type, entity_id, old_value, new_value, source, description)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)`,
             [
-                actor, "update", "formula", formulaNo,
+                session.username,
+                session.role,
+                "update",
+                "formula",
+                formulaNo,
                 JSON.stringify(oldFormula),
                 JSON.stringify(updatedFormula),
                 "web",
@@ -109,13 +121,16 @@ export async function PUT(request, { params }) {
     }
 }
 
-// ── DELETE /api/formulas/[formulaNo] ──────────────────────────────────────────
+// ── DELETE /api/formulas/[formulaNo] — KHUSUS ADMIN ──────────────────────────
 export async function DELETE(request, { params }) {
     try {
+        // ▼ PROTEKSI SERVER-SIDE: hanya admin yang boleh
+        const cookieStore = await cookies();
+        const { session, errorResponse } = await requireAdmin(cookieStore);
+        if (errorResponse) return errorResponse;
+
         const { formulaNo: rawNo } = await params;
         const formulaNo = decodeURIComponent(rawNo);
-        const body = await request.json().catch(() => ({}));
-        const actor = body.actor ?? "unknown";
 
         // Ambil data lama (untuk old_value di audit log)
         const oldResult = await pool.query(
@@ -133,16 +148,20 @@ export async function DELETE(request, { params }) {
             [formulaNo]
         );
 
-        // Tulis audit log
+        // Tulis audit log — actor dari session
         await pool.query(
             `INSERT INTO audit_log
-                (actor, action, entity_type, entity_id, old_value, source, description)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+                (actor, actor_role, action, entity_type, entity_id, old_value, source, description)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
             [
-                actor, "delete", "formula", formulaNo,
+                session.username,
+                session.role,
+                "delete",
+                "formula",
+                formulaNo,
                 JSON.stringify(oldFormula),
                 "web",
-                `Formula ${formulaNo} dihapus`,
+                `Formula ${formulaNo} dihapus oleh ${session.username}`,
             ]
         );
 

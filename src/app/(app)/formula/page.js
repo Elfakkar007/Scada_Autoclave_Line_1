@@ -43,9 +43,10 @@ const RIGHT_FIELDS = [
 // ──────────────────────────────────────────────
 // Komponen satu baris field
 // ──────────────────────────────────────────────
-function FieldRow({ field, value, onChange }) {
+function FieldRow({ field, value, onChange, disabled }) {
     const inputBase =
         "w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors";
+    const disabledClass = "opacity-60 cursor-not-allowed";
 
     if (field.type === "select") {
         return (
@@ -54,9 +55,10 @@ function FieldRow({ field, value, onChange }) {
                     {field.label}
                 </label>
                 <select
-                    className={inputBase + " cursor-pointer"}
+                    className={inputBase + " cursor-pointer" + (disabled ? " " + disabledClass : "")}
                     value={value}
-                    onChange={(e) => onChange(field.key, e.target.value)}
+                    disabled={disabled}
+                    onChange={(e) => !disabled && onChange(field.key, e.target.value)}
                 >
                     {field.options.map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
@@ -78,9 +80,10 @@ function FieldRow({ field, value, onChange }) {
                 type="number"
                 step={field.type === "integer" ? "1" : "0.1"}
                 min="0"
-                className={inputBase}
+                className={inputBase + (disabled ? " " + disabledClass : "")}
                 value={value}
-                onChange={(e) => onChange(field.key, e.target.value)}
+                disabled={disabled}
+                onChange={(e) => !disabled && onChange(field.key, e.target.value)}
             />
         </div>
     );
@@ -92,12 +95,13 @@ function FieldRow({ field, value, onChange }) {
 export default function FormulaPage() {
     const [formulas, setFormulas]       = useState([]);
     const [loading, setLoading]         = useState(true);
-    const [selectedNo, setSelectedNo]   = useState(null);   // formulaNo yang sedang dipilih
+    const [selectedNo, setSelectedNo]   = useState(null);
     const [form, setForm]               = useState(DEFAULT_FORM);
-    const [isNewEntry, setIsNewEntry]   = useState(false);  // true saat mode "+ Formula Baru"
-    const [toast, setToast]             = useState(null);   // { msg, type: "success"|"error" }
+    const [isNewEntry, setIsNewEntry]   = useState(false);
+    const [toast, setToast]             = useState(null);
     const [errors, setErrors]           = useState({});
     const [saving, setSaving]           = useState(false);
+    const [userRole, setUserRole]       = useState(null); // "admin" | "operator" | null
 
     // ── Fetch semua formula dari API ──────────
     const fetchFormulas = useCallback(async () => {
@@ -114,7 +118,14 @@ export default function FormulaPage() {
 
     useEffect(() => {
         fetchFormulas();
+        // Fetch role user untuk RBAC UI
+        fetch("/api/auth/me")
+            .then((r) => r.json())
+            .then((json) => { if (json.ok) setUserRole(json.user.role); })
+            .catch(() => {});
     }, [fetchFormulas]);
+
+    const isAdmin = userRole === "admin";
 
     // ── Helper: tampilkan toast 2 detik ──────
     function showToast(msg, type = "success") {
@@ -320,14 +331,17 @@ export default function FormulaPage() {
                         Super Water Sterilizer — Resep &amp; Parameter Sterilisasi
                     </p>
                 </div>
-                <button
-                    onClick={handleAddNew}
-                    disabled={isNewEntry}
-                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold transition-colors"
-                >
-                    <span className="text-lg leading-none">+</span>
-                    Formula Baru
-                </button>
+                {/* Tombol + Formula Baru: hanya tampil untuk admin */}
+                {isAdmin && (
+                    <button
+                        onClick={handleAddNew}
+                        disabled={isNewEntry}
+                        className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold transition-colors"
+                    >
+                        <span className="text-lg leading-none">+</span>
+                        Formula Baru
+                    </button>
+                )}
             </div>
 
             {/* ── Toast notifikasi ── */}
@@ -432,6 +446,7 @@ export default function FormulaPage() {
                                             field={field}
                                             value={form[field.key]}
                                             onChange={handleFieldChange}
+                                            disabled={!isAdmin}
                                         />
                                         {errors[field.key] && (
                                             <p className="mt-0.5 ml-[9.5rem] text-xs text-red-400">
@@ -450,6 +465,7 @@ export default function FormulaPage() {
                                             field={field}
                                             value={form[field.key]}
                                             onChange={handleFieldChange}
+                                            disabled={!isAdmin}
                                         />
                                         {errors[field.key] && (
                                             <p className="mt-0.5 ml-[9.5rem] text-xs text-red-400">
@@ -464,26 +480,34 @@ export default function FormulaPage() {
                         {/* Divider */}
                         <div className="mt-6 border-t border-slate-700" />
 
-                        {/* Tombol aksi */}
+                        {/* Tombol aksi: hanya untuk admin */}
                         <div className="mt-4 flex flex-wrap gap-3">
-                            <button
-                                onClick={handleSave}
-                                disabled={(selectedNo === null && !isNewEntry) || saving}
-                                className="px-5 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                                {saving ? "Menyimpan…" : "Save"}
-                            </button>
-                            <button
-                                onClick={handleDelete}
-                                disabled={(selectedNo === null && !isNewEntry) || saving}
-                                className="px-5 py-2 bg-red-600 hover:bg-red-500 active:bg-red-700 rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                                Delete
-                            </button>
+                            {isAdmin ? (
+                                <>
+                                    <button
+                                        onClick={handleSave}
+                                        disabled={(selectedNo === null && !isNewEntry) || saving}
+                                        className="px-5 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        {saving ? "Menyimpan…" : "Save"}
+                                    </button>
+                                    <button
+                                        onClick={handleDelete}
+                                        disabled={(selectedNo === null && !isNewEntry) || saving}
+                                        className="px-5 py-2 bg-red-600 hover:bg-red-500 active:bg-red-700 rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Delete
+                                    </button>
+                                </>
+                            ) : (
+                                <p className="text-xs text-slate-500 italic">
+                                    Hanya admin yang bisa mengubah atau menghapus formula.
+                                </p>
+                            )}
                         </div>
                         {selectedNo === null && !isNewEntry && (
                             <p className="mt-2 text-xs text-slate-500 italic">
-                                Pilih formula di daftar kiri, atau klik &ldquo;+ Formula Baru&rdquo; di atas.
+                                Pilih formula di daftar kiri untuk melihat parameter.
                             </p>
                         )}
                     </div>

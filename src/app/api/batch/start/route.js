@@ -1,16 +1,26 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAuth } from "@/lib/auth";
 
 export async function POST(request) {
     try {
+        // ▼ PROTEKSI SERVER-SIDE: wajib login (admin atau operator boleh)
+        const cookieStore = await cookies();
+        const { session, errorResponse } = await requireAuth(cookieStore);
+        if (errorResponse) return errorResponse;
+
         const body = await request.json();
         const {
-            batchNo, loadingNo, operator, machineId,
+            batchNo, loadingNo, machineId,
             productName, productSpec, formulaNo,
-            actor = "unknown",
+            // "operator" dan "actor" dari body DIABAIKAN — diambil dari session
         } = body;
 
+        // Operator diambil dari session (tidak bisa dipalsukan)
+        const operator = session.fullName ?? session.username;
+
         // Validasi: semua field wajib tidak boleh kosong
-        const required = { batchNo, loadingNo, operator, machineId, productName, productSpec, formulaNo };
+        const required = { batchNo, loadingNo, machineId, productName, productSpec, formulaNo };
         for (const [key, val] of Object.entries(required)) {
             if (!val || String(val).trim() === "") {
                 return Response.json({ ok: false, error: `Field ${key} tidak boleh kosong` }, { status: 400 });
@@ -53,7 +63,7 @@ export async function POST(request) {
             [
                 String(batchNo).trim(),
                 String(loadingNo).trim(),
-                String(operator).trim(),
+                operator,                           // dari session
                 String(machineId).trim(),
                 recipe.id,
                 String(productName).trim(),
@@ -66,16 +76,20 @@ export async function POST(request) {
 
         const newBatch = insertResult.rows[0];
 
-        // Tulis audit log
+        // Tulis audit log — actor dari session
         await pool.query(
             `INSERT INTO audit_log
-                (actor, action, entity_type, entity_id, new_value, source, description)
-             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+                (actor, actor_role, action, entity_type, entity_id, new_value, source, description)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
             [
-                actor, "start_batch", "batch", newBatch.batch_no,
+                session.username,
+                session.role,
+                "start_batch",
+                "batch",
+                newBatch.batch_no,
                 JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName }),
                 "web",
-                `Batch ${newBatch.batch_no} dimulai oleh ${operator} (Formula: ${formulaNo})`,
+                `Batch ${newBatch.batch_no} dimulai oleh ${session.username} (Formula: ${formulaNo})`,
             ]
         );
 
