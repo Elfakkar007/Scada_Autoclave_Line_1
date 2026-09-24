@@ -16,11 +16,33 @@ export default function Navbar() {
     const [fetched, setFetched] = useState(false);
 
     useEffect(() => {
-        fetch("/api/auth/me")
-            .then((r) => r.json())
-            .then((json) => { if (json.ok) setUser(json.user); })
-            .catch(() => {})
-            .finally(() => setFetched(true));
+        // Fungsi yang sama dipakai saat mount dan saat polling berkala
+        function checkSession() {
+            fetch("/api/auth/me")
+                .then((r) => r.json())
+                .then((json) => {
+                    if (json.ok) {
+                        setUser(json.user);
+                    } else {
+                        // Akun nonaktif / token invalid / expired → paksa logout
+                        // Gunakan window.location agar semua client state ter-reset total
+                        window.location.href = "/login";
+                    }
+                })
+                .catch(() => {
+                    // Error jaringan: biarkan saja (jangan redirect, mungkin hanya koneksi sebentar drop)
+                })
+                .finally(() => setFetched(true));
+        }
+
+        // Jalankan sekali saat mount
+        checkSession();
+
+        // Polling berkala setiap 60 detik untuk deteksi akun yang dinonaktifkan
+        const interval = setInterval(checkSession, 60_000);
+
+        // Cleanup saat komponen unmount
+        return () => clearInterval(interval);
     }, []);
 
     async function handleLogout() {

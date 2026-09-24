@@ -1,9 +1,11 @@
 // ==============================================================================
-// PERHATIAN: File ini adalah SERVER-ONLY.
-// JANGAN meng-import file ini dari komponen "use client" — akan error.
+// PERHATIAN: File ini adalah SERVER-ONLY (Node.js runtime).
+// JANGAN meng-import file ini dari komponen "use client" atau middleware.js
+// (Edge Runtime) — akan error karena menggunakan "pg" untuk query database.
 // ==============================================================================
 
 import { SignJWT, jwtVerify } from "jose";
+import pool from "@/lib/db";
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
@@ -39,12 +41,31 @@ export async function getSessionFromCookies(cookieStore) {
     return verifySessionToken(cookie.value);
 }
 
-// ── 4. Guard: wajib login ─────────────────────────────────────────────────────
+// ── Helper internal: cek is_active & ambil role terkini dari database ─────────
+// Memastikan perubahan role/status oleh admin langsung berlaku tanpa menunggu
+// token expired. Return { dbRole, isActive } atau null kalau user tidak ada.
+async function checkUserInDB(username) {
+    try {
+        const result = await pool.query(
+            "SELECT is_active, role FROM users WHERE username = $1",
+            [username]
+        );
+        if (result.rows.length === 0) return null;
+        return { dbRole: result.rows[0].role, isActive: result.rows[0].is_active };
+    } catch {
+        return null;
+    }
+}
+
+// ── 4. Guard: wajib login + aktif di database ─────────────────────────────────
+// - Verifikasi JWT (signature + expiry)
+// - Query DB: user harus ada dan is_active = true
+// - role di session diambil dari DB (bukan dari payload JWT lama)
 // Return { session, errorResponse: null } kalau valid,
-// atau { session: null, errorResponse } kalau tidak login
+// atau { session: null, errorResponse } kalau gagal.
 export async function requireAuth(cookieStore) {
-    const session = await getSessionFromCookies(cookieStore);
-    if (!session) {
+    const jwtPayload = await getSessionFromCookies(cookieStore);
+    if (!jwtPayload) {
         return {
             session: null,
             errorResponse: Response.json(
@@ -53,13 +74,31 @@ export async function requireAuth(cookieStore) {
             ),
         };
     }
+
+    // Cek ke database: is_active dan role terkini
+    const dbUser = await checkUserInDB(jwtPayload.username);
+    if (!dbUser || !dbUser.isActive) {
+        return {
+            session: null,
+            errorResponse: Response.json(
+                { ok: false, error: "Akun tidak aktif atau tidak ditemukan" },
+                { status: 401 }
+            ),
+        };
+    }
+
+    // Gabungkan payload JWT dengan data DB terkini
+    // (role dari DB dipakai, bukan dari token lama)
+    const session = { ...jwtPayload, role: dbUser.dbRole };
     return { session, errorResponse: null };
 }
 
-// ── 5. Guard: wajib login DAN role "admin" ────────────────────────────────────
+// ── 5. Guard: wajib login, aktif, DAN role "admin" di database ───────────────
 export async function requireAdmin(cookieStore) {
     const { session, errorResponse } = await requireAuth(cookieStore);
     if (errorResponse) return { session: null, errorResponse };
+
+    // role sudah diambil dari DB di requireAuth — tidak pakai token lama
     if (session.role !== "admin") {
         return {
             session: null,
