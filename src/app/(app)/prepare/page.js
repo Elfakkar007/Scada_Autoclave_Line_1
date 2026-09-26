@@ -20,6 +20,8 @@ export default function PreparePage() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const [userFullName, setUserFullName] = useState("");
+    // Checkbox konfirmasi keselamatan — wajib dicentang sebelum bisa submit
+    const [safetyAck, setSafetyAck] = useState(false);
 
     // Ambil daftar formula dan info user dari session
     useEffect(() => {
@@ -95,6 +97,35 @@ export default function PreparePage() {
 
             <form onSubmit={handleSubmit} className="max-w-2xl">
                 <div className="bg-slate-800 rounded-lg p-6 space-y-5">
+
+                    {/* ── Banner peringatan MENULIS KE PLC ── */}
+                    <div className="rounded border border-amber-600 bg-amber-950/60 px-4 py-3 flex gap-3">
+                        <span className="text-amber-400 text-lg leading-none mt-0.5" aria-hidden="true">⚠️</span>
+                        <div className="text-sm text-amber-200 leading-relaxed">
+                            <strong className="font-semibold text-amber-300">PERHATIAN — Tulis Langsung ke PLC</strong>
+                            <br />
+                            Fitur ini akan menulis parameter resep dan memulai proses{" "}
+                            <strong>LANGSUNG ke PLC mesin</strong>. Sebagian alamat &amp; scaling
+                            parameter <strong>BELUM sepenuhnya terverifikasi</strong> ke program PLC asli.
+                            Pastikan Anda mengawasi mesin secara langsung saat menggunakan fitur ini.
+                        </div>
+                    </div>
+
+                    {/* ── Checkbox konfirmasi keselamatan ── */}
+                    <label className="flex items-start gap-3 cursor-pointer select-none group">
+                        <input
+                            id="safety-ack-checkbox"
+                            type="checkbox"
+                            checked={safetyAck}
+                            onChange={(e) => setSafetyAck(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 accent-amber-500 cursor-pointer shrink-0"
+                        />
+                        <span className="text-sm text-amber-200 group-hover:text-amber-100 transition-colors">
+                            Saya memahami risiko di atas dan mengawasi mesin secara langsung saat ini
+                        </span>
+                    </label>
+
+                    <div className="border-t border-slate-700" />
 
                     {/* Baris 1: Batch No & Loading No */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -197,7 +228,7 @@ export default function PreparePage() {
                     <div className="flex items-center gap-4">
                         <button
                             type="submit"
-                            disabled={!allFilled || submitting}
+                            disabled={!allFilled || !safetyAck || submitting}
                             className="flex-1 md:flex-none px-8 py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded font-bold text-base transition-colors"
                         >
                             {submitting ? "Memulai…" : "▶ Mulai Sterilisasi"}
@@ -211,9 +242,11 @@ export default function PreparePage() {
                         </button>
                     </div>
 
-                    {!allFilled && (
+                    {(!allFilled || !safetyAck) && (
                         <p className="text-xs text-slate-500 italic">
-                            Semua field harus diisi sebelum memulai sterilisasi.
+                            {!safetyAck
+                                ? "Centang kotak konfirmasi keselamatan di atas sebelum memulai."
+                                : "Semua field harus diisi sebelum memulai sterilisasi."}
                         </p>
                     )}
                 </div>

@@ -5,7 +5,7 @@
 // ==============================================================================
 
 import { SignJWT, jwtVerify } from "jose";
-import pool from "@/lib/db";
+import pool from "./db.js";
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
