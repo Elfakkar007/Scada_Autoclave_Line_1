@@ -4,33 +4,29 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 /* ─────────────────────────────────────────────────────────────
-   DATA MOCK
-   TODO: ganti dengan data live setelah field ini ditambahkan ke /api/status
-   (status valve, P1/P2, conductivity, level air, compressed air, F0 per
-   channel, status pintu, material produk, status komunikasi)
+   Product material masih belum ada tag PLC-nya (murni data resep
+   kita sendiri) — default ini dipakai sampai field ini diisi dari
+   data formula/batch aktif.
+   Catatan: conductivity, tekanan compressed air, level air, F0 per
+   channel, dan valve SOFT WATER sengaja TIDAK ditampilkan karena
+   belum ada tag PLC yang sesuai (sistem hanya punya 105 tag di
+   KEPServerEX).
    ───────────────────────────────────────────────────────────── */
-const MOCK = {
-  comm: "Normal",
-  material: "Soft Bottle",
-  doors: { front: "closed", rear: "closed" }, // "open" | "closed"
-  doorStatus: "Closed",
-  valves: {
-    steam1: true,
-    steam2: false,
-    waterDrain: false,
-    cool1: false,
-    cool2: false,
-    drain: false,
-    air: true,
-    exhaust: false,
-    softWater: true,
-  },
-  conductivity: 4.2, // µS/cm
-  p1: 1.2, // bar (satuan placeholder)
-  p2: 1.1, // bar (satuan placeholder)
-  level: 62, // % level air di chamber
-  air: 5.5, // bar
-  f0: [12.4, 12.1, 11.9], // F0 per channel (CH1–CH3)
+const DEFAULT_MATERIAL = "Soft Bottle";
+
+// Pemetaan data.phase.code (dari /api/status) ke label kotak timeline.
+// CATATAN: 'drain' (kode 6 dari PLC) sementara digabung ke kotak COOLING
+// karena timeline hanya punya 6 kotak dan tidak ada kotak DRAIN tersendiri.
+// Ini keputusan sementara — evaluasi ulang setelah ladder logic fase 6 dikonfirmasi.
+const PHASE_CODE_TO_TIMELINE = {
+  prepare: "PREPARE",
+  filling: "FILLING",
+  heating: "HEATING",
+  steril:  "STERIL.",
+  cooling: "COOLING",
+  drain:   "COOLING",  // sementara gabung ke COOLING — lihat catatan di atas
+  end:     "END",
+  // 'unknown': tidak memetakan ke kotak manapun (jangan highlight apapun)
 };
 
 const PHASES = ["PREPARE", "FILLING", "HEATING", "STERIL.", "COOLING", "END"];
@@ -94,10 +90,12 @@ function Pipes({ list }) {
   );
 }
 
-// Valve bowtie: terisi saat open, outline saja saat closed
-function Valve({ x, y, open, tone, vertical = false, label, lx, ly, anchor = "start" }) {
-  const fill = open ? tone : "#FFFFFF";
-  const stroke = open ? tone : IDLE;
+// Valve bowtie: terisi saat open, outline saja saat closed.
+// unknown = status belum diketahui (tidak ada tag PLC): outline netral, tanpa fill.
+function Valve({ x, y, open, tone, unknown = false, vertical = false, label, lx, ly, anchor = "start" }) {
+  const isOpen = !unknown && open;
+  const fill = isOpen ? tone : "#FFFFFF";
+  const stroke = isOpen ? tone : IDLE;
   return (
     <g>
       <g transform={`translate(${x} ${y})${vertical ? " rotate(90)" : ""}`}>
@@ -118,10 +116,10 @@ function Valve({ x, y, open, tone, vertical = false, label, lx, ly, anchor = "st
         y={vertical ? y + 4 : y + 24}
         fontSize="8"
         fontWeight="600"
-        fill={open ? tone : MUTED}
+        fill={isOpen ? tone : MUTED}
         textAnchor={vertical ? "start" : "middle"}
       >
-        {open ? "OPEN" : "CLOSED"}
+        {unknown ? "-" : open ? "OPEN" : "CLOSED"}
       </text>
     </g>
   );
@@ -156,29 +154,40 @@ function Plate({ x, y, w, h = 34, label, value, unit }) {
   );
 }
 
-function PidDiagram() {
-  const v = MOCK.valves;
-  const levelH = 188 * (MOCK.level / 100);
+function PidDiagram({ valves, doors, p1, p2, level }) {
+  // valves berasal dari data.valves (tag asli PLC). exhaust dipetakan ke
+  // steamExhs (tag STEAM_EXHS) — itu tag yang sama dengan label "EXHAUST"
+  // di diagram ini. "drain" bawah & "air" (compressed air) TIDAK dipetakan
+  // ke tag apapun karena belum ada tag PLC yang confirmed untuk itu —
+  // tetap unknown, sama seperti SOFT WATER, biar diagram tetap jujur.
+  const v = {
+    steam1: valves?.steam1 ?? false,
+    steam2: valves?.steam2 ?? false,
+    waterDrain: valves?.wtrDrain ?? false,
+    cool1: valves?.cooling1 ?? false,
+    cool2: valves?.cooling2 ?? false,
+    exhaust: valves?.steamExhs ?? false,
+  };
 
   const pipes = [
     // Steam
     { d: "M30 40 H190", tint: v.steam1 && STEAM },
-    { d: "M30 90 H190", tint: v.steam2 && STEAM },
-    { d: "M190 40 V90 H250 V190 H320", tint: (v.steam1 || v.steam2) && STEAM },
+    { d: "M30 100 H190", tint: v.steam2 && STEAM },
+    { d: "M190 40 V100 H250 V190 H320", tint: (v.steam1 || v.steam2) && STEAM },
     // Water drain (keluar dari chamber ke kiri)
     { d: "M320 240 H30", tint: v.waterDrain && WATER },
     // Cooling water
     { d: "M30 380 H190", tint: v.cool1 && WATER },
-    { d: "M30 430 H190", tint: v.cool2 && WATER },
-    { d: "M190 380 V430 H250 V300 H320", tint: (v.cool1 || v.cool2) && WATER },
-    // Drain bawah
-    { d: "M360 340 V490", tint: v.drain && WATER },
-    // Compressed air
+    { d: "M30 440 H190", tint: v.cool2 && WATER },
+    { d: "M190 380 V440 H250 V300 H320", tint: (v.cool1 || v.cool2) && WATER },
+    // Drain bawah — belum ada tag PLC yang confirmed, biarkan netral
+    { d: "M360 340 V490", tint: false },
+    // Compressed air — belum ada tag PLC
     { d: "M870 60 H580 V150", tint: false },
     // Exhaust
-    { d: "M640 300 H870", tint: false },
-    // Soft water
-    { d: "M870 440 H600 V340", tint: v.softWater && WATER },
+    { d: "M640 300 H870", tint: v.exhaust && STEAM },
+    // Soft water (status belum diketahui: tanpa tint aksen)
+    { d: "M870 440 H600 V340", tint: false },
   ];
 
   return (
@@ -194,9 +203,6 @@ function PidDiagram() {
 
         {/* ── Chamber ── */}
         <rect x="320" y="150" width="320" height="190" fill="#FFFFFF" stroke={INK} strokeWidth="2" />
-        {/* level air (fill datar) */}
-        <rect x="321" y={339 - levelH} width="318" height={levelH} fill={WATER} fillOpacity="0.1" />
-        <line x1="321" x2="639" y1={339 - levelH} y2={339 - levelH} stroke={WATER} strokeWidth="1" />
         {/* panel pintu ganda */}
         <rect x="330" y="160" width="140" height="170" fill="none" stroke={IDLE} />
         <rect x="490" y="160" width="140" height="170" fill="none" stroke={IDLE} />
@@ -209,53 +215,46 @@ function PidDiagram() {
           <rect x="640" y="296" width="4" height="16" />
         </g>
         {/* handle: terisi hijau jika pintu open */}
-        <rect x="462" y="230" width="6" height="30" fill={MOCK.doors.front === "open" ? RUN : "#FFFFFF"} stroke={INK} />
-        <rect x="492" y="230" width="6" height="30" fill={MOCK.doors.rear === "open" ? RUN : "#FFFFFF"} stroke={INK} />
+        <rect x="462" y="230" width="6" height="30" fill={doors?.front === "open" ? RUN : "#FFFFFF"} stroke={INK} />
+        <rect x="492" y="230" width="6" height="30" fill={doors?.rear === "open" ? RUN : "#FFFFFF"} stroke={INK} />
         <text x="400" y="180" fontSize="10" fill={MUTED} textAnchor="middle">Front door</text>
         <text x="560" y="180" fontSize="10" fill={MUTED} textAnchor="middle">Rear door</text>
-        <text x="630" y="322" fontSize="11" fontWeight="500" fill={WATER} textAnchor="end" style={MONO}>
-          Level {MOCK.level}%
+        {/* Level: sekarang dari tag L, satuan/skala masih perlu divalidasi di lapangan */}
+        <text x="630" y="322" fontSize="11" fill={MUTED} textAnchor="end">
+          Level: {level ?? "-"}
         </text>
-
-        {/* panel kontrol lokal */}
-        <line x1="644" x2="654" y1="243" y2="243" stroke={INK} />
-        <rect x="654" y="226" width="30" height="34" rx="2" fill="#FFFFFF" stroke={INK} />
-        <circle cx="669" cy="243" r="4" fill={RUN} />
-        <text x="669" y="274" fontSize="9" fill={MUTED} textAnchor="middle">Panel lokal</text>
 
         {/* P1 / P2 */}
         <line x1="375" x2="375" y1="134" y2="150" stroke={IDLE} />
         <line x1="455" x2="455" y1="134" y2="150" stroke={IDLE} />
-        <Plate x={340} y={100} w={70} label="P1" value={MOCK.p1.toFixed(1)} unit="bar" />
-        <Plate x={420} y={100} w={70} label="P2" value={MOCK.p2.toFixed(1)} unit="bar" />
+        <Plate x={340} y={100} w={70} label="P1" value={fmt(p1)} unit="bar" />
+        <Plate x={420} y={100} w={70} label="P2" value={fmt(p2)} unit="bar" />
 
-        {/* F0 per channel */}
-        <text x="392" y="354" fontSize="9" fill={MUTED}>F0 per channel</text>
-        {MOCK.f0.map((f, i) => (
-          <Plate key={i} x={392 + i * 58} y={360} w={52} label={`CH${i + 1}`} value={f.toFixed(1)} />
-        ))}
+        {/* F0: hanya 1 tag di sistem; nilai akan dihitung di backend dari data suhu */}
+        <text x="392" y="358" fontSize="9" fill={MUTED}>
+          <tspan x="392">F0 tercapai: akan dihitung dari data suhu</tspan>
+          <tspan x="392" dy="12">(belum tersedia)</tspan>
+        </text>
 
         {/* ── Steam ── */}
         <Valve x={100} y={40} open={v.steam1} tone={STEAM} label="STEAM 1" lx={30} ly={18} />
-        <Valve x={100} y={90} open={v.steam2} tone={STEAM} label="STEAM 2" lx={30} ly={68} />
+        <Valve x={100} y={100} open={v.steam2} tone={STEAM} label="STEAM 2" lx={30} ly={78} />
         <Valve x={100} y={240} open={v.waterDrain} tone={WATER} label="WATER DRAIN" lx={30} ly={218} />
 
         {/* ── Cooling ── */}
         <Valve x={100} y={380} open={v.cool1} tone={WATER} label="COOLING WATER 1" lx={30} ly={358} />
-        <Valve x={100} y={430} open={v.cool2} tone={WATER} label="COOLING WATER 2" lx={30} ly={408} />
-        <line x1="160" x2="250" y1="299" y2="299" stroke={MUTED} />
-        <Plate x={30} y={282} w={130} label="Conductivity" value={MOCK.conductivity.toFixed(1)} unit="µS/cm" />
+        <Valve x={100} y={440} open={v.cool2} tone={WATER} label="COOLING WATER 2" lx={30} ly={418} />
 
-        {/* ── Drain bawah ── */}
-        <Valve x={360} y={430} vertical open={v.drain} tone={WATER} label="DRAIN" lx={376} ly={426} />
+        {/* ── Drain bawah — belum ada tag PLC confirmed, status unknown ── */}
+        <Valve x={360} y={430} vertical unknown label="DRAIN" lx={376} ly={426} />
 
-        {/* ── Compressed air ── */}
-        <Valve x={740} y={60} open={v.air} tone={INK} label="COMPRESSED AIR" lx={870} ly={38} anchor="end" />
-        <Plate x={760} y={80} w={110} label="Tekanan udara" value={MOCK.air.toFixed(1)} unit="bar" />
+        {/* ── Compressed air — belum ada tag PLC confirmed, status unknown ── */}
+        <Valve x={740} y={60} unknown label="COMPRESSED AIR" lx={870} ly={38} anchor="end" />
 
         {/* ── Exhaust & soft water ── */}
         <Valve x={760} y={300} open={v.exhaust} tone={INK} label="EXHAUST" lx={870} ly={278} anchor="end" />
-        <Valve x={760} y={440} open={v.softWater} tone={WATER} label="SOFT WATER" lx={870} ly={418} anchor="end" />
+        {/* SOFT WATER: belum ada tag PLC, status valve tidak diketahui */}
+        <Valve x={760} y={440} unknown label="SOFT WATER" lx={870} ly={418} anchor="end" />
       </svg>
     </div>
   );
@@ -380,9 +379,18 @@ export default function Home() {
     );
   }
 
-  // Sementara: highlight satu tahap generik selama running.
-  // TODO: ganti dengan logic deteksi fase spesifik setelah tersedia.
-  const activePhase = data.running ? "HEATING" : null;
+  // phase kini object {code, label, confirmed, rawValue} dari /api/status.
+  // Kalau masih pakai dummy lama (string), code di bawah tetap aman karena
+  // activePhase akan null dan statusLabel akan jatuh ke "--".
+  const phaseObj = data.phase && typeof data.phase === 'object' ? data.phase : null;
+
+  // Tentukan kotak mana di timeline yang perlu di-highlight.
+  // code 'unknown' atau null -> tidak highlight kotak manapun.
+  const activePhase = phaseObj ? (PHASE_CODE_TO_TIMELINE[phaseObj.code] ?? null) : null;
+
+  const isRunning = data.runLamp ?? data.running; // utamakan status PLC asli (RUN_LAMP), fallback ke status DB kalau field ini belum ada (mis. saat masih dummy)
+  const statusLabel = phaseObj ? phaseObj.label : (data.phase ?? "--");
+  const phaseConfirmed = phaseObj ? phaseObj.confirmed : true; // kalau data lama (string), anggap sudah ok
 
   const sensors = [
     ["T1", data.t1], ["T2", data.t2], ["T3", data.t3],
@@ -400,8 +408,8 @@ export default function Home() {
             <p className="text-sm text-[#5C6B6A]">Working Principle Graph</p>
           </div>
           <div className="flex items-center gap-2 text-sm text-[#5C6B6A] pt-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#4F7A52]" />
-            Communication: {MOCK.comm}
+            <span className={`w-2 h-2 rounded-full ${data.plcOk === false ? "bg-[#A23B2E]" : "bg-[#4F7A52]"}`} />
+            Communication: {data.plcOk === false ? "Abnormal" : "Normal"}
           </div>
         </header>
 
@@ -418,28 +426,63 @@ export default function Home() {
         {/* ── Diagram + panel kanan ── */}
         <div className="flex flex-col lg:flex-row gap-4 mb-4">
           <section className="flex-1 min-w-0 bg-white border border-[#D8DEDC] rounded-[4px] p-3 sm:p-4">
-            <PidDiagram />
+            <PidDiagram
+              valves={data.valves}
+              doors={{
+                front: data.door?.opnFrnt ? "open" : "closed",
+                rear: data.door?.opnRear ? "open" : "closed",
+              }}
+              p1={data.p1}
+              p2={data.p2}
+              level={data.level}
+            />
           </section>
 
           <aside className="lg:w-72 shrink-0 flex flex-col gap-4">
             <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-4">
               <p className="text-xs text-[#5C6B6A] mb-1">Product material</p>
               <p className="font-semibold border border-[#B8C0BE] rounded-[3px] px-3 py-2 text-sm">
-                {MOCK.material}
+                {data.sterilMaterial ?? DEFAULT_MATERIAL}
               </p>
             </section>
 
             <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-[#5C6B6A]">Status proses</span>
-                <span className="text-sm font-semibold">{data.status}</span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold">
+                  {statusLabel}
+                  {/* Badge peringatan: ditampilkan kalau fase belum diverifikasi ke ladder logic PLC */}
+                  {!phaseConfirmed && (
+                    <span
+                      title="Fase ini belum diverifikasi ke ladder logic PLC"
+                      aria-label="Fase ini belum diverifikasi ke ladder logic PLC"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#B9762F',
+                        color: '#FFFFFF',
+                        fontSize: '10px',
+                        fontWeight: '700',
+                        lineHeight: 1,
+                        flexShrink: 0,
+                        cursor: 'help',
+                      }}
+                    >
+                      !
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="flex items-center gap-2 text-sm mb-3">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${data.running ? "bg-[#4F7A52]" : "bg-[#A23B2E]"
+                  className={`w-2.5 h-2.5 rounded-full ${isRunning ? "bg-[#4F7A52]" : "bg-[#A23B2E]"
                     }`}
                 />
-                {data.running ? "Mesin berjalan" : "Mesin berhenti"}
+                {isRunning ? "Mesin berjalan" : "Mesin berhenti"}
               </div>
               {data.running && data.batchNo && (
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm border-t border-[#D8DEDC] pt-3">
@@ -472,8 +515,8 @@ export default function Home() {
             </section>
 
             <section className="bg-white border border-[#D8DEDC] rounded-[4px] px-4 py-2">
-              <DoorRow label="Front door" state={MOCK.doors.front} />
-              <DoorRow label="Rear door" state={MOCK.doors.rear} />
+              <DoorRow label="Front door" state={data.door?.opnFrnt ? "open" : "closed"} />
+              <DoorRow label="Rear door" state={data.door?.opnRear ? "open" : "closed"} />
             </section>
 
             <section className="flex flex-col gap-2">
@@ -499,7 +542,9 @@ export default function Home() {
                 className="flex items-center justify-between px-4 py-3 rounded-[3px] border border-dashed border-[#B8C0BE] text-sm text-[#5C6B6A] cursor-default select-none"
               >
                 <span className="font-semibold">DOOR</span>
-                <span className="text-xs">Read only: {MOCK.doorStatus}</span>
+                <span className="text-xs">
+                  Read only: {data.door?.locked ? "Locked" : data.door?.seal ? "Sealed" : "Released"}
+                </span>
               </div>
 
               <button
