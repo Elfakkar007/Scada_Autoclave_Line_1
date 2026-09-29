@@ -13,7 +13,7 @@ const STATUS_STYLES = {
 
 function StatusBadge({ status }) {
     return (
-        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${STATUS_STYLES[status] ?? "bg-slate-600 text-white"}`}>
+        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${STATUS_STYLES[status] ?? "bg-scada-idle text-scada-ink"}`}>
             {status ?? "-"}
         </span>
     );
@@ -77,15 +77,15 @@ export default function DataReportPage() {
     const hasPrev      = offset > 0;
     const hasNext      = offset + LIMIT < total;
 
-    const thClass = "px-4 py-3 text-left text-xs text-slate-400 uppercase tracking-wider font-semibold";
-    const tdClass = "px-4 py-3 text-sm text-slate-200";
+    const thClass = "px-4 py-3 text-left text-xs text-scada-muted uppercase tracking-wider font-semibold";
+    const tdClass = "px-4 py-3 text-sm text-scada-ink";
 
     return (
-        <main className="min-h-screen bg-slate-900 text-slate-100 p-6">
+        <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {/* ── Header ── */}
             <div className="mb-6">
                 <h1 className="text-2xl font-bold tracking-tight">Data Report</h1>
-                <p className="text-sm text-slate-400 mt-1">Riwayat batch sterilisasi</p>
+                <p className="text-sm text-scada-muted mt-1">Riwayat batch sterilisasi</p>
             </div>
 
             {/* ── Filter bar ── */}
@@ -95,12 +95,12 @@ export default function DataReportPage() {
                     placeholder="Cari Batch No / Operator / Produk…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="flex-1 bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink placeholder-scada-muted focus:outline-none focus:border-scada-water transition-colors"
                 />
                 <select
                     value={status}
                     onChange={(e) => { setStatus(e.target.value); setOffset(0); }}
-                    className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors cursor-pointer"
                 >
                     <option value="">Semua Status</option>
                     <option value="running">Running</option>
@@ -117,17 +117,17 @@ export default function DataReportPage() {
             )}
 
             {/* ── Tabel ── */}
-            <div className="bg-slate-800 rounded-lg overflow-hidden">
+            <div className="bg-scada-card border border-scada-rule rounded-lg shadow-sm overflow-hidden">
                 {loading ? (
-                    <div className="py-16 text-center text-slate-500 text-sm">Memuat data…</div>
+                    <div className="py-16 text-center text-scada-muted text-sm">Memuat data…</div>
                 ) : rows.length === 0 ? (
-                    <div className="py-16 text-center text-slate-500 text-sm">
+                    <div className="py-16 text-center text-scada-muted text-sm">
                         {search || status ? "Tidak ada batch yang sesuai filter." : "Belum ada riwayat batch."}
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-800 border-b border-slate-700">
+                            <thead className="bg-scada-bg border-b border-scada-rule">
                                 <tr>
                                     <th className={thClass}>Batch No</th>
                                     <th className={thClass}>Product Name</th>
@@ -139,11 +139,11 @@ export default function DataReportPage() {
                                     <th className={thClass}>Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700/50">
+                            <tbody className="divide-y divide-scada-rule">
                                 {rows.map((row) => (
                                     <tr
                                         key={row.batchNo}
-                                        className="hover:bg-slate-700/50 cursor-pointer transition-colors"
+                                        className="hover:bg-scada-bg cursor-pointer transition-colors"
                                     >
                                         <td className={tdClass}>
                                             <Link
@@ -176,7 +176,7 @@ export default function DataReportPage() {
 
             {/* ── Pagination ── */}
             {total > 0 && (
-                <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
+                <div className="mt-4 flex items-center justify-between text-sm text-scada-muted">
                     <span>
                         Menampilkan {offset + 1}–{Math.min(offset + LIMIT, total)} dari {total} batch
                     </span>
@@ -184,17 +184,17 @@ export default function DataReportPage() {
                         <button
                             onClick={() => setOffset((p) => Math.max(p - LIMIT, 0))}
                             disabled={!hasPrev || loading}
-                            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-slate-200 transition-colors"
+                            className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg disabled:opacity-40 disabled:cursor-not-allowed rounded text-scada-ink transition-colors"
                         >
                             ← Sebelumnya
                         </button>
-                        <span className="px-3 py-1.5 text-slate-300">
+                        <span className="px-3 py-1.5 text-scada-ink font-semibold">
                             {currentPage} / {totalPages}
                         </span>
                         <button
                             onClick={() => setOffset((p) => p + LIMIT)}
                             disabled={!hasNext || loading}
-                            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-slate-200 transition-colors"
+                            className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg disabled:opacity-40 disabled:cursor-not-allowed rounded text-scada-ink transition-colors"
                         >
                             Selanjutnya →
                         </button>

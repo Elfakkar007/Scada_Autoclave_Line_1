@@ -45,13 +45,13 @@ const RIGHT_FIELDS = [
 // ──────────────────────────────────────────────
 function FieldRow({ field, value, onChange, disabled }) {
     const inputBase =
-        "w-full bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors";
-    const disabledClass = "opacity-60 cursor-not-allowed";
+        "w-full bg-white border border-scada-idle rounded px-3 py-1.5 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors";
+    const disabledClass = "opacity-60 cursor-not-allowed bg-scada-bg";
 
     if (field.type === "select") {
         return (
             <div className="flex items-center gap-2">
-                <label className="w-36 text-xs text-slate-400 uppercase shrink-0">
+                <label className="w-36 text-xs text-scada-muted uppercase shrink-0">
                     {field.label}
                 </label>
                 <select
@@ -70,10 +70,10 @@ function FieldRow({ field, value, onChange, disabled }) {
 
     return (
         <div className="flex items-center gap-2">
-            <label className="w-36 text-xs text-slate-400 uppercase shrink-0">
+            <label className="w-36 text-xs text-scada-muted uppercase shrink-0">
                 {field.label}
                 {field.unit && (
-                    <span className="ml-1 text-slate-500 normal-case">({field.unit})</span>
+                    <span className="ml-1 text-scada-muted opacity-80 normal-case">({field.unit})</span>
                 )}
             </label>
             <input
@@ -322,12 +322,12 @@ export default function FormulaPage() {
     }
 
     return (
-        <main className="min-h-screen bg-slate-900 text-slate-100 p-6">
+        <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {/* ── Header ── */}
             <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Formula</h1>
-                    <p className="text-sm text-slate-400 mt-1">
+                    <p className="text-sm text-scada-muted mt-1">
                         Super Water Sterilizer — Resep &amp; Parameter Sterilisasi
                     </p>
                 </div>
@@ -336,7 +336,7 @@ export default function FormulaPage() {
                     <button
                         onClick={handleAddNew}
                         disabled={isNewEntry}
-                        className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold transition-colors"
+                        className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-scada-water hover:bg-scada-water-hover text-white disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold transition-colors"
                     >
                         <span className="text-lg leading-none">+</span>
                         Formula Baru
@@ -362,16 +362,16 @@ export default function FormulaPage() {
                     KIRI: Daftar Formula
                 ════════════════════════════════════ */}
                 <div className="lg:w-56 shrink-0">
-                    <div className="bg-slate-800 rounded-lg overflow-hidden">
-                        <div className="px-4 py-2 bg-slate-700 text-xs text-slate-300 uppercase font-semibold tracking-wider">
+                    <div className="bg-scada-card border border-scada-rule rounded-lg shadow-sm overflow-hidden">
+                        <div className="px-4 py-2 bg-scada-bg border-b border-scada-rule text-xs text-scada-ink uppercase font-semibold tracking-wider">
                             Daftar Formula
                         </div>
                         {loading ? (
-                            <p className="px-4 py-6 text-sm text-slate-500 text-center">
+                            <p className="px-4 py-6 text-sm text-scada-muted text-center">
                                 Memuat…
                             </p>
                         ) : formulas.length === 0 ? (
-                            <p className="px-4 py-6 text-sm text-slate-500 text-center">
+                            <p className="px-4 py-6 text-sm text-scada-muted text-center">
                                 Belum ada formula.
                             </p>
                         ) : (
@@ -380,15 +380,15 @@ export default function FormulaPage() {
                                     <li key={f.formulaNo === "" ? `__new__${idx}` : f.formulaNo}>
                                         <button
                                             onClick={() => handleSelect(f)}
-                                            className={`w-full text-left px-4 py-3 text-sm border-b border-slate-700 last:border-0 transition-colors ${
+                                            className={`w-full text-left px-4 py-3 text-sm border-b border-scada-rule last:border-0 transition-colors ${
                                                 selectedNo === f.formulaNo
-                                                    ? "bg-blue-700 text-white font-semibold"
-                                                    : "hover:bg-slate-700 text-slate-300"
+                                                    ? "bg-scada-water text-white font-semibold"
+                                                    : "hover:bg-scada-bg text-scada-ink"
                                             }`}
                                         >
                                             <span className="block font-mono text-base">
                                                 {f.formulaNo === "" ? (
-                                                    <span className="italic text-blue-300">Baru…</span>
+                                                    <span className="italic opacity-80">Baru…</span>
                                                 ) : f.formulaNo}
                                             </span>
                                             <span className="block text-xs opacity-70 mt-0.5">
@@ -406,20 +406,20 @@ export default function FormulaPage() {
                     KANAN: Form Parameter
                 ════════════════════════════════════ */}
                 <div className="flex-1">
-                    <div className="bg-slate-800 rounded-lg p-6">
+                    <div className="bg-scada-card border border-scada-rule rounded-lg shadow-sm p-6">
                         {/* Formula No */}
                         <div className="mb-5 flex items-center gap-3">
-                            <label className="text-xs text-slate-400 uppercase shrink-0 w-28">
+                            <label className="text-xs text-scada-muted uppercase shrink-0 w-28">
                                 Formula No
                             </label>
                             <input
                                 type="text"
                                 placeholder="Masukkan nomor formula"
-                                className={`w-36 bg-slate-700 border rounded px-3 py-1.5 text-sm font-mono font-bold focus:outline-none transition-colors ${
+                                className={`w-36 bg-white border rounded px-3 py-1.5 text-sm font-mono font-bold focus:outline-none transition-colors ${
                                     errors.formulaNo
-                                        ? "border-red-500 focus:border-red-400"
-                                        : "border-slate-600 focus:border-blue-500"
-                                } ${isNewEntry ? "text-slate-100" : "text-slate-400 cursor-default"}`}
+                                        ? "border-scada-stop focus:border-red-400"
+                                        : "border-scada-idle focus:border-scada-water"
+                                } ${isNewEntry ? "text-scada-ink" : "text-scada-muted cursor-default bg-scada-bg"}`}
                                 value={isNewEntry ? form.formulaNo : (selectedNo ?? "")}
                                 readOnly={!isNewEntry}
                                 onChange={(e) =>
@@ -427,10 +427,10 @@ export default function FormulaPage() {
                                 }
                             />
                             {errors.formulaNo && (
-                                <span className="text-xs text-red-400">{errors.formulaNo}</span>
+                                <span className="text-xs text-scada-stop">{errors.formulaNo}</span>
                             )}
                             {isNewEntry && (
-                                <span className="text-xs text-blue-400 italic">
+                                <span className="text-xs text-scada-water italic">
                                     Ketik nomor, isi field, lalu klik Save
                                 </span>
                             )}
@@ -478,7 +478,7 @@ export default function FormulaPage() {
                         </div>
 
                         {/* Divider */}
-                        <div className="mt-6 border-t border-slate-700" />
+                        <div className="mt-6 border-t border-scada-rule" />
 
                         {/* Tombol aksi: hanya untuk admin */}
                         <div className="mt-4 flex flex-wrap gap-3">
@@ -487,26 +487,26 @@ export default function FormulaPage() {
                                     <button
                                         onClick={handleSave}
                                         disabled={(selectedNo === null && !isNewEntry) || saving}
-                                        className="px-5 py-2 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="px-5 py-2 bg-scada-run hover:bg-scada-run-hover active:bg-scada-run-active text-white rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                         {saving ? "Menyimpan…" : "Save"}
                                     </button>
                                     <button
                                         onClick={handleDelete}
                                         disabled={(selectedNo === null && !isNewEntry) || saving}
-                                        className="px-5 py-2 bg-red-600 hover:bg-red-500 active:bg-red-700 rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="px-5 py-2 bg-scada-stop hover:bg-scada-stop-hover active:bg-scada-stop-active text-white rounded text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                         Delete
                                     </button>
                                 </>
                             ) : (
-                                <p className="text-xs text-slate-500 italic">
+                                <p className="text-xs text-scada-muted italic">
                                     Hanya admin yang bisa mengubah atau menghapus formula.
                                 </p>
                             )}
                         </div>
                         {selectedNo === null && !isNewEntry && (
-                            <p className="mt-2 text-xs text-slate-500 italic">
+                            <p className="mt-2 text-xs text-scada-muted italic">
                                 Pilih formula di daftar kiri untuk melihat parameter.
                             </p>
                         )}

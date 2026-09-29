@@ -12,9 +12,9 @@ function fmt(dateStr) {
 
 // ── Badge Event Type ──────────────────────────────────────────────────────────
 function EventTypeBadge({ value }) {
-    if (!value) return <span className="text-slate-500">-</span>;
+    if (!value) return <span className="text-scada-muted">-</span>;
     return (
-        <span className="inline-block px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-300 font-mono">
+        <span className="inline-block px-2 py-0.5 bg-scada-bg border border-scada-idle rounded text-xs text-scada-ink font-mono">
             {value}
         </span>
     );
@@ -25,11 +25,11 @@ function EmptyState({ hasFilter }) {
     return (
         <div className="py-20 flex flex-col items-center gap-3 text-center">
             <div className="text-5xl opacity-20 select-none">🔕</div>
-            <p className="text-slate-300 font-semibold text-base">
+            <p className="text-scada-ink font-semibold text-base">
                 {hasFilter ? "Tidak ada alarm yang sesuai filter." : "Belum ada data alarm."}
             </p>
             {!hasFilter && (
-                <p className="text-slate-500 text-sm max-w-sm">
+                <p className="text-scada-muted text-sm max-w-sm">
                     Data akan muncul otomatis setelah sistem terhubung ke PLC.
                 </p>
             )}
@@ -104,15 +104,15 @@ export default function AlarmPage() {
     const hasNext     = offset + LIMIT < total;
     const hasFilter   = search.trim() !== "" || eventType !== "";
 
-    const thClass = "px-3 py-3 text-left text-xs text-slate-400 uppercase tracking-wider font-semibold whitespace-nowrap";
-    const tdClass = "px-3 py-3 text-sm text-slate-200";
+    const thClass = "px-3 py-3 text-left text-xs text-scada-muted uppercase tracking-wider font-semibold whitespace-nowrap";
+    const tdClass = "px-3 py-3 text-sm text-scada-ink";
 
     return (
-        <main className="min-h-screen bg-slate-900 text-slate-100 p-6">
+        <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {/* ── Header ── */}
             <div className="mb-6">
                 <h1 className="text-2xl font-bold tracking-tight">Alarm Message</h1>
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-scada-muted mt-1">
                     Log alarm &amp; event mesin sterilizer
                 </p>
             </div>
@@ -124,12 +124,12 @@ export default function AlarmPage() {
                     placeholder="Cari Variable Name / Operator / Alarm Type…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="flex-1 bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink placeholder-scada-muted focus:outline-none focus:border-scada-water transition-colors"
                 />
                 <select
                     value={eventType}
                     onChange={(e) => { setEventType(e.target.value); setOffset(0); }}
-                    className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors cursor-pointer"
                 >
                     <option value="">Semua Event Type</option>
                     {eventTypes.map((et) => (
@@ -140,21 +140,21 @@ export default function AlarmPage() {
 
             {/* ── Error banner ── */}
             {error && (
-                <div className="mb-4 px-4 py-3 bg-red-900 border border-red-700 text-red-200 rounded text-sm">
+                <div className="mb-4 px-4 py-3 bg-red-50 border border-scada-stop text-scada-stop rounded text-sm">
                     {error}
                 </div>
             )}
 
             {/* ── Tabel ── */}
-            <div className="bg-slate-800 rounded-lg overflow-hidden">
+            <div className="bg-scada-card border border-scada-rule shadow-sm rounded-lg overflow-hidden">
                 {loading ? (
-                    <div className="py-16 text-center text-slate-500 text-sm">Memuat data…</div>
+                    <div className="py-16 text-center text-scada-muted text-sm">Memuat data…</div>
                 ) : rows.length === 0 ? (
                     <EmptyState hasFilter={hasFilter} />
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-800 border-b border-slate-700">
+                            <thead className="bg-scada-bg border-b border-scada-rule">
                                 <tr>
                                     <th className={thClass}>Alarm Date</th>
                                     <th className={thClass}>Event Date</th>
@@ -167,11 +167,11 @@ export default function AlarmPage() {
                                     <th className={thClass}>Operator</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700/50">
+                            <tbody className="divide-y divide-scada-rule">
                                 {rows.map((row) => (
                                     <tr
                                         key={row.id}
-                                        className="hover:bg-slate-700/50 transition-colors"
+                                        className="hover:bg-scada-bg transition-colors"
                                     >
                                         <td className={tdClass + " whitespace-nowrap font-mono text-xs"}>
                                             {fmt(row.alarmDate)}
@@ -204,7 +204,7 @@ export default function AlarmPage() {
 
             {/* ── Pagination (sembunyikan jika total <= limit) ── */}
             {total > LIMIT && (
-                <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
+                <div className="mt-4 flex items-center justify-between text-sm text-scada-muted">
                     <span>
                         Menampilkan {offset + 1}–{Math.min(offset + LIMIT, total)} dari {total} record
                     </span>
@@ -212,17 +212,17 @@ export default function AlarmPage() {
                         <button
                             onClick={() => setOffset((p) => Math.max(p - LIMIT, 0))}
                             disabled={!hasPrev || loading}
-                            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-slate-200 transition-colors"
+                            className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg disabled:opacity-40 disabled:cursor-not-allowed rounded text-scada-ink transition-colors"
                         >
                             ← Sebelumnya
                         </button>
-                        <span className="px-3 py-1.5 text-slate-300 tabular-nums">
+                        <span className="px-3 py-1.5 text-scada-ink font-semibold tabular-nums">
                             {currentPage} / {totalPages}
                         </span>
                         <button
                             onClick={() => setOffset((p) => p + LIMIT)}
                             disabled={!hasNext || loading}
-                            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-slate-200 transition-colors"
+                            className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg disabled:opacity-40 disabled:cursor-not-allowed rounded text-scada-ink transition-colors"
                         >
                             Selanjutnya →
                         </button>

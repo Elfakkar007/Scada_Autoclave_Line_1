@@ -18,7 +18,7 @@ function Toast({ toast }) {
 }
 
 // ── Badge ─────────────────────────────────────────────────────────────────────
-function Badge({ children, colorClass = "bg-slate-700 text-slate-300" }) {
+function Badge({ children, colorClass = "bg-scada-idle text-scada-ink" }) {
     return (
         <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold uppercase ${colorClass}`}>
             {children}
@@ -60,11 +60,11 @@ function AddUserForm({ onSave, onCancel }) {
         }
     }
 
-    const inputClass = "w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors";
-    const labelClass = "block text-xs text-slate-400 uppercase mb-1";
+    const inputClass = "w-full bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors";
+    const labelClass = "block text-xs text-scada-muted uppercase mb-1";
 
     return (
-        <div className="bg-slate-800 border border-blue-600/40 rounded-lg p-5 mb-5">
+        <div className="bg-scada-card border border-scada-rule rounded shadow-sm p-5 mb-5">
             <h2 className="font-semibold text-sm mb-4">Tambah User Baru</h2>
             {error && (
                 <div className="mb-3 px-3 py-2 bg-red-900 border border-red-700 text-red-200 rounded text-sm">
@@ -99,11 +99,11 @@ function AddUserForm({ onSave, onCancel }) {
                 </div>
                 <div className="flex gap-3">
                     <button type="submit" disabled={saving}
-                        className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed rounded text-sm font-semibold transition-colors">
+                        className="px-5 py-2 bg-scada-water hover:bg-scada-water-hover disabled:opacity-40 disabled:cursor-not-allowed rounded text-white text-sm font-semibold transition-colors">
                         {saving ? "Menyimpan…" : "Simpan"}
                     </button>
                     <button type="button" onClick={onCancel}
-                        className="px-5 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm font-semibold transition-colors">
+                        className="px-5 py-2 bg-white border border-scada-idle hover:bg-scada-bg rounded text-scada-ink text-sm font-semibold transition-colors">
                         Batal
                     </button>
                 </div>
@@ -228,34 +228,34 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
 
     return (
         <>
-            <tr className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
+            <tr className="border-b border-scada-rule hover:bg-scada-bg transition-colors">
                 <td className="px-4 py-3 text-sm font-mono font-semibold">
                     {user.username}
-                    {isSelf && <span className="ml-2 text-xs text-blue-400 font-normal">(Anda)</span>}
+                    {isSelf && <span className="ml-2 text-xs text-scada-water font-normal">(Anda)</span>}
                 </td>
                 <td className="px-4 py-3 text-sm">{user.fullName}</td>
                 <td className="px-4 py-3">
-                    <Badge colorClass={user.role === "admin" ? "bg-blue-700 text-blue-200" : "bg-slate-600 text-slate-300"}>
+                    <Badge colorClass={user.role === "admin" ? "bg-scada-water text-white" : "bg-scada-idle text-scada-ink"}>
                         {user.role}
                     </Badge>
                 </td>
                 <td className="px-4 py-3">
-                    <Badge colorClass={user.isActive ? "bg-green-700 text-green-200" : "bg-slate-600 text-slate-400"}>
+                    <Badge colorClass={user.isActive ? "bg-scada-run text-white" : "bg-scada-idle text-scada-ink"}>
                         {user.isActive ? "Aktif" : "Nonaktif"}
                     </Badge>
                 </td>
-                <td className="px-4 py-3 text-xs font-mono text-slate-400">{fmt(user.lastLoginAt)}</td>
+                <td className="px-4 py-3 text-xs font-mono text-scada-muted">{fmt(user.lastLoginAt)}</td>
                 <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">
                         <button
-                            className={`${btnSm} bg-slate-700 hover:bg-slate-600 text-slate-200`}
+                            className={`${btnSm} bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink`}
                             onClick={() => { setEditOpen((v) => !v); setResetOpen(false); }}
                             disabled={saving}
                         >
                             Edit
                         </button>
                         <button
-                            className={`${btnSm} ${user.isActive ? "bg-red-700 hover:bg-red-600 text-red-100" : "bg-green-700 hover:bg-green-600 text-green-100"}`}
+                            className={`${btnSm} ${user.isActive ? "bg-scada-stop hover:bg-scada-stop-hover text-white" : "bg-scada-run hover:bg-scada-run-hover text-white"}`}
                             onClick={handleToggleActive}
                             disabled={isSelf || saving}
                             title={isSelf ? "Ini akun Anda sendiri" : ""}
@@ -263,7 +263,7 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                             {user.isActive ? "Nonaktifkan" : "Aktifkan"}
                         </button>
                         <button
-                            className={`${btnSm} bg-amber-700 hover:bg-amber-600 text-amber-100`}
+                            className={`${btnSm} bg-scada-steam hover:bg-scada-steam-hover text-white`}
                             onClick={() => { setResetOpen((v) => !v); setEditOpen(false); }}
                             disabled={saving}
                         >
@@ -271,29 +271,29 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                         </button>
                     </div>
                     {isSelf && (
-                        <p className="text-xs text-slate-500 mt-1 italic">Ini akun Anda sendiri</p>
+                        <p className="text-xs text-scada-muted mt-1 italic">Ini akun Anda sendiri</p>
                     )}
                 </td>
             </tr>
 
             {/* ── Form edit inline ── */}
             {editOpen && (
-                <tr className="bg-slate-800/60 border-b border-slate-700">
+                <tr className="bg-scada-bg border-b border-scada-rule">
                     <td colSpan={6} className="px-4 py-4">
                         <div className="flex flex-wrap gap-4 items-end">
                             <div>
-                                <label className="block text-xs text-slate-400 uppercase mb-1">Full Name</label>
+                                <label className="block text-xs text-scada-muted uppercase mb-1">Full Name</label>
                                 <input
                                     type="text"
-                                    className="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+                                    className="bg-white border border-scada-idle rounded px-3 py-1.5 text-sm text-scada-ink focus:outline-none focus:border-scada-water"
                                     value={editForm.fullName}
                                     onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs text-slate-400 uppercase mb-1">Role</label>
+                                <label className="block text-xs text-scada-muted uppercase mb-1">Role</label>
                                 <select
-                                    className="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="bg-white border border-scada-idle rounded px-3 py-1.5 text-sm text-scada-ink focus:outline-none focus:border-scada-water cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                     value={editForm.role}
                                     disabled={isSelf}
                                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
@@ -301,19 +301,19 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                                     <option value="operator">operator</option>
                                     <option value="admin">admin</option>
                                 </select>
-                                {isSelf && <p className="text-xs text-slate-500 mt-0.5">Tidak bisa ubah role sendiri</p>}
+                                {isSelf && <p className="text-xs text-scada-muted mt-0.5">Tidak bisa ubah role sendiri</p>}
                             </div>
                             <div className="flex gap-2">
                                 <button
                                     onClick={handleSaveEdit}
                                     disabled={saving}
-                                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm font-semibold transition-colors"
+                                    className="px-4 py-1.5 bg-scada-water hover:bg-scada-water-hover text-white disabled:opacity-40 rounded text-sm font-semibold transition-colors"
                                 >
                                     {saving ? "Menyimpan…" : "Simpan"}
                                 </button>
                                 <button
                                     onClick={() => setEditOpen(false)}
-                                    className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm font-semibold transition-colors"
+                                    className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded text-sm font-semibold transition-colors"
                                 >
                                     Batal
                                 </button>
@@ -325,14 +325,14 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
 
             {/* ── Form reset password inline ── */}
             {resetOpen && (
-                <tr className="bg-slate-800/60 border-b border-slate-700">
+                <tr className="bg-scada-bg border-b border-scada-rule">
                     <td colSpan={6} className="px-4 py-4">
                         <div className="flex flex-wrap gap-3 items-end">
                             <div>
-                                <label className="block text-xs text-slate-400 uppercase mb-1">Password Baru</label>
+                                <label className="block text-xs text-scada-muted uppercase mb-1">Password Baru</label>
                                 <input
                                     type="password"
-                                    className="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
+                                    className="bg-white border border-scada-idle rounded px-3 py-1.5 text-sm text-scada-ink focus:outline-none focus:border-scada-water"
                                     placeholder="Min. 6 karakter"
                                     value={newPassword}
                                     onChange={(e) => setNewPassword(e.target.value)}
@@ -342,13 +342,13 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                                 <button
                                     onClick={handleResetPassword}
                                     disabled={resetting || newPassword.length < 6}
-                                    className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 rounded text-sm font-semibold transition-colors"
+                                    className="px-4 py-1.5 bg-scada-steam hover:bg-scada-steam-hover text-white disabled:opacity-40 rounded text-sm font-semibold transition-colors"
                                 >
                                     {resetting ? "Menyimpan…" : "Set Password"}
                                 </button>
                                 <button
                                     onClick={() => { setResetOpen(false); setNewPassword(""); }}
-                                    className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm font-semibold transition-colors"
+                                    className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded text-sm font-semibold transition-colors"
                                 >
                                     Batal
                                 </button>
@@ -408,21 +408,21 @@ export default function UsersPage() {
         if (authorized) fetchUsers();
     }, [authorized, fetchUsers]);
 
-    if (!authorized) return <div className="min-h-screen bg-slate-900" />;
+    if (!authorized) return <div className="min-h-screen bg-scada-bg" />;
 
     return (
-        <main className="min-h-screen bg-slate-900 text-slate-100 p-6">
+        <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {/* ── Header ── */}
             <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Kelola User</h1>
-                    <p className="text-sm text-slate-400 mt-1">
+                    <p className="text-sm text-scada-muted mt-1">
                         Manajemen akun operator &amp; admin (khusus admin)
                     </p>
                 </div>
                 <button
                     onClick={() => setShowAddForm((v) => !v)}
-                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded text-sm font-semibold transition-colors"
+                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-scada-water hover:bg-scada-water-hover rounded text-white text-sm font-semibold transition-colors"
                 >
                     <span className="text-lg leading-none">+</span>
                     Tambah User
@@ -445,18 +445,18 @@ export default function UsersPage() {
             )}
 
             {/* ── Tabel ── */}
-            <div className="bg-slate-800 rounded-lg overflow-hidden">
+            <div className="bg-scada-card border border-scada-rule rounded shadow-sm overflow-hidden">
                 {loading ? (
-                    <div className="py-16 text-center text-slate-500 text-sm">Memuat data…</div>
+                    <div className="py-16 text-center text-scada-muted text-sm">Memuat data…</div>
                 ) : users.length === 0 ? (
-                    <div className="py-16 text-center text-slate-500 text-sm">Belum ada user.</div>
+                    <div className="py-16 text-center text-scada-muted text-sm">Belum ada user.</div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-700/60 border-b border-slate-700">
+                            <thead className="bg-scada-bg border-b border-scada-rule">
                                 <tr>
                                     {["Username", "Full Name", "Role", "Status", "Last Login", "Aksi"].map((h) => (
-                                        <th key={h} className="px-4 py-3 text-left text-xs text-slate-400 uppercase tracking-wider font-semibold">
+                                        <th key={h} className="px-4 py-3 text-left text-xs text-scada-muted uppercase tracking-wider font-semibold">
                                             {h}
                                         </th>
                                     ))}

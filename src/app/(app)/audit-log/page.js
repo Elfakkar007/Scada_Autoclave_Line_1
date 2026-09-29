@@ -10,8 +10,8 @@ function fmt(dateStr) {
     return new Date(dateStr).toLocaleString("id-ID");
 }
 
-function Badge({ value, colorClass = "bg-slate-700" }) {
-    if (!value) return <span className="text-slate-500">-</span>;
+function Badge({ value, colorClass = "bg-scada-bg text-scada-ink border border-scada-idle" }) {
+    if (!value) return <span className="text-scada-muted">-</span>;
     return (
         <span className={`inline-block px-2 py-0.5 ${colorClass} rounded text-xs font-mono`}>
             {value}
@@ -28,30 +28,30 @@ function DetailModal({ row, onClose }) {
             onClick={onClose}
         >
             <div
-                className="bg-slate-900 border border-slate-700 rounded-lg w-full max-w-3xl max-h-[80vh] overflow-auto"
+                className="bg-white border border-scada-rule rounded-lg w-full max-w-3xl max-h-[80vh] overflow-auto shadow-xl text-scada-ink"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-scada-rule bg-scada-bg">
                     <h2 className="font-semibold text-sm">
-                        Detail Perubahan — <span className="font-mono text-slate-400">{row.entityId}</span>
+                        Detail Perubahan — <span className="font-mono text-scada-muted">{row.entityId}</span>
                     </h2>
                     <button
                         onClick={onClose}
-                        className="text-slate-400 hover:text-white text-xl leading-none"
+                        className="text-scada-muted hover:text-scada-stop text-xl leading-none transition-colors"
                     >
                         ×
                     </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-slate-700">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-scada-rule">
                     <div className="p-4">
-                        <p className="text-xs text-slate-400 uppercase mb-2">Old Value</p>
-                        <pre className="bg-slate-950 rounded p-3 text-xs text-slate-300 overflow-auto whitespace-pre-wrap">
+                        <p className="text-xs text-scada-muted uppercase mb-2">Old Value</p>
+                        <pre className="bg-scada-bg border border-scada-rule rounded p-3 text-xs text-scada-ink overflow-auto whitespace-pre-wrap">
                             {row.oldValue ? JSON.stringify(row.oldValue, null, 2) : "—"}
                         </pre>
                     </div>
                     <div className="p-4">
-                        <p className="text-xs text-slate-400 uppercase mb-2">New Value</p>
-                        <pre className="bg-slate-950 rounded p-3 text-xs text-slate-300 overflow-auto whitespace-pre-wrap">
+                        <p className="text-xs text-scada-muted uppercase mb-2">New Value</p>
+                        <pre className="bg-scada-bg border border-scada-rule rounded p-3 text-xs text-scada-ink overflow-auto whitespace-pre-wrap">
                             {row.newValue ? JSON.stringify(row.newValue, null, 2) : "—"}
                         </pre>
                     </div>
@@ -149,30 +149,30 @@ export default function AuditLogPage() {
     const hasNext     = offset + LIMIT < total;
 
     const ACTION_COLORS = {
-        create:      "bg-green-800 text-green-200",
-        update:      "bg-blue-800 text-blue-200",
-        delete:      "bg-red-800 text-red-200",
-        login:       "bg-slate-600 text-slate-200",
-        logout:      "bg-slate-600 text-slate-200",
-        start_batch: "bg-amber-800 text-amber-200",
-        stop_batch:  "bg-purple-800 text-purple-200",
+        create:      "bg-scada-run text-white",
+        update:      "bg-scada-water text-white",
+        delete:      "bg-scada-stop text-white",
+        login:       "bg-scada-bg text-scada-ink border border-scada-idle",
+        logout:      "bg-scada-idle text-scada-ink",
+        start_batch: "bg-scada-steam text-white",
+        stop_batch:  "bg-scada-stop text-white",
     };
 
-    const thClass = "px-3 py-3 text-left text-xs text-slate-400 uppercase tracking-wider font-semibold whitespace-nowrap";
-    const tdClass = "px-3 py-3 text-sm text-slate-200";
+    const thClass = "px-3 py-3 text-left text-xs text-scada-muted uppercase tracking-wider font-semibold whitespace-nowrap";
+    const tdClass = "px-3 py-3 text-sm text-scada-ink";
 
     if (!authorized) {
-        return <div className="min-h-screen bg-slate-900" />;
+        return <div className="min-h-screen bg-scada-bg" />;
     }
 
     return (
-        <main className="min-h-screen bg-slate-900 text-slate-100 p-6">
+        <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {detailRow && <DetailModal row={detailRow} onClose={() => setDetailRow(null)} />}
 
             {/* ── Header ── */}
             <div className="mb-6">
                 <h1 className="text-2xl font-bold tracking-tight">Audit Log</h1>
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-scada-muted mt-1">
                     Riwayat aktivitas sistem (khusus admin)
                 </p>
             </div>
@@ -184,12 +184,12 @@ export default function AuditLogPage() {
                     placeholder="Cari actor / entity / deskripsi…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="flex-1 bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink placeholder-scada-muted focus:outline-none focus:border-scada-water transition-colors"
                 />
                 <select
                     value={action}
                     onChange={(e) => { setAction(e.target.value); setOffset(0); }}
-                    className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors cursor-pointer"
                 >
                     <option value="">Semua Action</option>
                     {filters.actions.map((a) => (
@@ -199,7 +199,7 @@ export default function AuditLogPage() {
                 <select
                     value={entityType}
                     onChange={(e) => { setEntityType(e.target.value); setOffset(0); }}
-                    className="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                    className="bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors cursor-pointer"
                 >
                     <option value="">Semua Entity Type</option>
                     {filters.entityTypes.map((et) => (
@@ -210,23 +210,23 @@ export default function AuditLogPage() {
 
             {/* ── Error ── */}
             {error && (
-                <div className="mb-4 px-4 py-3 bg-red-900 border border-red-700 text-red-200 rounded text-sm">
+                <div className="mb-4 px-4 py-3 bg-red-50 border border-scada-stop text-scada-stop rounded text-sm">
                     {error}
                 </div>
             )}
 
             {/* ── Tabel ── */}
-            <div className="bg-slate-800 rounded-lg overflow-hidden">
+            <div className="bg-scada-card border border-scada-rule rounded-lg shadow-sm overflow-hidden">
                 {loading ? (
-                    <div className="py-16 text-center text-slate-500 text-sm">Memuat data…</div>
+                    <div className="py-16 text-center text-scada-muted text-sm">Memuat data…</div>
                 ) : rows.length === 0 ? (
-                    <div className="py-16 text-center text-slate-500 text-sm">
+                    <div className="py-16 text-center text-scada-muted text-sm">
                         Belum ada log aktivitas.
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-800 border-b border-slate-700">
+                            <thead className="bg-scada-bg border-b border-scada-rule">
                                 <tr>
                                     <th className={thClass}>Waktu</th>
                                     <th className={thClass}>Actor</th>
@@ -237,9 +237,9 @@ export default function AuditLogPage() {
                                     <th className={thClass}>Detail</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700/50">
+                            <tbody className="divide-y divide-scada-rule">
                                 {rows.map((row) => (
-                                    <tr key={row.id} className="hover:bg-slate-700/40 transition-colors">
+                                    <tr key={row.id} className="hover:bg-scada-bg transition-colors">
                                         <td className={tdClass + " whitespace-nowrap font-mono text-xs"}>
                                             {fmt(row.eventTime)}
                                         </td>
@@ -252,19 +252,19 @@ export default function AuditLogPage() {
                                         <td className={tdClass}>
                                             <Badge
                                                 value={row.action}
-                                                colorClass={ACTION_COLORS[row.action] ?? "bg-slate-700 text-slate-300"}
+                                                colorClass={ACTION_COLORS[row.action] ?? "bg-scada-bg text-scada-ink border border-scada-idle"}
                                             />
                                         </td>
                                         <td className={tdClass}>
                                             <div className="flex flex-col gap-0.5">
                                                 <Badge value={row.entityType} />
                                                 {row.entityId && (
-                                                    <span className="text-xs text-slate-400 font-mono">{row.entityId}</span>
+                                                    <span className="text-xs text-scada-muted font-mono">{row.entityId}</span>
                                                 )}
                                             </div>
                                         </td>
                                         <td className={tdClass + " max-w-xs"}>
-                                            <span className="text-slate-300 text-xs">
+                                            <span className="text-scada-ink text-xs">
                                                 {row.description ?? "-"}
                                             </span>
                                         </td>
@@ -272,12 +272,12 @@ export default function AuditLogPage() {
                                             {(row.oldValue || row.newValue) ? (
                                                 <button
                                                     onClick={() => setDetailRow(row)}
-                                                    className="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors whitespace-nowrap"
+                                                    className="text-xs text-scada-water hover:text-scada-water-hover hover:underline transition-colors whitespace-nowrap"
                                                 >
                                                     Lihat Detail
                                                 </button>
                                             ) : (
-                                                <span className="text-slate-600 text-xs">—</span>
+                                                <span className="text-scada-idle text-xs">—</span>
                                             )}
                                         </td>
                                     </tr>
@@ -290,7 +290,7 @@ export default function AuditLogPage() {
 
             {/* ── Pagination ── */}
             {total > LIMIT && (
-                <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
+                <div className="mt-4 flex items-center justify-between text-sm text-scada-muted">
                     <span>
                         Menampilkan {offset + 1}–{Math.min(offset + LIMIT, total)} dari {total} log
                     </span>
@@ -298,17 +298,17 @@ export default function AuditLogPage() {
                         <button
                             onClick={() => setOffset((p) => Math.max(p - LIMIT, 0))}
                             disabled={!hasPrev || loading}
-                            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-slate-200 transition-colors"
+                            className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg disabled:opacity-40 disabled:cursor-not-allowed rounded text-scada-ink transition-colors"
                         >
                             ← Sebelumnya
                         </button>
-                        <span className="px-3 py-1.5 text-slate-300 tabular-nums">
+                        <span className="px-3 py-1.5 text-scada-ink font-semibold tabular-nums">
                             {currentPage} / {totalPages}
                         </span>
                         <button
                             onClick={() => setOffset((p) => p + LIMIT)}
                             disabled={!hasNext || loading}
-                            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed rounded text-slate-200 transition-colors"
+                            className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg disabled:opacity-40 disabled:cursor-not-allowed rounded text-scada-ink transition-colors"
                         >
                             Selanjutnya →
                         </button>

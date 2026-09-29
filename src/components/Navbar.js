@@ -2,18 +2,20 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const menu = [
-    { href: "/",            label: "Dashboard"   },
+    { href: "/", label: "Dashboard" },
     { href: "/data-report", label: "Data Report" },
-    { href: "/trend",       label: "Trend"       },
-    { href: "/alarm",       label: "Alarm"       },
-    { href: "/formula",     label: "Formula"     },
+    { href: "/trend", label: "Trend" },
+    { href: "/alarm", label: "Alarm" },
+    { href: "/formula", label: "Formula" },
 ];
 
 export default function Navbar() {
-    const [user, setUser]       = useState(null);
+    const [user, setUser] = useState(null);
     const [fetched, setFetched] = useState(false);
+    const pathname = usePathname();
 
     useEffect(() => {
         // Fungsi yang sama dipakai saat mount dan saat polling berkala
@@ -53,30 +55,52 @@ export default function Navbar() {
     const isAdmin = user?.role === "admin";
 
     return (
-        <nav className="bg-slate-950 border-b border-slate-800 px-6 py-3 flex items-center justify-between">
-            {/* ── Menu kiri ── */}
-            <div className="flex items-center gap-6">
-                {menu.map((item) => (
-                    <Link
-                        key={item.href}
-                        href={item.href}
-                        className="text-sm text-slate-300 hover:text-white font-medium transition-colors"
-                    >
-                        {item.label}
-                    </Link>
-                ))}
-                {/* Menu khusus admin: tidak ada di DOM untuk operator */}
+        <nav className="w-48 shrink-0 h-full bg-scada-ink text-white flex flex-col justify-between py-6 z-10 shadow-lg border-r border-scada-ink">
+            {/* ── Menu atas ── */}
+            <div className="px-4 flex flex-col gap-1">
+                <div className="mb-6 px-2 flex flex-col items-center">
+                    {/* Satoria Pharma Logo */}
+                    <img src="/satoria-logo.png" alt="Satoria Pharma" className="w-20 -mb-0 object-contain" />
+
+                    <h2 className="text-xl font-bold text-scada-steam tracking-tight text-center">SCADA</h2>
+                    <p className="text-[10px] text-scada-idle uppercase tracking-wider mt-0.5 text-center">Control System</p>
+                </div>
+
+                {menu.map((item) => {
+                    const isActive = pathname === item.href;
+                    return (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            className={`px-3 py-2 rounded text-sm transition-colors flex items-center gap-2 ${isActive
+                                ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
+                                : "text-scada-idle hover:bg-white/10 hover:text-white"
+                                }`}
+                        >
+                            {item.label}
+                        </Link>
+                    );
+                })}
+
+                {/* Menu khusus admin */}
                 {isAdmin && (
                     <>
+                        <div className="my-2 border-t border-white/10 mx-2" />
                         <Link
                             href="/audit-log"
-                            className="text-sm text-slate-300 hover:text-white font-medium transition-colors"
+                            className={`px-3 py-2 rounded text-sm transition-colors ${pathname === "/audit-log"
+                                ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
+                                : "text-scada-idle hover:bg-white/10 hover:text-white"
+                                }`}
                         >
                             Audit Log
                         </Link>
                         <Link
                             href="/users"
-                            className="text-sm text-slate-300 hover:text-white font-medium transition-colors"
+                            className={`px-3 py-2 rounded text-sm transition-colors ${pathname === "/users"
+                                ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
+                                : "text-scada-idle hover:bg-white/10 hover:text-white"
+                                }`}
                         >
                             Kelola User
                         </Link>
@@ -84,23 +108,23 @@ export default function Navbar() {
                 )}
             </div>
 
-            {/* ── Area kanan: info user + tombol logout ── */}
-            <div className="flex items-center gap-3">
+            {/* ── Area bawah: info user + tombol logout ── */}
+            <div className="px-4">
                 {!fetched ? (
-                    <div className="h-4 w-24 bg-slate-700 rounded animate-pulse" />
+                    <div className="h-24 bg-white/5 rounded animate-pulse" />
                 ) : user ? (
-                    <>
-                        <span className="text-sm text-slate-300">{user.fullName}</span>
-                        <span className="bg-slate-700 text-slate-300 text-xs px-2 py-0.5 rounded uppercase font-semibold">
-                            {user.role}
+                    <div className="bg-white/5 border border-white/10 rounded p-3 flex flex-col gap-1">
+                        <span className="text-sm font-semibold truncate text-white">{user.fullName}</span>
+                        <span className="text-[10px] text-scada-idle font-mono uppercase">
+                            Role: {user.role}
                         </span>
                         <button
                             onClick={handleLogout}
-                            className="text-sm text-red-400 hover:text-red-300 transition-colors ml-1"
+                            className="mt-3 w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-4 rounded transition-colors flex items-center justify-center gap-2"
                         >
                             Logout
                         </button>
-                    </>
+                    </div>
                 ) : null}
             </div>
         </nav>

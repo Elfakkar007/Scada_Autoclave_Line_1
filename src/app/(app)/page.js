@@ -194,7 +194,7 @@ function PidDiagram({ valves, doors, p1, p2, level }) {
     <div className="overflow-x-auto">
       <svg
         viewBox="0 0 900 510"
-        className="w-full min-w-[720px] h-auto"
+        className="w-full h-auto"
         role="img"
         aria-label="Diagram perpipaan mesin sterilizer"
         style={SANS}
@@ -301,8 +301,8 @@ function PhaseTimeline({ activePhase }) {
   return (
     <div className="relative">
       {/* garis dasar + tick minor ala kertas strip-chart */}
-      <div className="absolute inset-x-0 top-6 h-px bg-[#5C6B6A]" />
-      <svg className="absolute inset-x-0 top-6" width="100%" height="6" aria-hidden="true">
+      <div className="absolute inset-x-0 top-3 h-px bg-[#5C6B6A]" />
+      <svg className="absolute inset-x-0 top-3" width="100%" height="6" aria-hidden="true">
         <defs>
           <pattern id="minor-ticks" width="12" height="6" patternUnits="userSpaceOnUse">
             <path d="M0.5 0V5" stroke="#B8C0BE" />
@@ -315,17 +315,17 @@ function PhaseTimeline({ activePhase }) {
           const active = activePhase === p;
           return (
             <li key={p} className="flex flex-col items-center">
-              <div className="h-6 flex items-end">
+              <div className="h-4 flex items-end">
                 <span
                   className={
                     active
-                      ? "block w-[3px] h-6 bg-[#4F7A52]"
-                      : "block w-px h-3.5 bg-[#5C6B6A]"
+                      ? "block w-[3px] h-4 bg-[#4F7A52]"
+                      : "block w-px h-2 bg-[#5C6B6A]"
                   }
                 />
               </div>
               <span
-                className={`mt-4 text-[11px] sm:text-xs ${active ? "font-bold text-[#1E2A2E]" : "text-[#5C6B6A]"
+                className={`mt-2 text-[11px] sm:text-xs ${active ? "font-bold text-[#1E2A2E]" : "text-[#5C6B6A]"
                   }`}
               >
                 {p}
@@ -399,24 +399,12 @@ export default function Home() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#EEF1F0] text-[#1E2A2E] p-4 sm:p-6 lg:p-8">
-      <div className="max-w-[1400px] mx-auto">
-        {/* ── Header ── */}
-        <header className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Super Water Sterilizer</h1>
-            <p className="text-sm text-[#5C6B6A]">Working Principle Graph</p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-[#5C6B6A] pt-1.5">
-            <span className={`w-2 h-2 rounded-full ${data.plcOk === false ? "bg-[#A23B2E]" : "bg-[#4F7A52]"}`} />
-            Communication: {data.plcOk === false ? "Abnormal" : "Normal"}
-          </div>
-        </header>
-
+    <main className="min-h-screen bg-[#EEF1F0] text-[#1E2A2E] p-2 sm:p-3">
+      <div className="max-w-[1400px] mx-auto flex flex-col gap-2">
         {/* ── Baris instrumen suhu ── */}
         <section
           aria-label="Sensor suhu"
-          className="mb-4 grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2"
+          className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1.5"
         >
           {sensors.map(([label, value]) => (
             <Gauge key={label} label={label} value={value} />
@@ -424,8 +412,8 @@ export default function Home() {
         </section>
 
         {/* ── Diagram + panel kanan ── */}
-        <div className="flex flex-col lg:flex-row gap-4 mb-4">
-          <section className="flex-1 min-w-0 bg-white border border-[#D8DEDC] rounded-[4px] p-3 sm:p-4">
+        <div className="flex flex-col lg:flex-row gap-2">
+          <section className="flex-1 min-w-0 bg-white border border-[#D8DEDC] rounded-[4px] p-2">
             <PidDiagram
               valves={data.valves}
               doors={{
@@ -438,18 +426,22 @@ export default function Home() {
             />
           </section>
 
-          <aside className="lg:w-72 shrink-0 flex flex-col gap-4">
-            <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-4">
-              <p className="text-xs text-[#5C6B6A] mb-1">Product material</p>
-              <p className="font-semibold border border-[#B8C0BE] rounded-[3px] px-3 py-2 text-sm">
+          <aside className="lg:w-56 shrink-0 flex flex-col gap-2">
+            <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-2">
+              <p className="text-[11px] text-[#5C6B6A] mb-1">Product material</p>
+              <p className="font-semibold border border-[#B8C0BE] rounded-[3px] px-2 py-1.5 text-xs">
                 {data.sterilMaterial ?? DEFAULT_MATERIAL}
               </p>
             </section>
 
-            <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-[#5C6B6A]">Status proses</span>
-                <span className="flex items-center gap-1.5 text-sm font-semibold">
+            <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-2">
+              <div className="flex items-center gap-1.5 text-xs text-[#5C6B6A] mb-1.5 pb-1.5 border-b border-[#D8DEDC]">
+                <span className={`w-1.5 h-1.5 rounded-full ${data.plcOk === false ? "bg-[#A23B2E]" : "bg-[#4F7A52]"}`} />
+                Comm: {data.plcOk === false ? "Abnormal" : "Normal"}
+              </div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-[#5C6B6A]">Status proses</span>
+                <span className="flex items-center gap-1 text-[13px] font-semibold">
                   {statusLabel}
                   {/* Badge peringatan: ditampilkan kalau fase belum diverifikasi ke ladder logic PLC */}
                   {!phaseConfirmed && (
@@ -477,15 +469,15 @@ export default function Home() {
                   )}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-sm mb-3">
+              <div className="flex items-center gap-1.5 text-xs mb-2">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${isRunning ? "bg-[#4F7A52]" : "bg-[#A23B2E]"
+                  className={`w-2 h-2 rounded-full ${isRunning ? "bg-[#4F7A52]" : "bg-[#A23B2E]"
                     }`}
                 />
                 {isRunning ? "Mesin berjalan" : "Mesin berhenti"}
               </div>
               {data.running && data.batchNo && (
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm border-t border-[#D8DEDC] pt-3">
+                <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs border-t border-[#D8DEDC] pt-2">
                   <div>
                     <dt className="text-xs text-[#5C6B6A]">Batch no</dt>
                     <dd className="font-semibold">{data.batchNo}</dd>
@@ -514,23 +506,23 @@ export default function Home() {
               )}
             </section>
 
-            <section className="bg-white border border-[#D8DEDC] rounded-[4px] px-4 py-2">
+            <section className="bg-white border border-[#D8DEDC] rounded-[4px] px-2 py-1">
               <DoorRow label="Front door" state={data.door?.opnFrnt ? "open" : "closed"} />
               <DoorRow label="Rear door" state={data.door?.opnRear ? "open" : "closed"} />
             </section>
 
-            <section className="flex flex-col gap-2">
+            <section className="flex flex-col gap-1.5">
               {!data.running ? (
                 <Link
                   href="/prepare"
-                  className="block text-center px-4 py-3 rounded-md bg-[#4F7A52] hover:bg-[#446C47] active:bg-[#3A5C3D] text-white text-sm font-semibold transition-colors"
+                  className="block text-center px-2 py-1.5 rounded-[3px] bg-[#4F7A52] hover:bg-[#446C47] active:bg-[#3A5C3D] text-white text-[13px] font-semibold transition-colors"
                 >
                   START
                 </Link>
               ) : (
                 <span
                   aria-disabled="true"
-                  className="block text-center px-4 py-3 rounded-md border border-[#D8DEDC] text-[#B8C0BE] text-sm font-semibold cursor-not-allowed"
+                  className="block text-center px-2 py-1.5 rounded-[3px] border border-[#D8DEDC] text-[#B8C0BE] text-[13px] font-semibold cursor-not-allowed"
                 >
                   START
                 </span>
@@ -539,10 +531,10 @@ export default function Home() {
               {/* DOOR: read only, bukan tombol */}
               <div
                 role="status"
-                className="flex items-center justify-between px-4 py-3 rounded-[3px] border border-dashed border-[#B8C0BE] text-sm text-[#5C6B6A] cursor-default select-none"
+                className="flex items-center justify-between px-2 py-1.5 rounded-[3px] border border-dashed border-[#B8C0BE] text-[13px] text-[#5C6B6A] cursor-default select-none"
               >
                 <span className="font-semibold">DOOR</span>
-                <span className="text-xs">
+                <span className="text-[11px]">
                   Read only: {data.door?.locked ? "Locked" : data.door?.seal ? "Sealed" : "Released"}
                 </span>
               </div>
@@ -550,7 +542,7 @@ export default function Home() {
               <button
                 onClick={handleStop}
                 disabled={stopping || !data.running}
-                className="px-4 py-3 rounded-md bg-[#A23B2E] hover:bg-[#8F3327] active:bg-[#7B2B21] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
+                className="px-2 py-1.5 rounded-[3px] bg-[#A23B2E] hover:bg-[#8F3327] active:bg-[#7B2B21] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold transition-colors"
               >
                 {stopping ? "Menghentikan…" : "STOP"}
               </button>
@@ -559,8 +551,8 @@ export default function Home() {
         </div>
 
         {/* ── Timeline fase ── */}
-        <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-4 sm:p-5">
-          <div className="flex items-baseline justify-between mb-4 text-xs text-[#5C6B6A]">
+        <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-2">
+          <div className="flex items-baseline justify-between mb-1.5 text-[11px] text-[#5C6B6A]">
             <span>
               Waktu berjalan{" "}
               <span className="text-base text-[#1E2A2E] ml-1" style={MONO}>

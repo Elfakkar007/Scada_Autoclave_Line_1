@@ -40,14 +40,14 @@ function fmtTime(tsStr) {
 
 // ── Badge status ──────────────────────────────────────────────────────────────
 const STATUS_STYLES = {
-    running:  "bg-blue-600",
-    finished: "bg-green-700",
-    aborted:  "bg-red-700",
+    running:  "bg-scada-water text-white",
+    finished: "bg-scada-run text-white",
+    aborted:  "bg-scada-stop text-white",
 };
 function StatusBadge({ status }) {
     if (!status) return null;
     return (
-        <span className={`px-2 py-0.5 rounded text-xs font-bold ${STATUS_STYLES[status] ?? "bg-slate-600"}`}>
+        <span className={`px-2 py-0.5 rounded text-xs font-bold ${STATUS_STYLES[status] ?? "bg-scada-idle text-scada-ink"}`}>
             {status.toUpperCase()}
         </span>
     );
@@ -57,12 +57,12 @@ function StatusBadge({ status }) {
 function CustomTooltip({ active, payload, label }) {
     if (!active || !payload || payload.length === 0) return null;
     return (
-        <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 text-xs shadow-xl max-w-xs">
-            <p className="text-slate-400 mb-2 font-mono">{label}</p>
+        <div className="bg-scada-card border border-scada-rule rounded-lg p-3 text-xs shadow-xl max-w-xs">
+            <p className="text-scada-muted mb-2 font-mono">{label}</p>
             {payload.map((entry) => (
                 <div key={entry.dataKey} className="flex justify-between gap-4">
                     <span style={{ color: entry.color }}>{entry.name}</span>
-                    <span className="font-mono text-slate-100">
+                    <span className="font-mono text-scada-ink">
                         {entry.value !== null && entry.value !== undefined
                             ? entry.value
                             : "—"}
@@ -151,38 +151,38 @@ export default function TrendPage() {
     }));
 
     return (
-        <main className="min-h-screen bg-slate-900 text-slate-100 p-6">
+        <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {/* ── Header ── */}
             <div className="mb-6">
                 <h1 className="text-2xl font-bold tracking-tight">Trend</h1>
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-scada-muted mt-1">
                     Grafik suhu &amp; tekanan per batch sterilisasi
                 </p>
             </div>
 
             {/* ── Error banner ── */}
             {error && (
-                <div className="mb-4 px-4 py-3 bg-red-900 border border-red-700 text-red-200 rounded text-sm">
+                <div className="mb-4 px-4 py-3 bg-red-50 border border-scada-stop text-scada-stop rounded text-sm">
                     {error}
                 </div>
             )}
 
             {/* ── Dropdown pemilihan batch ── */}
             <div className="mb-5">
-                <label className="block text-xs text-slate-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs text-scada-muted uppercase tracking-wider mb-1.5">
                     Pilih Batch
                 </label>
                 {loadingList ? (
-                    <div className="h-10 w-80 bg-slate-700 rounded animate-pulse" />
+                    <div className="h-10 w-80 bg-scada-idle/50 rounded animate-pulse" />
                 ) : batches.length === 0 ? (
-                    <div className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-500 inline-block">
+                    <div className="bg-scada-card border border-scada-idle rounded px-3 py-2 text-sm text-scada-muted inline-block">
                         Belum ada batch tersedia
                     </div>
                 ) : (
                     <select
                         value={selectedBatchNo}
                         onChange={(e) => setSelectedBatchNo(e.target.value)}
-                        className="w-full max-w-xl bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
+                        className="w-full max-w-xl bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors cursor-pointer"
                     >
                         {batches.map((b) => (
                             <option key={b.batchNo} value={b.batchNo}>
@@ -197,46 +197,46 @@ export default function TrendPage() {
 
             {/* ── Konten area (loading / info batch + grafik) ── */}
             {loadingDetail ? (
-                <div className="bg-slate-800 rounded-lg p-8 text-center text-slate-500 text-sm animate-pulse">
+                <div className="bg-scada-card border border-scada-rule shadow-sm rounded-lg p-8 text-center text-scada-muted text-sm animate-pulse">
                     Memuat data trend…
                 </div>
             ) : batch ? (
                 <>
                     {/* ── Card info ringkas batch ── */}
-                    <div className="bg-slate-800 rounded-lg p-5 mb-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-scada-card border border-scada-rule shadow-sm rounded-lg p-5 mb-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div>
-                            <p className="text-xs text-slate-400 uppercase mb-0.5">Batch No</p>
+                            <p className="text-xs text-scada-muted uppercase mb-0.5">Batch No</p>
                             <p className="font-mono font-bold">{batch.batchNo}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-slate-400 uppercase mb-0.5">Product</p>
+                            <p className="text-xs text-scada-muted uppercase mb-0.5">Product</p>
                             <p className="font-semibold text-sm">{batch.productName ?? "-"}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-slate-400 uppercase mb-0.5">Operator</p>
+                            <p className="text-xs text-scada-muted uppercase mb-0.5">Operator</p>
                             <p className="text-sm">{batch.operator ?? "-"}</p>
                         </div>
                         <div>
-                            <p className="text-xs text-slate-400 uppercase mb-0.5">Status</p>
+                            <p className="text-xs text-scada-muted uppercase mb-0.5">Status</p>
                             <StatusBadge status={batch.status} />
                         </div>
                     </div>
 
                     {/* ── Grafik atau empty state ── */}
                     {trend.length === 0 ? (
-                        <div className="bg-slate-800 rounded-lg p-10 text-center">
+                        <div className="bg-scada-card border border-scada-rule shadow-sm rounded-lg p-10 text-center">
                             <div className="text-4xl opacity-20 mb-3 select-none">📈</div>
-                            <p className="text-slate-300 font-semibold">
+                            <p className="text-scada-ink font-semibold">
                                 Belum ada data trend untuk batch ini.
                             </p>
-                            <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
+                            <p className="text-scada-muted text-sm mt-1 max-w-md mx-auto">
                                 Data akan muncul otomatis setelah sistem terhubung ke PLC
                                 dan proses sterilisasi merekam data.
                             </p>
                         </div>
                     ) : (
-                        <div className="bg-slate-800 rounded-lg p-5">
-                            <p className="text-xs text-slate-400 uppercase tracking-wider mb-4">
+                        <div className="bg-scada-card border border-scada-rule shadow-sm rounded-lg p-5">
+                            <p className="text-xs text-scada-muted uppercase tracking-wider mb-4">
                                 Temperature &amp; Pressure Curve — {trend.length} titik data
                             </p>
                             <ResponsiveContainer width="100%" height={420}>
@@ -244,26 +244,26 @@ export default function TrendPage() {
                                     data={chartData}
                                     margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
                                 >
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#D8DEDC" />
                                     <XAxis
                                         dataKey="_label"
-                                        tick={{ fill: "#94a3b8", fontSize: 11 }}
+                                        tick={{ fill: "#5C6B6A", fontSize: 11 }}
                                         tickLine={false}
-                                        axisLine={{ stroke: "#475569" }}
+                                        axisLine={{ stroke: "#B8C0BE" }}
                                     />
                                     {/* Y kiri: suhu */}
                                     <YAxis
                                         yAxisId="left"
                                         domain={[0, 150]}
                                         tickCount={7}
-                                        tick={{ fill: "#94a3b8", fontSize: 11 }}
+                                        tick={{ fill: "#5C6B6A", fontSize: 11 }}
                                         tickLine={false}
-                                        axisLine={{ stroke: "#475569" }}
+                                        axisLine={{ stroke: "#B8C0BE" }}
                                         label={{
                                             value: "Suhu (°C)",
                                             angle: -90,
                                             position: "insideLeft",
-                                            fill: "#64748b",
+                                            fill: "#5C6B6A",
                                             fontSize: 11,
                                             dx: -4,
                                         }}
@@ -274,21 +274,21 @@ export default function TrendPage() {
                                         orientation="right"
                                         domain={[0, 320]}
                                         tickCount={7}
-                                        tick={{ fill: "#94a3b8", fontSize: 11 }}
+                                        tick={{ fill: "#5C6B6A", fontSize: 11 }}
                                         tickLine={false}
-                                        axisLine={{ stroke: "#475569" }}
+                                        axisLine={{ stroke: "#B8C0BE" }}
                                         label={{
                                             value: "Tekanan (KPa)",
                                             angle: 90,
                                             position: "insideRight",
-                                            fill: "#64748b",
+                                            fill: "#5C6B6A",
                                             fontSize: 11,
                                             dx: 14,
                                         }}
                                     />
                                     <Tooltip content={<CustomTooltip />} />
                                     <Legend
-                                        wrapperStyle={{ fontSize: 12, color: "#94a3b8", paddingTop: 12 }}
+                                        wrapperStyle={{ fontSize: 12, color: "#5C6B6A", paddingTop: 12 }}
                                     />
                                     {LINE_CONFIG.map(({ key, label, color, yAxis, dash }) => (
                                         <Line
@@ -314,7 +314,7 @@ export default function TrendPage() {
                     <div className="mt-4 text-right">
                         <Link
                             href={`/data-report/${encodeURIComponent(batch.batchNo)}`}
-                            className="text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+                            className="text-sm text-scada-water hover:text-scada-water-hover hover:underline transition-colors"
                         >
                             Lihat detail lengkap →
                         </Link>
@@ -322,7 +322,7 @@ export default function TrendPage() {
                 </>
             ) : !loadingList && batches.length === 0 ? null : (
                 // Saat belum ada batch terpilih (edge case)
-                <div className="bg-slate-800 rounded-lg p-8 text-center text-slate-500 text-sm">
+                <div className="bg-scada-card border border-scada-rule shadow-sm rounded-lg p-8 text-center text-scada-muted text-sm">
                     Pilih batch di dropdown untuk melihat grafik.
                 </div>
             )}

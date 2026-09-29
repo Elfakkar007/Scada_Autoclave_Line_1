@@ -75,15 +75,15 @@ export default function PreparePage() {
     }
 
     const inputBase =
-        "w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors";
-    const labelBase = "block text-xs text-slate-400 uppercase mb-1";
+        "w-full bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors";
+    const labelBase = "block text-xs text-scada-muted uppercase mb-1";
 
     return (
-        <main className="min-h-screen bg-slate-900 text-slate-100 p-6">
+        <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {/* Header */}
             <div className="mb-8">
                 <h1 className="text-2xl font-bold tracking-tight">Persiapan Batch Baru</h1>
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-scada-muted mt-1">
                     Super Water Sterilizer — Isi data batch sebelum memulai sterilisasi
                 </p>
             </div>
@@ -96,7 +96,7 @@ export default function PreparePage() {
             )}
 
             <form onSubmit={handleSubmit} className="max-w-2xl">
-                <div className="bg-slate-800 rounded-lg p-6 space-y-5">
+                <div className="bg-scada-card border border-scada-rule rounded shadow-sm p-6 space-y-5">
 
                     {/* ── Banner peringatan MENULIS KE PLC ── */}
                     <div className="rounded border border-amber-600 bg-amber-950/60 px-4 py-3 flex gap-3">
@@ -125,7 +125,7 @@ export default function PreparePage() {
                         </span>
                     </label>
 
-                    <div className="border-t border-slate-700" />
+                    <div className="border-t border-scada-rule" />
 
                     {/* Baris 1: Batch No & Loading No */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -155,10 +155,10 @@ export default function PreparePage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <label className={labelBase}>Operator</label>
-                            <div className="px-3 py-2 bg-slate-700/50 border border-slate-600 rounded text-sm text-slate-300">
-                                {userFullName || <span className="text-slate-500 italic">Memuat…</span>}
+                            <div className="px-3 py-2 bg-scada-bg border border-scada-idle rounded text-sm text-scada-ink">
+                                {userFullName || <span className="text-scada-muted italic">Memuat…</span>}
                             </div>
-                            <p className="mt-1 text-xs text-slate-500">Diisi otomatis dari akun yang login</p>
+                            <p className="mt-1 text-xs text-scada-muted">Diisi otomatis dari akun yang login</p>
                         </div>
                         <div>
                             <label className={labelBase}>Mach. ID</label>
@@ -200,9 +200,9 @@ export default function PreparePage() {
                     <div>
                         <label className={labelBase}>Pilih Formula</label>
                         {loadingFormulas ? (
-                            <p className="text-sm text-slate-500 italic">Memuat daftar formula…</p>
+                            <p className="text-sm text-scada-muted italic">Memuat daftar formula…</p>
                         ) : formulas.length === 0 ? (
-                            <p className="text-sm text-red-400">
+                            <p className="text-sm text-scada-stop">
                                 Tidak ada formula tersedia. Tambahkan di halaman Formula terlebih dahulu.
                             </p>
                         ) : (
@@ -222,28 +222,28 @@ export default function PreparePage() {
                     </div>
 
                     {/* Divider */}
-                    <div className="border-t border-slate-700" />
+                    <div className="border-t border-scada-rule" />
 
                     {/* Tombol submit */}
                     <div className="flex items-center gap-4">
                         <button
                             type="submit"
                             disabled={!allFilled || !safetyAck || submitting}
-                            className="flex-1 md:flex-none px-8 py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed rounded font-bold text-base transition-colors"
+                            className="flex-1 md:flex-none px-8 py-3 bg-scada-run hover:bg-scada-run-hover text-white disabled:opacity-40 disabled:cursor-not-allowed rounded font-bold text-base transition-colors"
                         >
                             {submitting ? "Memulai…" : "▶ Mulai Sterilisasi"}
                         </button>
                         <button
                             type="button"
                             onClick={() => router.push("/")}
-                            className="px-5 py-3 bg-slate-700 hover:bg-slate-600 rounded font-semibold text-sm transition-colors"
+                            className="px-5 py-3 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded font-semibold text-sm transition-colors"
                         >
                             Batal
                         </button>
                     </div>
 
                     {(!allFilled || !safetyAck) && (
-                        <p className="text-xs text-slate-500 italic">
+                        <p className="text-xs text-scada-muted italic">
                             {!safetyAck
                                 ? "Centang kotak konfirmasi keselamatan di atas sebelum memulai."
                                 : "Semua field harus diisi sebelum memulai sterilisasi."}
