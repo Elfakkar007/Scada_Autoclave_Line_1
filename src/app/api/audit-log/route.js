@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { buildDateRangeFilter } from "@/lib/dateRange";
 
 export async function GET(request) {
     try {
@@ -12,6 +13,8 @@ export async function GET(request) {
         const search     = searchParams.get("search")     ?? "";
         const action     = searchParams.get("action")     ?? "";
         const entityType = searchParams.get("entityType") ?? "";
+        const from       = searchParams.get("from")       ?? "";
+        const to         = searchParams.get("to")         ?? "";
         const limit      = Math.min(parseInt(searchParams.get("limit")  ?? "20", 10), 100);
         const offset     = Math.max(parseInt(searchParams.get("offset") ?? "0",  10), 0);
 
@@ -34,6 +37,14 @@ export async function GET(request) {
             values.push(entityType.trim());
             conditions.push(`entity_type = $${values.length}`);
         }
+
+        // Filter rentang tanggal terhadap event_time (WIB)
+        const dateFilter = buildDateRangeFilter(from, to, "event_time", values.length + 1);
+        if (dateFilter.error) {
+            return Response.json({ ok: false, error: dateFilter.error }, { status: 400 });
+        }
+        values.push(...dateFilter.values);
+        conditions.push(...dateFilter.conditions);
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 

@@ -64,7 +64,7 @@ export async function GET(request, { params }) {
         let trend = [];
         try {
             const trendResult = await pool.query(
-                `SELECT id, ts, t1, t2, t3, t4, t5, t6, p, th, tm, tl, avg, phase_code
+                `SELECT id, ts, t1, t2, t3, t4, t5, t6, p, th, tm, tl, avg, cond, phase_code
                  FROM batch_trend
                  WHERE batch_id = $1
                  ORDER BY ts ASC`,
@@ -84,6 +84,7 @@ export async function GET(request, { params }) {
                 tm:        t.tm  !== null ? parseFloat(t.tm)  : null,
                 tl:        t.tl  !== null ? parseFloat(t.tl)  : null,
                 avg:       t.avg !== null ? parseFloat(t.avg) : null,
+                cond:      t.cond !== null ? parseFloat(t.cond) : null, // konduktivitas (tag L/VW122)
                 phaseCode: t.phase_code !== null ? parseInt(t.phase_code, 10) : null,
             }));
         } catch (trendError) {

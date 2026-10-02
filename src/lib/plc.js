@@ -345,6 +345,14 @@ export async function readPlcSnapshot() {
             // phase: object {code, label, confirmed, rawValue}
             // Sumber utama PROCCES_TEXT (VW98), fallback ke detectPhase() berbasis valve.
             phase: resolvePhase(v),
+            // Durasi tiap fase dari timer PLC (detik, nilai raw — tidak di-scale).
+            // null bila tag tidak terbaca. Dipakai oleh trendRecorder untuk mengisi
+            // heat_time_min / ster_time_min / cool_time_min di batch_records.
+            timers: {
+                heatSec: (v.heatTime !== null && v.heatTime !== undefined) ? v.heatTime : null,
+                sterSec: (v.sterTime !== null && v.sterTime !== undefined) ? v.sterTime : null,
+                coolSec: (v.coolTime !== null && v.coolTime !== undefined) ? v.coolTime : null,
+            },
             updatedAt: new Date().toISOString(),
         };
     } catch (error) {

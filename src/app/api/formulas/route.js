@@ -67,9 +67,12 @@ export async function POST(request) {
             return Response.json({ ok: false, error: "Formula No tidak boleh kosong" }, { status: 400 });
         }
 
-        // ── Validasi nilai resep dengan validateRecipe ────────────────────────
+        // ── Validasi nilai resep dengan validateRecipe (strict) ─────────────────
         // Bangun object snake_case sesuai format yang diterima validateRecipe.
+        // Sertakan formula_no, control_type, steril_material agar strict mode
+        // bisa memeriksa field teks wajib.
         const recipeCandidate = {
+            formula_no:      String(formulaNo).trim(),
             control_temp:    controlTemp,
             space_temp:      spaceTemp,
             steril_temp:     sterilTemp,
@@ -78,8 +81,10 @@ export async function POST(request) {
             cooling_temp1:   coolingTemp1,
             cooling_temp2:   coolingTemp2,
             fo_val_setting:  foValSetting,
+            control_type:    controlType,
+            steril_material: sterilMaterial,
         };
-        const validation = validateRecipe(recipeCandidate);
+        const validation = validateRecipe(recipeCandidate, { strict: true });
         if (!validation.ok) {
             return Response.json(
                 {

@@ -208,7 +208,26 @@ export default function BatchDetailPage() {
                         Detail Batch: <span className="font-mono text-scada-water">{decodedBatchNo}</span>
                     </h1>
                 </div>
-                <StatusBadge status={batch.status} />
+                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                    {/* Tombol cetak — buka di tab baru agar tidak kehilangan state halaman ini */}
+                    <a
+                        href={`/print/data-report/${encodeURIComponent(decodedBatchNo)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-scada-ink hover:bg-scada-muted text-white rounded text-xs font-semibold transition-colors"
+                    >
+                        🖨 Cetak Laporan
+                    </a>
+                    <a
+                        href={`/print/data-report/${encodeURIComponent(decodedBatchNo)}/curve`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-scada-water hover:bg-scada-water-hover text-white rounded text-xs font-semibold transition-colors"
+                    >
+                        📈 Cetak Kurva
+                    </a>
+                    <StatusBadge status={batch.status} />
+                </div>
             </div>
 
             {/* ── Baris 1: Produk ── */}

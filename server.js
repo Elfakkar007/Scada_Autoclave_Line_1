@@ -31,7 +31,7 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME || "localhost";
 const port = parseInt(process.env.PORT || "3001", 10);
 
-const TREND_INTERVAL_MS = 60 * 1000; // 60 detik — ubah di sini kalau butuh interval lain
+const POLL_INTERVAL_MS = 5_000; // 5 detik — tick sering; keputusan INSERT ada di recordTrendTick
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -61,10 +61,10 @@ app.prepare().then(async () => {
 
             setInterval(() => {
                 recordTrendTick();
-            }, TREND_INTERVAL_MS);
+            }, POLL_INTERVAL_MS);
 
             console.log(
-                `> Trend recorder berjalan, interval ${TREND_INTERVAL_MS / 1000} detik`
+                `> Trend recorder berjalan, poll interval ${POLL_INTERVAL_MS / 1000} detik`
             );
         }, 10_000);
     });

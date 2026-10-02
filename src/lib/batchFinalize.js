@@ -24,6 +24,13 @@ const PHASES_FINISHED = new Set([5, 6, 7]);
 //       atau ada kemungkinan 'pending' kalau dibatalkan saat tahap awal?
 const ABORTED_STERILIZATION_RESULT = "fail";
 
+// ── Konstanta rumus F0 ────────────────────────────────────────────────────────
+// Sama dengan SCADA lama (terverifikasi dari printout 2026/10/1: F01=35.2, F02=42.0).
+// Dengan 121.1 hasilnya sekitar 2.3% lebih rendah.
+// Konfirmasi ke QA sebelum dipakai untuk rilis.
+const F0_T_REF = 121.0; // °C — suhu referensi sterilisasi (z=10 standar farmasi)
+const F0_Z     = 10;    // nilai z (°C) — konstanta kinetika inaktivasi
+
 // ── Rumus F0 ──────────────────────────────────────────────────────────────────
 /**
  * Hitung F0 dari deretan titik data trend untuk satu kolom suhu.
@@ -50,7 +57,8 @@ function calcF0(points) {
 
         if (dtMin <= 0) continue; // sanity check: jangan proses interval aneh (duplikat ts, dll)
 
-        f0 += Math.pow(10, (T - 121.1) / 10) * dtMin;
+        // Rumus F0 standar farmasi dengan suhu referensi F0_T_REF dan konstanta F0_Z
+        f0 += Math.pow(10, (T - F0_T_REF) / F0_Z) * dtMin;
     }
     return f0;
 }
@@ -178,11 +186,30 @@ export async function finalizeBatch(batchId, { forceStatus = null, plcPhase = nu
         }
 
         // ── Satu UPDATE batch_records ─────────────────────────────────────────
+        // run_finish: ts baris trend pertama dengan phase_code = 6;
+        //   kalau tidak ada (batch di-stop sebelum PLC masuk fase 6), pakai now().
+        // total_time_min: selisih run_begin → run_finish, dibulatkan 1 desimal.
         await client.query(
             `UPDATE batch_records
              SET status               = $1,
-                 run_finish           = now(),
-                 total_time_min       = ROUND((EXTRACT(EPOCH FROM (now() - run_begin)) / 60)::numeric, 1),
+                 run_finish           = COALESCE(
+                     (SELECT MIN(ts) FROM batch_trend
+                      WHERE batch_id = $13 AND phase_code = 6),
+                     now()
+                 ),
+                 total_time_min       = CASE
+                     WHEN run_begin IS NOT NULL THEN
+                         ROUND(
+                             EXTRACT(EPOCH FROM (
+                                 COALESCE(
+                                     (SELECT MIN(ts) FROM batch_trend
+                                      WHERE batch_id = $13 AND phase_code = 6),
+                                     now()
+                                 ) - run_begin
+                             )) / 60.0, 1
+                         )
+                     ELSE NULL
+                 END,
                  fo1                  = $2,
                  fo2                  = $3,
                  fo3                  = $4,

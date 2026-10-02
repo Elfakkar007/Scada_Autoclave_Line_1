@@ -1,10 +1,13 @@
 import pool from "@/lib/db";
+import { buildDateRangeFilter } from "@/lib/dateRange";
 
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
         const search  = searchParams.get("search")  ?? "";
         const status  = searchParams.get("status")  ?? "";
+        const from    = searchParams.get("from")    ?? "";
+        const to      = searchParams.get("to")      ?? "";
         const limit   = Math.min(parseInt(searchParams.get("limit")  ?? "20", 10), 100);
         const offset  = Math.max(parseInt(searchParams.get("offset") ?? "0",  10), 0);
 
@@ -25,6 +28,18 @@ export async function GET(request) {
             values.push(status.trim());
             conditions.push(`status = $${values.length}`);
         }
+
+        // Filter rentang tanggal terhadap COALESCE(run_begin, created_at) (WIB)
+        const dateFilter = buildDateRangeFilter(
+            from, to,
+            "COALESCE(run_begin, created_at)",
+            values.length + 1
+        );
+        if (dateFilter.error) {
+            return Response.json({ ok: false, error: dateFilter.error }, { status: 400 });
+        }
+        values.push(...dateFilter.values);
+        conditions.push(...dateFilter.conditions);
 
         const whereClause = conditions.length > 0
             ? `WHERE ${conditions.join(" AND ")}`

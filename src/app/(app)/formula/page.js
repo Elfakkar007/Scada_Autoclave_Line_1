@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 // ── Helper: petakan nama field snake_case dari API ke camelCase key form ──────
 // Dipakai saat menampilkan error invalidFields dari server per-field di form.
 const SNAKE_TO_CAMEL = {
+    formula_no:      "formulaNo",
     control_temp:    "controlTemp",
     space_temp:      "spaceTemp",
     steril_temp:     "sterilTemp",
@@ -13,6 +14,8 @@ const SNAKE_TO_CAMEL = {
     cooling_temp1:   "coolingTemp1",
     cooling_temp2:   "coolingTemp2",
     fo_val_setting:  "foValSetting",
+    control_type:    "controlType",
+    steril_material: "sterilMaterial",
 };
 function snakeToCamelField(snakeKey) {
     return SNAKE_TO_CAMEL[snakeKey] ?? null;
@@ -96,6 +99,7 @@ function FieldRow({ field, value, onChange, disabled }) {
                 type="number"
                 step={field.type === "integer" ? "1" : "0.1"}
                 min="0"
+                required
                 className={inputBase + (disabled ? " " + disabledClass : "")}
                 // value ?? "" mencegah React warning "value prop should not be null"
                 // dan mencegah komponen berubah dari controlled → uncontrolled
@@ -170,6 +174,7 @@ export default function FormulaPage() {
     }
 
     // ── Validasi form (client-side awal) ─────
+    // Sesuai rentang di recipeValidation.js agar pesan konsisten dengan server.
     function validate(checkFormulaNo = false) {
         const errs = {};
 
@@ -178,18 +183,49 @@ export default function FormulaPage() {
             if (!no) errs.formulaNo = "Formula No tidak boleh kosong.";
         }
 
-        const numericKeys = [
-            "controlTemp", "spaceTemp", "sterilTemp", "sterilTime",
-            "alarmPres", "coolingTemp1", "coolingTemp2", "foValSetting",
+        // Rentang per field (mirroring recipeValidation.js RANGE)
+        const fieldRanges = [
+            { key: "controlTemp",  min: 100,  max: 150,  unit: "°C",    integer: false },
+            { key: "spaceTemp",    min: 0.1,  max: 20,   unit: "°C",    integer: false },
+            { key: "sterilTemp",   min: 100,  max: 150,  unit: "°C",    integer: false },
+            { key: "sterilTime",   min: 1,    max: 500,  unit: "menit", integer: true  },
+            { key: "alarmPres",    min: 100,  max: 300,  unit: "kPa",   integer: true  },
+            { key: "coolingTemp1", min: 30,   max: 130,  unit: "°C",    integer: false },
+            { key: "coolingTemp2", min: 20,   max: 130,  unit: "°C",    integer: false },
+            { key: "foValSetting", min: 1,    max: 100,  unit: "menit", integer: false },
         ];
-        for (const key of numericKeys) {
-            const val = parseFloat(form[key]);
-            if (isNaN(val) || val < 0) errs[key] = "Harus >= 0";
+
+        for (const { key, min, max, unit, integer } of fieldRanges) {
+            const raw = form[key];
+            // Cek kosong dulu (sebelum Number()) agar tidak lolos seperti Number(null)=0
+            if (raw === "" || raw === null || raw === undefined) {
+                errs[key] = `Wajib diisi (${min}–${max} ${unit})`;
+                continue;
+            }
+            const val = Number(raw);
+            if (!Number.isFinite(val)) {
+                errs[key] = "Harus angka valid";
+                continue;
+            }
+            if (val < min || val > max) {
+                errs[key] = `Harus ${min}–${max} ${unit}`;
+                continue;
+            }
+            if (integer && !Number.isInteger(val)) {
+                errs[key] = "Harus bilangan bulat";
+            }
         }
 
-        const sterilTimeVal = parseFloat(form.sterilTime);
-        if (!errs.sterilTime && !Number.isInteger(sterilTimeVal))
-            errs.sterilTime = "Harus bilangan bulat";
+        // Pengecekan antar-field
+        const ct2 = Number(form.coolingTemp2);
+        const ct1 = Number(form.coolingTemp1);
+        const st  = Number(form.sterilTemp);
+        if (!errs.coolingTemp2 && !errs.coolingTemp1 && ct2 >= ct1) {
+            errs.coolingTemp2 = `Cooling Temp2 (${ct2}) harus < Cooling Temp1 (${ct1})`;
+        }
+        if (!errs.coolingTemp1 && !errs.sterilTemp && ct1 >= st) {
+            errs.coolingTemp1 = `Cooling Temp1 (${ct1}) harus < Steril Temp (${st})`;
+        }
 
         return errs;
     }

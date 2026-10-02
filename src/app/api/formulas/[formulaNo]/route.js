@@ -81,9 +81,12 @@ export async function PUT(request, { params }) {
         }
         const oldFormula = rowToFormula(oldResult.rows[0]);
 
-        // ── Validasi: gabungan data lama + perubahan dari body ─────────────────
+        // ── Validasi: gabungan data lama + perubahan dari body (strict) ───────────
         // Kalau body tidak mengirim suatu field, gunakan nilai lama dari DB.
+        // Sertakan formula_no, control_type, steril_material agar strict mode
+        // bisa memeriksa field teks wajib.
         const recipeCandidate = {
+            formula_no:      formulaNo, // tidak boleh berubah, gunakan dari URL
             control_temp:    controlTemp    !== undefined ? controlTemp    : oldResult.rows[0].control_temp,
             space_temp:      spaceTemp      !== undefined ? spaceTemp      : oldResult.rows[0].space_temp,
             steril_temp:     sterilTemp     !== undefined ? sterilTemp     : oldResult.rows[0].steril_temp,
@@ -92,9 +95,11 @@ export async function PUT(request, { params }) {
             cooling_temp1:   coolingTemp1   !== undefined ? coolingTemp1   : oldResult.rows[0].cooling_temp1,
             cooling_temp2:   coolingTemp2   !== undefined ? coolingTemp2   : oldResult.rows[0].cooling_temp2,
             fo_val_setting:  foValSetting   !== undefined ? foValSetting   : oldResult.rows[0].fo_val_setting,
+            control_type:    controlType    !== undefined ? controlType    : oldResult.rows[0].control_type,
+            steril_material: sterilMaterial !== undefined ? sterilMaterial : oldResult.rows[0].steril_material,
         };
 
-        const validation = validateRecipe(recipeCandidate);
+        const validation = validateRecipe(recipeCandidate, { strict: true });
         if (!validation.ok) {
             return Response.json(
                 {

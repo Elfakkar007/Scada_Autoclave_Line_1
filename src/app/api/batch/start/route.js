@@ -452,8 +452,8 @@ export async function POST(request) {
                     String(productName).trim(),
                     String(productSpec).trim(),
                     recipe.control_type,
-                    ctrlTemp,
-                    cool1Temp,
+                    sterilTemp,   // ster_temp = setpoint sterilisasi (bukan ctrlTemp)
+                    cool2Temp,    // cool_temp = cooling_temp2 sesuai printout SCADA lama
                 ]
             );
             newBatch = insertResult.rows[0];
