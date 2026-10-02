@@ -49,7 +49,9 @@ export async function GET(request) {
                 run_begin,
                 run_finish,
                 total_time_min,
-                status
+                status,
+                fo_min,
+                sterilization_result
              FROM batch_records
              ${whereClause}
              ORDER BY COALESCE(run_begin, created_at) DESC
@@ -59,15 +61,17 @@ export async function GET(request) {
         );
 
         const data = dataResult.rows.map((row) => ({
-            batchNo:      row.batch_no,
-            operator:     row.operator,
-            productName:  row.product_name,
-            machineId:    row.machine_id,
-            sterTemp:     row.ster_temp !== null ? parseFloat(row.ster_temp) : null,
-            runBegin:     row.run_begin,
-            runFinish:    row.run_finish,
-            totalTimeMin: row.total_time_min !== null ? parseFloat(row.total_time_min) : null,
-            status:       row.status,
+            batchNo:              row.batch_no,
+            operator:             row.operator,
+            productName:          row.product_name,
+            machineId:            row.machine_id,
+            sterTemp:             row.ster_temp !== null ? parseFloat(row.ster_temp) : null,
+            runBegin:             row.run_begin,
+            runFinish:            row.run_finish,
+            totalTimeMin:         row.total_time_min !== null ? parseFloat(row.total_time_min) : null,
+            status:               row.status,
+            foMin:                row.fo_min !== null ? parseFloat(row.fo_min) : null,
+            sterilizationResult:  row.sterilization_result ?? null,
         }));
 
         return Response.json({ data, total });

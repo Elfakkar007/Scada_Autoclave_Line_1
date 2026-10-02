@@ -1,35 +1,9 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
-import { writePlcTags } from "@/lib/plcWrite";
-
-/**
- * Hitung F0 dari deretan titik data trend untuk satu kolom suhu.
- *
- * Rumus F0 standar farmasi: F0 = SUM( 10^((T - 121.1) / 10) * dt_menit )
- * Pendekatan: nilai T di titik AKHIR interval (rectangular/right-endpoint).
- * Dipilih karena sederhana dan konservatif (tidak over-estimate sterilitas).
- * Untuk akurasi lebih tinggi bisa pakai trapezoid nanti, tapi belum perlu
- * selama interval rekaman ~60 detik dan kurva suhu relatif smooth.
- *
- * @param {Array<{ts: Date, temp: number|null}>} points - Data trend, urut ASC by ts
- * @returns {number} Nilai F0 kumulatif
- */
-function calcF0(points) {
-    let f0 = 0;
-    for (let i = 1; i < points.length; i++) {
-        const T = points[i].temp;
-        if (T === null || T === undefined) continue; // skip baris dengan data null
-
-        const dtMs = new Date(points[i].ts).getTime() - new Date(points[i - 1].ts).getTime();
-        const dtMin = dtMs / (1000 * 60); // konversi ms -> menit
-
-        if (dtMin <= 0) continue; // sanity check: jangan proses interval aneh (duplikat ts, dll)
-
-        f0 += Math.pow(10, (T - 121.1) / 10) * dtMin;
-    }
-    return f0;
-}
+import { readPlcSnapshot } from "@/lib/plc";
+import { pulsePlcTag } from "@/lib/plcWrite";
+import { finalizeBatch } from "@/lib/batchFinalize";
 
 export async function POST() {
     try {
@@ -55,17 +29,33 @@ export async function POST() {
 
         const batch = runningResult.rows[0];
 
-        // ── Kirim perintah STOP ke PLC ─────────────────────────────────────────
+        // ── Baca snapshot PLC sebelum kirim STOP ──────────────────────────────
+        // Dipakai untuk menentukan status akhir batch (finished vs aborted).
+        // Dibungkus try/catch: kegagalan baca tidak menghalangi finalisasi batch.
+        let plcPhase = null;
+        try {
+            const snapBefore = await readPlcSnapshot();
+            if (snapBefore.plcOk) {
+                plcPhase = snapBefore.phase?.rawValue ?? null;
+            }
+        } catch (snapErr) {
+            console.warn("[batch/stop] Gagal baca snapshot PLC sebelum STOP:", snapErr.message);
+        }
+
+        // ── Kirim perintah STOP ke PLC sebagai pulsa ──────────────────────────
         // PENTING: apapun hasilnya, TETAP lanjutkan finalisasi batch di sistem kita.
         // Operator harus tetap bisa menutup batch meskipun komunikasi PLC bermasalah.
+        // STOP (M1.5) dibaca PLC sebagai LEVEL — wajib ditulis sebagai pulsa (true, tunggu, false).
         let plcStopWritten = false;
+        let plcStuckRisk   = false;
         try {
-            const stopResult = await writePlcTags([{ tag: "STOP", value: true }]);
-            plcStopWritten = stopResult.ok;
-            if (!stopResult.ok) {
+            const pulse = await pulsePlcTag("STOP");
+            plcStopWritten = pulse.ok;
+            plcStuckRisk   = pulse.stuckRisk ?? false;
+            if (!pulse.ok) {
                 console.error(
                     "[batch/stop] Gagal kirim STOP ke PLC (finalisasi batch tetap dilanjutkan):",
-                    stopResult.results.filter((r) => !r.success)
+                    pulse
                 );
             }
         } catch (plcErr) {
@@ -75,107 +65,56 @@ export async function POST() {
             );
         }
 
-        // UPDATE: set status = 'finished' dan run_finish = now()
-        await pool.query(
-            `UPDATE batch_records
-             SET status = 'finished', run_finish = now()
-             WHERE id = $1`,
-            [batch.id]
-        );
+        // ── Finalisasi batch (F0, status, satu UPDATE) ─────────────────────────
+        // Ganti dua UPDATE + calcF0 lokal dengan satu panggilan finalizeBatch.
+        const finalizeResult = await finalizeBatch(batch.id, { plcPhase });
 
-        // ── Kalkulasi F0 dari data trend ────────────────────────────────────────
-        // Ambil semua titik trend untuk batch ini, urut ASC by ts
-        const trendResult = await pool.query(
-            `SELECT ts, t1, t2, t3, t4, t5, t6, th, tm, tl
-             FROM batch_trend
-             WHERE batch_id = $1
-             ORDER BY ts ASC`,
-            [batch.id]
-        );
-
-        const rows = trendResult.rows;
-        let sterilizationResult = "pending";
-        let fo1 = null, fo2 = null, fo3 = null, fo4 = null, fo5 = null, fo6 = null;
-        let foh = null, fom = null, fol = null, foMin = null;
-
-        if (rows.length >= 2) {
-            // Hitung F0 untuk setiap kolom suhu secara terpisah.
-            // Mapping: fo1<-t1, fo2<-t2, ..., fo6<-t6, foh<-th, fom<-tm, fol<-tl
-            const mkPoints = (col) => rows.map((r) => ({ ts: r.ts, temp: r[col] }));
-
-            fo1 = calcF0(mkPoints("t1"));
-            fo2 = calcF0(mkPoints("t2"));
-            fo3 = calcF0(mkPoints("t3"));
-            fo4 = calcF0(mkPoints("t4"));
-            fo5 = calcF0(mkPoints("t5"));
-            fo6 = calcF0(mkPoints("t6"));
-            foh = calcF0(mkPoints("th"));
-            fom = calcF0(mkPoints("tm"));
-            fol = calcF0(mkPoints("tl"));
-
-            // fo_min = nilai terkecil dari 9 F0 (paling konservatif = worst-case sensor)
-            foMin = Math.min(fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol);
-
-            // Bandingkan fo_min dengan target F0 dari resep
-            const foTarget = batch.fo_val_setting;
-            if (foTarget !== null && foTarget !== undefined) {
-                sterilizationResult = foMin >= foTarget ? "pass" : "fail";
-            } else {
-                // Tidak ada target F0 di resep — tidak bisa menentukan pass/fail
-                sterilizationResult = "pending";
-                console.warn(
-                    `[batch/stop] Batch ${batch.batch_no}: fo_val_setting null di recipe, ` +
-                    `sterilization_result tetap 'pending'`
-                );
-            }
-        } else {
-            // Data trend kurang dari 2 baris — tidak cukup untuk hitung F0
-            sterilizationResult = "pending";
-            console.warn(
-                `[batch/stop] Batch ${batch.batch_no}: data trend hanya ${rows.length} baris, ` +
-                `tidak cukup untuk hitung F0 (butuh >= 2). sterilization_result = 'pending'`
-            );
+        if (finalizeResult.alreadyFinalized) {
+            return Response.json({
+                ok: true,
+                message: "Batch sudah ditutup sebelumnya.",
+                batchNo: batch.batch_no,
+                plcStopWritten,
+                plcStuckRisk,
+            });
         }
 
-        // UPDATE batch_records dengan hasil F0 dan sterilization_result
-        await pool.query(
-            `UPDATE batch_records
-             SET fo1=$1, fo2=$2, fo3=$3, fo4=$4, fo5=$5, fo6=$6,
-                 foh=$7, fom=$8, fol=$9,
-                 fo_min=$10, sterilization_result=$11
-             WHERE id = $12`,
-            [fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol, foMin, sterilizationResult, batch.id]
-        );
+        const { status, sterilizationResult, foMin } = finalizeResult;
 
-        console.log(
-            `[batch/stop] Batch ${batch.batch_no} selesai. ` +
-            `fo_min=${foMin !== null ? foMin.toFixed(2) : "N/A"}, ` +
-            `result=${sterilizationResult}`
-        );
-
-        // Tulis audit log — actor dari session (TIDAK DIUBAH dari versi sebelumnya)
-        await pool.query(
-            `INSERT INTO audit_log
-                (actor, actor_role, action, entity_type, entity_id, old_value, source, description)
-             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
-            [
-                session.username,
-                session.role,
-                "stop_batch",
-                "batch",
-                batch.batch_no,
-                JSON.stringify({ batchNo: batch.batch_no, operator: batch.operator, runBegin: batch.run_begin }),
-                "web",
-                `Batch ${batch.batch_no} diselesaikan oleh ${session.username}`,
-            ]
-        );
+        // ── Tulis audit log ────────────────────────────────────────────────────
+        try {
+            await pool.query(
+                `INSERT INTO audit_log
+                    (actor, actor_role, action, entity_type, entity_id, old_value, source, description)
+                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+                [
+                    session.username,
+                    session.role,
+                    "stop_batch",
+                    "batch",
+                    batch.batch_no,
+                    JSON.stringify({
+                        batchNo:   batch.batch_no,
+                        operator:  batch.operator,
+                        runBegin:  batch.run_begin,
+                    }),
+                    "web",
+                    `Batch ${batch.batch_no} diselesaikan oleh ${session.username}. Status akhir: ${status}`,
+                ]
+            );
+        } catch (auditErr) {
+            // Audit log gagal tidak fatal
+            console.error("[batch/stop] Gagal catat audit stop_batch:", auditErr.message);
+        }
 
         return Response.json({
             ok: true,
-            batchNo: batch.batch_no,
+            batchNo:              batch.batch_no,
+            status,
             sterilizationResult,
-            foMin: foMin !== null ? parseFloat(foMin.toFixed(2)) : null,
+            foMin:                foMin !== null ? parseFloat(foMin.toFixed(2)) : null,
             plcStopWritten,
+            plcStuckRisk,
         });
     } catch (error) {
         console.error("[POST /api/batch/stop]", error);

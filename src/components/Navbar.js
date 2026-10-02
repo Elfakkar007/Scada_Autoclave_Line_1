@@ -60,7 +60,7 @@ export default function Navbar() {
             <div className="px-4 flex flex-col gap-1">
                 <div className="mb-6 px-2 flex flex-col items-center">
                     {/* Satoria Pharma Logo */}
-                    <img src="/satoria-logo.png" alt="Satoria Pharma" className="w-20 -mb-0 object-contain" />
+                    <img src="/satoria-logo.png" alt="Satoria Pharma" className="w-20 -mb-1 object-contain" />
 
                     <h2 className="text-xl font-bold text-scada-steam tracking-tight text-center">SCADA</h2>
                     <p className="text-[10px] text-scada-idle uppercase tracking-wider mt-0.5 text-center">Control System</p>

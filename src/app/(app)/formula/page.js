@@ -2,19 +2,35 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+// ── Helper: petakan nama field snake_case dari API ke camelCase key form ──────
+// Dipakai saat menampilkan error invalidFields dari server per-field di form.
+const SNAKE_TO_CAMEL = {
+    control_temp:    "controlTemp",
+    space_temp:      "spaceTemp",
+    steril_temp:     "sterilTemp",
+    steril_time_min: "sterilTime",
+    alarm_pres:      "alarmPres",
+    cooling_temp1:   "coolingTemp1",
+    cooling_temp2:   "coolingTemp2",
+    fo_val_setting:  "foValSetting",
+};
+function snakeToCamelField(snakeKey) {
+    return SNAKE_TO_CAMEL[snakeKey] ?? null;
+}
+
 // ──────────────────────────────────────────────
 // Nilai default untuk entry formula baru
 // ──────────────────────────────────────────────
 const DEFAULT_FORM = {
     formulaNo: "",
-    controlTemp: 0,
-    spaceTemp: 0,
-    sterilTemp: 0,
-    sterilTime: 0,
-    alarmPres: 0,
-    coolingTemp1: 0,
-    coolingTemp2: 0,
-    foValSetting: 0,
+    controlTemp:  "",
+    spaceTemp:    "",
+    sterilTemp:   "",
+    sterilTime:   "",
+    alarmPres:    "",
+    coolingTemp1: "",
+    coolingTemp2: "",
+    foValSetting: "",
     controlType: "Time",
     sterilMaterial: "Soft bottle",
 };
@@ -81,7 +97,9 @@ function FieldRow({ field, value, onChange, disabled }) {
                 step={field.type === "integer" ? "1" : "0.1"}
                 min="0"
                 className={inputBase + (disabled ? " " + disabledClass : "")}
-                value={value}
+                // value ?? "" mencegah React warning "value prop should not be null"
+                // dan mencegah komponen berubah dari controlled → uncontrolled
+                value={value ?? ""}
                 disabled={disabled}
                 onChange={(e) => !disabled && onChange(field.key, e.target.value)}
             />
@@ -212,13 +230,34 @@ export default function FormulaPage() {
                         alarmPres:    parseFloat(form.alarmPres),
                         coolingTemp1: parseFloat(form.coolingTemp1),
                         coolingTemp2: parseFloat(form.coolingTemp2),
-                        foValSetting: parseFloat(form.foValSetting),
+                        foValSetting: form.foValSetting !== "" ? parseFloat(form.foValSetting) : null,
                     }),
                 });
                 const json = await res.json();
                 if (!res.ok || json.ok === false) {
-                    showToast(json.error ?? "Gagal menyimpan formula.", "error");
-                    return;
+                    // Kalau server kirim invalidFields, set error per-field
+                    if (json.invalidFields && Array.isArray(json.invalidFields)) {
+                        const fieldMap = {};
+                        const unknown = [];
+                        for (const p of json.invalidFields) {
+                            // Petakan snake_case field ke camelCase key form
+                            const camel = snakeToCamelField(p.field);
+                            if (camel && DEFAULT_FORM[camel] !== undefined) {
+                                fieldMap[camel] = p.message;
+                            } else {
+                                unknown.push(p.message);
+                            }
+                        }
+                        setErrors(fieldMap);
+                        if (unknown.length > 0) {
+                            showToast(unknown.join("; "), "error");
+                        } else {
+                            showToast("Ada field yang tidak valid — lihat tanda merah di bawah input.", "error");
+                        }
+                    } else {
+                        showToast(json.error ?? "Gagal menyimpan formula.", "error");
+                    }
+                    return; // form tidak ditutup
                 }
                 const trimmedNo = String(form.formulaNo).trim();
                 setIsNewEntry(false);
@@ -260,13 +299,33 @@ export default function FormulaPage() {
                     alarmPres:    parseFloat(form.alarmPres),
                     coolingTemp1: parseFloat(form.coolingTemp1),
                     coolingTemp2: parseFloat(form.coolingTemp2),
-                    foValSetting: parseFloat(form.foValSetting),
+                    foValSetting: form.foValSetting !== "" ? parseFloat(form.foValSetting) : null,
                 }),
             });
             const json = await res.json();
             if (!res.ok || json.ok === false) {
-                showToast(json.error ?? "Gagal menyimpan perubahan.", "error");
-                return;
+                // Kalau server kirim invalidFields, set error per-field
+                if (json.invalidFields && Array.isArray(json.invalidFields)) {
+                    const fieldMap = {};
+                    const unknown = [];
+                    for (const p of json.invalidFields) {
+                        const camel = snakeToCamelField(p.field);
+                        if (camel && DEFAULT_FORM[camel] !== undefined) {
+                            fieldMap[camel] = p.message;
+                        } else {
+                            unknown.push(p.message);
+                        }
+                    }
+                    setErrors(fieldMap);
+                    if (unknown.length > 0) {
+                        showToast(unknown.join("; "), "error");
+                    } else {
+                        showToast("Ada field yang tidak valid — lihat tanda merah di bawah input.", "error");
+                    }
+                } else {
+                    showToast(json.error ?? "Gagal menyimpan perubahan.", "error");
+                }
+                return; // form tidak ditutup
             }
             showToast(`Formula ${selectedNo} berhasil disimpan.`);
             await fetchFormulas();
@@ -394,6 +453,15 @@ export default function FormulaPage() {
                                             <span className="block text-xs opacity-70 mt-0.5">
                                                 {f.formulaNo === "" ? "isi & Save" : `${f.sterilTemp}°C · ${f.sterilTime} MIN`}
                                             </span>
+                                            {/* Badge "Tidak lengkap" untuk resep dengan validation.ok false */}
+                                            {f.formulaNo !== "" && f.validation && !f.validation.ok && (
+                                                <span
+                                                    className="inline-block mt-1 px-1.5 py-0.5 bg-scada-stop text-white text-xs rounded leading-none"
+                                                    title={f.validation.problems.map((p) => p.message).join("\n")}
+                                                >
+                                                    Tidak lengkap
+                                                </span>
+                                            )}
                                         </button>
                                     </li>
                                 ))}

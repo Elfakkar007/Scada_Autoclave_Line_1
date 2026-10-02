@@ -6,9 +6,9 @@ import Link from "next/link";
 const LIMIT = 20;
 
 const STATUS_STYLES = {
-    running:  "bg-blue-600 text-white",
-    finished: "bg-green-600 text-white",
-    aborted:  "bg-red-600 text-white",
+    running:  "bg-scada-water text-white",
+    finished: "bg-scada-run text-white",
+    aborted:  "bg-scada-stop text-white",
 };
 
 function StatusBadge({ status }) {
@@ -111,7 +111,7 @@ export default function DataReportPage() {
 
             {/* ── Error banner ── */}
             {error && (
-                <div className="mb-4 px-4 py-3 bg-red-900 border border-red-700 text-red-200 rounded text-sm">
+                <div className="mb-4 px-4 py-3 bg-red-50 border border-scada-stop text-scada-stop rounded text-sm">
                     {error}
                 </div>
             )}
@@ -137,6 +137,7 @@ export default function DataReportPage() {
                                     <th className={thClass}>Run Finish</th>
                                     <th className={thClass}>Total (min)</th>
                                     <th className={thClass}>Status</th>
+                                    <th className={thClass}>Hasil</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-scada-rule">
@@ -148,7 +149,7 @@ export default function DataReportPage() {
                                         <td className={tdClass}>
                                             <Link
                                                 href={`/data-report/${encodeURIComponent(row.batchNo)}`}
-                                                className="font-mono font-semibold text-blue-400 hover:text-blue-300 hover:underline"
+                                                className="font-mono font-semibold text-scada-water hover:underline"
                                             >
                                                 {row.batchNo}
                                             </Link>
@@ -165,6 +166,22 @@ export default function DataReportPage() {
                                         </td>
                                         <td className={tdClass}>
                                             <StatusBadge status={row.status} />
+                                        </td>
+                                        {/* Kolom Hasil: badge sterilizationResult dari API */}
+                                        <td className={tdClass}>
+                                            {row.sterilizationResult ? (
+                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                                    row.sterilizationResult === "pass"
+                                                        ? "bg-scada-run text-white"
+                                                        : row.sterilizationResult === "fail"
+                                                        ? "bg-scada-stop text-white"
+                                                        : row.sterilizationResult === "pending"
+                                                        ? "bg-scada-water text-white"
+                                                        : "bg-scada-idle text-scada-ink"
+                                                }`}>
+                                                    {row.sterilizationResult.toUpperCase()}
+                                                </span>
+                                            ) : "-"}
                                         </td>
                                     </tr>
                                 ))}

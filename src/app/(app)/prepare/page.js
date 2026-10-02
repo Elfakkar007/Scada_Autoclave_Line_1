@@ -19,6 +19,8 @@ export default function PreparePage() {
     const [loadingFormulas, setLoadingFormulas] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
+    // invalidFields dari API (array { field, message }) untuk tampilan daftar di banner
+    const [errorFields, setErrorFields] = useState([]);
     const [userFullName, setUserFullName] = useState("");
     // Checkbox konfirmasi keselamatan — wajib dicentang sebelum bisa submit
     const [safetyAck, setSafetyAck] = useState(false);
@@ -40,17 +42,27 @@ export default function PreparePage() {
     function handleChange(key, value) {
         setForm((prev) => ({ ...prev, [key]: value }));
         setError(null);
+        setErrorFields([]);
     }
 
-    // Tombol submit disabled jika ada field yang kosong (operator dari session, tidak perlu cek)
+    // Formula yang saat ini dipilih (dengan data validation dari API)
+    const selectedFormula = formulas.find((f) => f.formulaNo === form.formulaNo) ?? null;
+    const formulaProblems  = selectedFormula?.validation?.problems ?? [];
+    const formulaWarnings  = selectedFormula?.validation?.warnings ?? [];
+    const formulaInvalid   = selectedFormula !== null && selectedFormula?.validation?.ok === false;
+    const formulaHasWarn   = formulaWarnings.length > 0 && !formulaInvalid;
+
+    // Tombol submit disabled jika ada field yang kosong atau formula tidak valid
     const allFilled = Object.values(form).every((v) => String(v).trim() !== "");
+    const canSubmit = allFilled && safetyAck && !formulaInvalid;
 
     async function handleSubmit(e) {
         e.preventDefault();
-        if (!allFilled) return;
+        if (!canSubmit) return;
 
         setSubmitting(true);
         setError(null);
+        setErrorFields([]);
 
         try {
             const res = await fetch("/api/batch/start", {
@@ -61,7 +73,13 @@ export default function PreparePage() {
             const json = await res.json();
 
             if (!res.ok || json.ok === false) {
-                setError(json.error ?? "Terjadi kesalahan, coba lagi.");
+                // Kalau ada invalidFields dari server, simpan untuk daftar di banner
+                if (json.invalidFields && Array.isArray(json.invalidFields) && json.invalidFields.length > 0) {
+                    setErrorFields(json.invalidFields);
+                    setError(json.error ?? "Resep tidak valid.");
+                } else {
+                    setError(json.error ?? "Terjadi kesalahan, coba lagi.");
+                }
                 return;
             }
 
@@ -90,8 +108,16 @@ export default function PreparePage() {
 
             {/* Error banner */}
             {error && (
-                <div className="mb-6 px-4 py-3 bg-red-900 border border-red-700 text-red-200 rounded text-sm font-medium">
-                    {error}
+                <div className="mb-6 px-4 py-3 bg-red-50 border border-scada-stop text-scada-stop rounded text-sm font-medium">
+                    <p className="font-semibold">{error}</p>
+                    {/* Daftar detail invalidFields dari API */}
+                    {errorFields.length > 0 && (
+                        <ul className="mt-2 list-disc list-inside space-y-0.5 text-xs">
+                            {errorFields.map((f, i) => (
+                                <li key={i}>{f.message ?? f.field}</li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
             )}
 
@@ -215,9 +241,38 @@ export default function PreparePage() {
                                 {formulas.map((f) => (
                                     <option key={f.formulaNo} value={f.formulaNo}>
                                         {f.formulaNo} ({f.controlTemp}°C, {f.sterilTime} MIN)
+                                        {/* Tanda peringatan di dropdown untuk resep tidak lengkap */}
+                                        {f.validation && !f.validation.ok ? " — TIDAK LENGKAP" : ""}
                                     </option>
                                 ))}
                             </select>
+                        )}
+
+                        {/* Panel merah: formula tidak valid — tombol dinonaktifkan */}
+                        {formulaInvalid && (
+                            <div className="mt-2 px-4 py-3 bg-red-50 border border-scada-stop text-scada-stop rounded text-sm">
+                                <p className="font-semibold mb-1">Formula ini belum bisa dipakai:</p>
+                                <ul className="list-disc list-inside space-y-0.5 text-xs">
+                                    {formulaProblems.map((p, i) => (
+                                        <li key={i}>{p.message}</li>
+                                    ))}
+                                </ul>
+                                <p className="mt-2 text-xs opacity-70">
+                                    Perbaiki formula di halaman Formula, lalu kembali ke sini.
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Catatan kuning: ada warnings tapi masih valid — tombol tetap aktif */}
+                        {formulaHasWarn && (
+                            <div className="mt-2 px-4 py-3 bg-amber-950/40 border border-amber-600 text-amber-200 rounded text-sm">
+                                <p className="font-semibold mb-1">Catatan formula:</p>
+                                <ul className="list-disc list-inside space-y-0.5 text-xs">
+                                    {formulaWarnings.map((w, i) => (
+                                        <li key={i}>{w.message}</li>
+                                    ))}
+                                </ul>
+                            </div>
                         )}
                     </div>
 
@@ -228,7 +283,7 @@ export default function PreparePage() {
                     <div className="flex items-center gap-4">
                         <button
                             type="submit"
-                            disabled={!allFilled || !safetyAck || submitting}
+                            disabled={!canSubmit || submitting}
                             className="flex-1 md:flex-none px-8 py-3 bg-scada-run hover:bg-scada-run-hover text-white disabled:opacity-40 disabled:cursor-not-allowed rounded font-bold text-base transition-colors"
                         >
                             {submitting ? "Memulai…" : "▶ Mulai Sterilisasi"}
@@ -242,9 +297,11 @@ export default function PreparePage() {
                         </button>
                     </div>
 
-                    {(!allFilled || !safetyAck) && (
+                    {(!allFilled || !safetyAck || formulaInvalid) && (
                         <p className="text-xs text-scada-muted italic">
-                            {!safetyAck
+                            {formulaInvalid
+                                ? "Formula yang dipilih tidak lengkap — perbaiki terlebih dahulu."
+                                : !safetyAck
                                 ? "Centang kotak konfirmasi keselamatan di atas sebelum memulai."
                                 : "Semua field harus diisi sebelum memulai sterilisasi."}
                         </p>

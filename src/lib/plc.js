@@ -10,9 +10,13 @@
  *    konsisten (spasi, underscore, huruf kecil) — ini nama asli di proyek
  *    KEPServerEX, bukan typo kita.
  * 2. SCALING: T1-T6/TH/TM/TL dikonfirmasi perlu dibagi 10 (raw 355 → 35.5°C).
- *    P1/P2/ALRM_PRES/SAFETY_PRESS masih ASUMSI bagi 10 — wajib divalidasi.
+ *    P1/P2 dibaca apa adanya dalam kPa (terkonfirmasi dari layar SCADA lama).
+ *    ALRM_PRES/SAFETY_PRESS juga dalam kPa, tidak di-scale.
  * 3. PROCCES_TEXT (VW98): nomor step fase langsung dari ladder logic PLC.
- *    Nilai 0-4 TERKONFIRMASI. Nilai 5-7 masih DUGAAN.
+ *    Urutan DIKONFIRMASI dari pembacaan kode program: 0,1,2,3,4,5,7,6
+ *    (kode 7=DRAIN muncul SEBELUM kode 6=END).
+ * 4. Tag L (VW122) = CONDUCTIVITY, tag WATER (VW124) = LEVEL AIR.
+ *    Kedua tag ini sebelumnya tertukar — sudah dikoreksi.
  */
 
 import { getDummyStatus } from "./dummyData.js";
@@ -23,9 +27,13 @@ const TAG_MAP = {
     // Sensor suhu
     t1: "T1", t2: "T2", t3: "T3", t4: "T4", t5: "T5", t6: "T6",
     th: "TH", tm: "TM", tl: "TL",
-    // Tekanan & level air
+    // Tekanan
     p1: "P1", p2: "P2",
-    level: "L", water: "WATER",
+    // Conductivity & level air
+    // CATATAN: L (VW122) = CONDUCTIVITY, WATER (VW124) = LEVEL AIR
+    // Sebelumnya tertukar — sudah dikoreksi per hasil pembacaan ladder logic.
+    conductivity: "L",       // VW122 — conductivity
+    level: "WATER",          // VW124 — level air
     // F0
     f0Val: "F0_VAL",
     // Setpoint / resep aktif di PLC (bukan dari DB)
@@ -58,6 +66,10 @@ const TAG_MAP = {
     start: "START",
     stop: "STOP",
     runLamp: "RUN_LAMP",
+    // Mode kontrol: CTRL SEL (M15.0) harus false (mode waktu).
+    // Kalau true, sterilisasi menunggu sinyal F0 dari luar dan mesin bisa macet.
+    // PERHATIAN: nama tag di KEPServerEX harus persis "CTRL SEL" (ada spasi) — jangan diubah.
+    ctrlSel: "CTRL SEL",
     // Alarm
     buzzer: "BUZZER",
     warningBuz: "WARNING_BUZ",
@@ -74,25 +86,30 @@ const TAG_MAP = {
 };
 
 // Tag integer yang perlu dibagi 10. T1-T6/TH/TM/TL sudah KONFIRMASI via
-// Quick Client. Sisanya (tekanan) masih ASUMSI - validasi pas ke mesin.
+// Quick Client. STER_SET dikonfirmasi ditulis x10 oleh plcWrite, jadi dibaca /10.
+// Tag tekanan (p1, p2, alrmPres, safetyPress) TIDAK di-scale: nilai raw PLC sudah
+// dalam kPa. Terkonfirmasi dari layar SCADA lama (contoh: "Alarm Pres 240 KPa",
+// rentang -100..300, tanpa desimal).
 const SCALE_BY_10 = new Set([
     "t1", "t2", "t3", "t4", "t5", "t6", "th", "tm", "tl",
-    "ctrlTemp", "tempSpace", "cool1Temp", "cool2Temp",
-    "p1", "p2", "alrmPres", "safetyPress", // belum divalidasi
+    "ctrlTemp", "sterSet", "tempSpace", "cool1Temp", "cool2Temp",
 ]);
 
 // Peta nomor fase dari PLC (tag PROCCES_TEXT, VW98) ke label UI
-// Nilai 0-4 TERKONFIRMASI dari ladder logic. Nilai 5-7 masih DUGAAN.
-// Sumber kebenaran: ladder logic PLC (bukan estimasi dari kombinasi valve/timer).
+// Semua entry DIKONFIRMASI dari pembacaan kode program ladder logic langsung.
+// PERHATIAN: urutan TIDAK naik lurus — kode 7 (Drain) muncul SEBELUM kode 6 (End).
+// Sumber kebenaran: .awl export ladder logic PLC (bukan estimasi dari kombinasi valve/timer).
 const PHASE_MAP = {
-    0: { code: "prepare",  label: "PREPARE",  confirmed: true  },
-    1: { code: "prepare",  label: "PREPARE",  confirmed: true  },
-    2: { code: "filling",  label: "FILLING",  confirmed: true  },
-    3: { code: "heating",  label: "HEATING",  confirmed: true  },
-    4: { code: "steril",   label: "STERIL.",  confirmed: true  },
-    5: { code: "cooling",  label: "COOLING",  confirmed: false }, // belum dikonfirmasi ke ladder logic
-    6: { code: "drain",    label: "DRAIN",    confirmed: false }, // belum dikonfirmasi ke ladder logic
-    7: { code: "end",      label: "END",      confirmed: false }, // belum dikonfirmasi ke ladder logic
+    0: { code: 'idle_door_open', label: 'Idle (pintu belum tertutup)', confirmed: true },
+    1: { code: 'idle_ready',     label: 'Siap (pintu tertutup)',        confirmed: true },
+    2: { code: 'filling',        label: 'FILLING',                      confirmed: true },
+    3: { code: 'heating',        label: 'HEATING',                      confirmed: true },
+    4: { code: 'steril',         label: 'STERIL.',                      confirmed: true },
+    5: { code: 'cooling',        label: 'COOLING',                      confirmed: true },
+    7: { code: 'drain',          label: 'DRAIN',                        confirmed: true },
+    6: { code: 'finished',       label: 'END',                          confirmed: true },
+    // Terkonfirmasi dari kode ladder: status "finished" (kode 6) BERTAHAN sampai
+    // tombol STOP ditekan — tidak otomatis kembali ke idle.
 };
 
 const DEVICE_PREFIX = "S7-200.SiemensS7-200.";
@@ -250,14 +267,24 @@ async function readPlcTags() {
  *   plcOk: boolean,
  *   plcError: string|null,
  *   t1..t6, th, tm, tl,   (suhu dalam degC, sudah dibagi 10)
- *   p1, p2,               (tekanan, sudah dibagi 10, skalanya belum divalidasi)
- *   level, water, f0Val,
+ *   p1, p2,               (tekanan dalam kPa — nilai raw PLC, tidak di-scale;
+ *                           terkonfirmasi dari layar SCADA lama)
+ *   conductivity,         (raw dari tag L/VW122 — TODO: scaling belum dikonfirmasi)
+ *   level,                (raw dari tag WATER/VW124 — TODO: scaling belum dikonfirmasi)
+ *   f0Val,
  *   valves: { steam1, steam2, steamExhs, cooling1, cooling2,
  *             wtrFill, wtrDrain, wtrPump },
- *   door:   { seal, locked, opnFrnt, opnRear },
+ *   door:   { seal, locked, bypass, clsFrnt, clsRear, opnFrnt, opnRear },
+ *             locked = alias lama untuk bypass (M6.0) — dipertahankan agar UI tidak rusak.
+ *             bypass = true artinya interlock pintu dilewati (BAHAYA: jangan izinkan START).
  *   alarms: { buzzer, warningBuz, alrmTemp, alrmDor },
  *   runLamp: boolean,
+ *   ctrlSel: boolean|null (null kalau gagal dibaca; true = mode F0 = mesin bisa macet),
  *   phase:  { code, label, confirmed, rawValue },
+ *   setpoints: { ctrlTemp, sterSet, sterSetTime, tempSpace, cool1Temp, cool2Temp, alrmPres }
+ *              (nilai sudah dalam satuan engineering — suhu dalam °C, waktu dalam menit,
+ *               alrmPres dalam kPa (tidak di-scale); null bila tag gagal dibaca.
+ *               Tidak tersedia di data dummy.)
  *   updatedAt: ISO string,
  * }
  *
@@ -274,7 +301,8 @@ export async function readPlcSnapshot() {
             t1: v.t1, t2: v.t2, t3: v.t3, t4: v.t4, t5: v.t5, t6: v.t6,
             th: v.th, tm: v.tm, tl: v.tl,
             p1: v.p1, p2: v.p2,
-            level: v.level, water: v.water,
+            conductivity: v.conductivity, // TODO: scaling belum dikonfirmasi (raw dari tag L/VW122)
+            level: v.level,               // TODO: scaling belum dikonfirmasi (raw dari tag WATER/VW124)
             f0Val: v.f0Val,
             valves: {
                 steam1: !!v.steam1, steam2: !!v.steam2, steamExhs: !!v.steamExhs,
@@ -282,14 +310,38 @@ export async function readPlcSnapshot() {
                 wtrFill: !!v.wtrFill, wtrDrain: !!v.wtrDrain, wtrPump: !!v.wtrPump,
             },
             door: {
-                seal: !!v.doorSeal, locked: !!v.doorLock,
-                opnFrnt: !!v.opnFrnt, opnRear: !!v.opnRear,
+                // locked = alias lama untuk doorLock (M6.0). Dipertahankan agar UI yang ada tidak rusak.
+                // PERHATIAN: M6.0 sebenarnya BYPASS interlock, bukan kunci pintu!
+                //            Kalau bypass=true, jangan izinkan Start dari web.
+                locked: !!v.doorLock,
+                bypass: !!v.doorLock, // alias eksplisit untuk logika guard Start
+                seal:    !!v.doorSeal,
+                clsFrnt: !!v.clsFrnt,
+                clsRear: !!v.clsRear,
+                opnFrnt: !!v.opnFrnt,
+                opnRear: !!v.opnRear,
             },
             alarms: {
                 buzzer: !!v.buzzer, warningBuz: !!v.warningBuz,
                 alrmTemp: !!v.alrmTemp, alrmDor: !!v.alrmDor,
             },
             runLamp: !!v.runLamp,
+            // ctrlSel: null kalau tag gagal dibaca (kualitas bad), selain itu boolean.
+            // ctrlSel=true berarti mode F0 aktif — mesin bisa macet saat sterilisasi.
+            // Guard: hanya berlaku kalau plcOk true (data bukan dari dummy).
+            ctrlSel: (v.ctrlSel === null || v.ctrlSel === undefined) ? null : !!v.ctrlSel,
+            // Setpoint yang sedang aktif di PLC (sudah dalam satuan engineering).
+            // null bila tag tidak terbaca. Semua pengguna wajib pakai optional chaining
+            // karena field ini tidak tersedia di data dummy (plcOk=false).
+            setpoints: {
+                ctrlTemp:    v.ctrlTemp    ?? null,  // °C (sudah dibagi 10)
+                sterSet:     v.sterSet     ?? null,  // °C (sudah dibagi 10)
+                sterSetTime: v.sterSetTime ?? null,  // menit (tidak dibagi 10)
+                tempSpace:   v.tempSpace   ?? null,  // °C (sudah dibagi 10)
+                cool1Temp:   v.cool1Temp   ?? null,  // °C (sudah dibagi 10)
+                cool2Temp:   v.cool2Temp   ?? null,  // °C (sudah dibagi 10)
+                alrmPres:    v.alrmPres    ?? null,  // raw (scaling belum dikonfirmasi)
+            },
             // phase: object {code, label, confirmed, rawValue}
             // Sumber utama PROCCES_TEXT (VW98), fallback ke detectPhase() berbasis valve.
             phase: resolvePhase(v),

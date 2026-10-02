@@ -6,9 +6,12 @@ export async function GET(request, { params }) {
         const { batchNo: rawNo } = await params;
         const batchNo = decodeURIComponent(rawNo);
 
-        // ── Ambil data batch ──────────────────────────────────────────────
+        // ── Ambil data batch + fo_val_setting dari resep ───────────────────────
         const batchResult = await pool.query(
-            "SELECT * FROM batch_records WHERE batch_no = $1",
+            `SELECT b.*, r.fo_val_setting
+             FROM batch_records b
+             LEFT JOIN recipes r ON b.recipe_id = r.id
+             WHERE b.batch_no = $1`,
             [batchNo]
         );
 
@@ -21,26 +24,26 @@ export async function GET(request, { params }) {
 
         const row = batchResult.rows[0];
         const batch = {
-            id:           row.id,
-            batchNo:      row.batch_no,
-            loadingNo:    row.loading_no,
-            operator:     row.operator,
-            machineId:    row.machine_id,
-            recipeId:     row.recipe_id,
-            productName:  row.product_name,
-            productSpec:  row.product_spec,
-            ctrlType:     row.ctrl_type,
-            sterTemp:     row.ster_temp     !== null ? parseFloat(row.ster_temp)      : null,
-            coolTemp:     row.cool_temp     !== null ? parseFloat(row.cool_temp)      : null,
-            heatBegin:    row.heat_begin,
-            sterBegin:    row.ster_begin,
-            coolBegin:    row.cool_begin,
-            runBegin:     row.run_begin,
-            runFinish:    row.run_finish,
-            heatTimeMin:  row.heat_time_min  !== null ? parseFloat(row.heat_time_min)  : null,
-            sterTimeMin:  row.ster_time_min  !== null ? parseFloat(row.ster_time_min)  : null,
-            coolTimeMin:  row.cool_time_min  !== null ? parseFloat(row.cool_time_min)  : null,
-            totalTimeMin: row.total_time_min !== null ? parseFloat(row.total_time_min) : null,
+            id:                   row.id,
+            batchNo:              row.batch_no,
+            loadingNo:            row.loading_no,
+            operator:             row.operator,
+            machineId:            row.machine_id,
+            recipeId:             row.recipe_id,
+            productName:          row.product_name,
+            productSpec:          row.product_spec,
+            ctrlType:             row.ctrl_type,
+            sterTemp:             row.ster_temp     !== null ? parseFloat(row.ster_temp)      : null,
+            coolTemp:             row.cool_temp     !== null ? parseFloat(row.cool_temp)      : null,
+            heatBegin:            row.heat_begin,
+            sterBegin:            row.ster_begin,
+            coolBegin:            row.cool_begin,
+            runBegin:             row.run_begin,
+            runFinish:            row.run_finish,
+            heatTimeMin:          row.heat_time_min  !== null ? parseFloat(row.heat_time_min)  : null,
+            sterTimeMin:          row.ster_time_min  !== null ? parseFloat(row.ster_time_min)  : null,
+            coolTimeMin:          row.cool_time_min  !== null ? parseFloat(row.cool_time_min)  : null,
+            totalTimeMin:         row.total_time_min !== null ? parseFloat(row.total_time_min) : null,
             fo1:  row.fo1  !== null ? parseFloat(row.fo1)  : null,
             fo2:  row.fo2  !== null ? parseFloat(row.fo2)  : null,
             fo3:  row.fo3  !== null ? parseFloat(row.fo3)  : null,
@@ -50,34 +53,38 @@ export async function GET(request, { params }) {
             foh:  row.foh  !== null ? parseFloat(row.foh)  : null,
             fom:  row.fom  !== null ? parseFloat(row.fom)  : null,
             fol:  row.fol  !== null ? parseFloat(row.fol)  : null,
-            status:    row.status,
-            createdAt: row.created_at,
+            foMin:                row.fo_min               !== null ? parseFloat(row.fo_min)               : null,
+            sterilizationResult:  row.sterilization_result ?? null,
+            foValSetting:         row.fo_val_setting        !== null ? parseFloat(row.fo_val_setting)       : null,
+            status:               row.status,
+            createdAt:            row.created_at,
         };
 
         // ── Ambil data trend (mungkin kosong — tangani dengan array []) ──
         let trend = [];
         try {
             const trendResult = await pool.query(
-                `SELECT id, ts, t1, t2, t3, t4, t5, t6, p, th, tm, tl, avg
+                `SELECT id, ts, t1, t2, t3, t4, t5, t6, p, th, tm, tl, avg, phase_code
                  FROM batch_trend
                  WHERE batch_id = $1
                  ORDER BY ts ASC`,
                 [row.id]
             );
             trend = trendResult.rows.map((t) => ({
-                id:  t.id,
-                ts:  t.ts,
-                t1:  t.t1  !== null ? parseFloat(t.t1)  : null,
-                t2:  t.t2  !== null ? parseFloat(t.t2)  : null,
-                t3:  t.t3  !== null ? parseFloat(t.t3)  : null,
-                t4:  t.t4  !== null ? parseFloat(t.t4)  : null,
-                t5:  t.t5  !== null ? parseFloat(t.t5)  : null,
-                t6:  t.t6  !== null ? parseFloat(t.t6)  : null,
-                p:   t.p   !== null ? parseFloat(t.p)   : null,
-                th:  t.th  !== null ? parseFloat(t.th)  : null,
-                tm:  t.tm  !== null ? parseFloat(t.tm)  : null,
-                tl:  t.tl  !== null ? parseFloat(t.tl)  : null,
-                avg: t.avg !== null ? parseFloat(t.avg) : null,
+                id:        t.id,
+                ts:        t.ts,
+                t1:        t.t1  !== null ? parseFloat(t.t1)  : null,
+                t2:        t.t2  !== null ? parseFloat(t.t2)  : null,
+                t3:        t.t3  !== null ? parseFloat(t.t3)  : null,
+                t4:        t.t4  !== null ? parseFloat(t.t4)  : null,
+                t5:        t.t5  !== null ? parseFloat(t.t5)  : null,
+                t6:        t.t6  !== null ? parseFloat(t.t6)  : null,
+                p:         t.p   !== null ? parseFloat(t.p)   : null,
+                th:        t.th  !== null ? parseFloat(t.th)  : null,
+                tm:        t.tm  !== null ? parseFloat(t.tm)  : null,
+                tl:        t.tl  !== null ? parseFloat(t.tl)  : null,
+                avg:       t.avg !== null ? parseFloat(t.avg) : null,
+                phaseCode: t.phase_code !== null ? parseInt(t.phase_code, 10) : null,
             }));
         } catch (trendError) {
             // Tabel batch_trend mungkin belum ada — kembalikan array kosong

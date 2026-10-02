@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 /* ─────────────────────────────────────────────────────────────
@@ -19,14 +19,15 @@ const DEFAULT_MATERIAL = "Soft Bottle";
 // karena timeline hanya punya 6 kotak dan tidak ada kotak DRAIN tersendiri.
 // Ini keputusan sementara — evaluasi ulang setelah ladder logic fase 6 dikonfirmasi.
 const PHASE_CODE_TO_TIMELINE = {
-  prepare: "PREPARE",
-  filling: "FILLING",
-  heating: "HEATING",
-  steril:  "STERIL.",
-  cooling: "COOLING",
-  drain:   "COOLING",  // sementara gabung ke COOLING — lihat catatan di atas
-  end:     "END",
-  // 'unknown': tidak memetakan ke kotak manapun (jangan highlight apapun)
+  idle_door_open: "PREPARE",
+  idle_ready:     "PREPARE",
+  filling:        "FILLING",
+  heating:        "HEATING",
+  steril:         "STERIL.",
+  cooling:        "COOLING",
+  drain:          "COOLING", // sementara gabung ke COOLING (timeline tidak punya kotak DRAIN)
+  finished:       "END",
+  // 'unknown': tidak memetakan ke kotak manapun
 };
 
 const PHASES = ["PREPARE", "FILLING", "HEATING", "STERIL.", "COOLING", "END"];
@@ -50,6 +51,12 @@ const SANS = { fontFamily: "var(--font-plex-sans), system-ui, sans-serif" };
 function fmt(v) {
   if (v === null || v === undefined || Number.isNaN(Number(v))) return "--";
   return Number(v).toFixed(1);
+}
+
+// Format bilangan bulat (untuk tekanan dalam kPa — tidak ada desimal)
+function fmtInt(v) {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return "--";
+  return String(Math.round(Number(v)));
 }
 
 function formatElapsed(begin) {
@@ -154,7 +161,7 @@ function Plate({ x, y, w, h = 34, label, value, unit }) {
   );
 }
 
-function PidDiagram({ valves, doors, p1, p2, level }) {
+function PidDiagram({ valves, doors, p1, p2, level, conductivity }) {
   // valves berasal dari data.valves (tag asli PLC). exhaust dipetakan ke
   // steamExhs (tag STEAM_EXHS) — itu tag yang sama dengan label "EXHAUST"
   // di diagram ini. "drain" bawah & "air" (compressed air) TIDAK dipetakan
@@ -219,16 +226,33 @@ function PidDiagram({ valves, doors, p1, p2, level }) {
         <rect x="492" y="230" width="6" height="30" fill={doors?.rear === "open" ? RUN : "#FFFFFF"} stroke={INK} />
         <text x="400" y="180" fontSize="10" fill={MUTED} textAnchor="middle">Front door</text>
         <text x="560" y="180" fontSize="10" fill={MUTED} textAnchor="middle">Rear door</text>
-        {/* Level: sekarang dari tag L, satuan/skala masih perlu divalidasi di lapangan */}
-        <text x="630" y="322" fontSize="11" fill={MUTED} textAnchor="end">
-          Level: {level ?? "-"}
-        </text>
+        {/* Level (tag WATER/VW124) — satuan belum dikonfirmasi, tampilkan raw */}
+        <g>
+          <rect x="585" y="305" width="64" height="34" rx="2" fill="#FFFFFF" stroke={IDLE} />
+          <line x1="585" x2="649" y1="318" y2="318" stroke={RULE} />
+          <text x="591" y="314.5" fontSize="9" fill={MUTED}>Level</text>
+          <text x="643" y="332" textAnchor="end" fontSize="14" fontWeight="500" fill={INK} style={MONO}>
+            {level !== null && level !== undefined ? Math.round(level) : "-"}
+          </text>
+          <text x="591" y="333" fontSize="7" fill={MUTED} style={SANS}>nilai PLC</text>
+        </g>
 
-        {/* P1 / P2 */}
+        {/* Conductivity (tag L/VW122) — satuan belum dikonfirmasi, tampilkan raw */}
+        <g>
+          <rect x="585" y="345" width="64" height="34" rx="2" fill="#FFFFFF" stroke={IDLE} />
+          <line x1="585" x2="649" y1="358" y2="358" stroke={RULE} />
+          <text x="591" y="354.5" fontSize="9" fill={MUTED}>Cond.</text>
+          <text x="643" y="372" textAnchor="end" fontSize="14" fontWeight="500" fill={INK} style={MONO}>
+            {conductivity !== null && conductivity !== undefined ? Math.round(conductivity) : "-"}
+          </text>
+          <text x="591" y="373" fontSize="7" fill={MUTED} style={SANS}>belum dikalibrasi</text>
+        </g>
+
+        {/* P1 / P2 — tekanan dalam kPa (nilai raw PLC, terkonfirmasi dari layar SCADA lama) */}
         <line x1="375" x2="375" y1="134" y2="150" stroke={IDLE} />
         <line x1="455" x2="455" y1="134" y2="150" stroke={IDLE} />
-        <Plate x={340} y={100} w={70} label="P1" value={fmt(p1)} unit="bar" />
-        <Plate x={420} y={100} w={70} label="P2" value={fmt(p2)} unit="bar" />
+        <Plate x={340} y={100} w={70} label="P1" value={fmtInt(p1)} unit="kPa" />
+        <Plate x={420} y={100} w={70} label="P2" value={fmtInt(p2)} unit="kPa" />
 
         {/* F0: hanya 1 tag di sistem; nilai akan dihitung di backend dari data suhu */}
         <text x="392" y="358" fontSize="9" fill={MUTED}>
@@ -344,11 +368,16 @@ export default function Home() {
   const [data, setData] = useState(null);
   const [stopping, setStopping] = useState(false);
 
-  async function fetchData() {
+  // State untuk tombol Reset Mesin
+  const [resetDialog, setResetDialog] = useState(false);  // dialog konfirmasi tampil?
+  const [resetting, setResetting] = useState(false);       // sedang mengirim request?
+  const [resetMsg, setResetMsg] = useState(null);          // { ok, text } atau null
+
+  const fetchData = useCallback(async () => {
     const res = await fetch("/api/status");
     const json = await res.json();
     setData(json);
-  }
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -368,6 +397,27 @@ export default function Home() {
       await fetchData();
     } finally {
       setStopping(false);
+    }
+  }
+
+  async function handleReset() {
+    if (resetting) return; // cegah double-click
+    setResetting(true);
+    setResetMsg(null);
+    try {
+      const res = await fetch("/api/plc/reset", { method: "POST" });
+      const json = await res.json();
+      if (json.ok) {
+        setResetMsg({ ok: true, text: json.message ?? "Reset berhasil. Mesin kembali ke Idle." });
+        setResetDialog(false);
+        await fetchData();
+      } else {
+        setResetMsg({ ok: false, text: json.error ?? "Reset gagal." });
+      }
+    } catch (err) {
+      setResetMsg({ ok: false, text: `Gagal mengirim request: ${err.message}` });
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -411,6 +461,38 @@ export default function Home() {
           ))}
         </section>
 
+        {/* ── Strip peringatan interlock dan mode (muncul hanya bila kondisi aktif) ── */}
+        {data.plcOk && (
+          <div className="flex flex-col gap-1">
+            {/* Bypass interlock aktif */}
+            {data.door?.bypass && (
+              <div
+                role="alert"
+                className="bg-white border-l-[3px] border-[#A23B2E] px-3 py-2 text-sm text-[#1E2A2E]"
+              >
+                <span className="font-semibold">Bypass interlock (DOOR_LOCK/M6.0) AKTIF.</span>{" "}
+                Pengecekan keamanan pintu dilewati.
+              </div>
+            )}
+            {/* CTRL SEL aktif → mode F0, mesin bisa macet */}
+            {data.ctrlSel === true && (
+              <div
+                role="alert"
+                className="bg-white border-l-[3px] border-[#A23B2E] px-3 py-2 text-sm text-[#1E2A2E]"
+              >
+                <span className="font-semibold">CTRL SEL aktif (mode F0).</span>{" "}
+                Sterilisasi tidak akan selesai berdasarkan waktu. Hubungi teknisi.
+              </div>
+            )}
+            {/* CTRL SEL belum terbaca → bukan alarm, tapi perlu diinformasikan */}
+            {data.ctrlSel === null && (
+              <div className="bg-white border-l-[3px] border-[#B8C0BE] px-3 py-2 text-sm text-[#5C6B6A]">
+                CTRL SEL belum terbaca. Start dari web akan ditolak sampai tag terbaca.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Diagram + panel kanan ── */}
         <div className="flex flex-col lg:flex-row gap-2">
           <section className="flex-1 min-w-0 bg-white border border-[#D8DEDC] rounded-[4px] p-2">
@@ -423,6 +505,7 @@ export default function Home() {
               p1={data.p1}
               p2={data.p2}
               level={data.level}
+              conductivity={data.conductivity}
             />
           </section>
 
@@ -509,6 +592,22 @@ export default function Home() {
             <section className="bg-white border border-[#D8DEDC] rounded-[4px] px-2 py-1">
               <DoorRow label="Front door" state={data.door?.opnFrnt ? "open" : "closed"} />
               <DoorRow label="Rear door" state={data.door?.opnRear ? "open" : "closed"} />
+              {/* Bypass interlock (M6.0): merah saat aktif, outline abu saat tidak aktif */}
+              <div className="flex items-center justify-between py-2 border-t border-[#D8DEDC]">
+                <span className="text-sm">Bypass interlock</span>
+                <span
+                  className={`flex items-center gap-2 text-xs font-semibold ${
+                    data.door?.bypass ? "text-[#A23B2E]" : "text-[#5C6B6A]"
+                  }`}
+                >
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      data.door?.bypass ? "bg-[#A23B2E]" : "border border-[#B8C0BE]"
+                    }`}
+                  />
+                  {data.door?.bypass ? "AKTIF" : "TIDAK AKTIF"}
+                </span>
+              </div>
             </section>
 
             <section className="flex flex-col gap-1.5">
@@ -535,7 +634,7 @@ export default function Home() {
               >
                 <span className="font-semibold">DOOR</span>
                 <span className="text-[11px]">
-                  Read only: {data.door?.locked ? "Locked" : data.door?.seal ? "Sealed" : "Released"}
+                  Read only: {data.door?.bypass ? "Bypass" : data.door?.seal ? "Sealed" : "Released"}
                 </span>
               </div>
 
@@ -546,6 +645,60 @@ export default function Home() {
               >
                 {stopping ? "Menghentikan…" : "STOP"}
               </button>
+
+              {/* ── Tombol Reset Mesin: hanya tampil saat fase=6 dan tidak ada batch running ── */}
+              {data.plcOk && data.phase?.rawValue === 6 && !data.running && (
+                <div className="pt-1 border-t border-[#D8DEDC]">
+                  {/* Dialog konfirmasi inline */}
+                  {resetDialog ? (
+                    <div className="bg-white border border-[#D8DEDC] rounded-[3px] p-2 flex flex-col gap-2">
+                      <p className="text-[12px] text-[#1E2A2E] leading-snug">
+                        Kirim STOP ke mesin? Pastikan produk sudah diambil.
+                      </p>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => { setResetDialog(false); setResetMsg(null); }}
+                          disabled={resetting}
+                          className="flex-1 px-2 py-1 rounded-[3px] border border-[#B8C0BE] text-[12px] text-[#5C6B6A] hover:bg-[#EEF1F0] disabled:opacity-40 transition-colors"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          onClick={handleReset}
+                          disabled={resetting}
+                          className="flex-1 px-2 py-1 rounded-[3px] bg-[#A23B2E] hover:bg-[#8F3327] disabled:opacity-40 text-white text-[12px] font-semibold transition-colors"
+                        >
+                          {resetting ? "Mengirim…" : "Kirim STOP"}
+                        </button>
+                      </div>
+                      {/* Pesan hasil reset */}
+                      {resetMsg && (
+                        <p className={`text-[11px] ${resetMsg.ok ? "text-[#4F7A52]" : "text-[#A23B2E]"}`}>
+                          {resetMsg.text}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setResetDialog(true); setResetMsg(null); }}
+                        className="w-full px-2 py-1.5 rounded-[3px] border border-[#A23B2E] text-[#A23B2E] hover:bg-[#A23B2E] hover:text-white text-[13px] font-semibold transition-colors"
+                      >
+                        Reset Mesin (STOP)
+                      </button>
+                      <p className="text-[10px] text-[#5C6B6A] mt-1 leading-snug">
+                        Mesin masih berstatus Selesai dan tidak ada batch aktif. Reset mengirim perintah STOP ke mesin.
+                      </p>
+                      {/* Tampilkan pesan sukses dari reset sebelumnya */}
+                      {resetMsg && (
+                        <p className={`text-[11px] mt-0.5 ${resetMsg.ok ? "text-[#4F7A52]" : "text-[#A23B2E]"}`}>
+                          {resetMsg.text}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </section>
           </aside>
         </div>

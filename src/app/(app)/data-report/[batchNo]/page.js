@@ -16,6 +16,28 @@ function val(v, suffix = "") {
     return `${v}${suffix}`;
 }
 
+// ── Pemetaan kode fase VW98 (PROCCES_TEXT) ke label tampilan ─────────────────
+// Semua kode TERKONFIRMASI dari pembacaan kode ladder PLC (.awl export).
+// Kolom phase_code di batch_trend menyimpan nilai VW98 mentah, tidak perlu migrasi.
+// Urutan kode tidak berurutan naik: 7 (Drain) muncul SEBELUM 6 (Selesai).
+const PHASE_LABELS = {
+    0: "Idle (pintu belum tertutup)",
+    1: "Siap",
+    2: "Filling",
+    3: "Heating",
+    4: "Sterilisasi",
+    5: "Cooling",
+    7: "Drain",
+    6: "Selesai",
+};
+
+function phaseLabel(code) {
+    // null atau undefined tampil "-", bukan "Kode null"
+    if (code === null || code === undefined) return "-";
+    const num = Number(code);
+    return PHASE_LABELS[num] ?? `Kode ${num}`;
+}
+
 function InfoField({ label, value }) {
     return (
         <div>
@@ -55,11 +77,17 @@ function StatusBadge({ status }) {
 }
 
 // ── Komponen mini card F0 (mirip StatCard) ────────────────────────────────────
+// value bisa null, undefined, number, atau string angka dari API.
+// Ditampilkan 2 desimal jika angka valid; "-" jika tidak.
 function FoCard({ label, value }) {
+    const num = Number(value);
+    const display = (value !== null && value !== undefined && Number.isFinite(num))
+        ? num.toFixed(2)
+        : "-";
     return (
         <div className="bg-scada-bg border border-scada-rule rounded-lg p-3 text-center">
             <div className="text-xs text-scada-muted uppercase">{label}</div>
-            <div className="text-lg font-bold mt-0.5 text-scada-ink">{value ?? "-"}</div>
+            <div className="text-lg font-bold mt-0.5 text-scada-ink">{display}</div>
         </div>
     );
 }
@@ -83,7 +111,7 @@ function TrendTable({ trend }) {
             <table className="w-full">
                 <thead className="border-b border-scada-rule bg-scada-bg">
                     <tr>
-                        {["Time","T1","T2","T3","T4","T5","T6","P","TH","TM","TL","Avg"].map((h) => (
+                        {["Time","Fase","T1","T2","T3","T4","T5","T6","P (kPa)","TH","TM","TL","Avg"].map((h) => (
                             <th key={h} className={thClass}>{h}</th>
                         ))}
                     </tr>
@@ -94,9 +122,21 @@ function TrendTable({ trend }) {
                             <td className={tdClass + " font-mono"}>
                                 {row.ts ? new Date(row.ts).toLocaleTimeString("id-ID") : "-"}
                             </td>
-                            {["t1","t2","t3","t4","t5","t6","p","th","tm","tl","avg"].map((k) => (
+                            <td className={tdClass}>
+                                {phaseLabel(row.phaseCode)}
+                            </td>
+                            {["t1","t2","t3","t4","t5","t6"].map((k) => (
                                 <td key={k} className={tdClass}>
-                                    {row[k] !== null ? row[k] : "-"}
+                                    {row[k] !== null && row[k] !== undefined ? row[k] : "-"}
+                                </td>
+                            ))}
+                            {/* tekanan dalam kPa — tampilkan bilangan bulat */}
+                            <td className={tdClass}>
+                                {row.p !== null && row.p !== undefined ? Math.round(row.p) : "-"}
+                            </td>
+                            {["th","tm","tl","avg"].map((k) => (
+                                <td key={k} className={tdClass}>
+                                    {row[k] !== null && row[k] !== undefined ? row[k] : "-"}
                                 </td>
                             ))}
                         </tr>
@@ -219,6 +259,46 @@ export default function BatchDetailPage() {
 
             {/* ── Nilai F0 ── */}
             <SectionCard title="Nilai F0">
+                {/* Ringkasan: fo_min dan hasil sterilisasi */}
+                <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b border-scada-rule">
+                    <div>
+                        <p className="text-xs text-scada-muted uppercase tracking-wider mb-0.5">F0 Min (worst-case)</p>
+                        <p className="text-lg font-bold text-scada-ink">
+                            {(() => {
+                                const n = Number(batch.foMin);
+                                return (batch.foMin !== null && batch.foMin !== undefined && Number.isFinite(n))
+                                    ? n.toFixed(2)
+                                    : "-";
+                            })()}
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-xs text-scada-muted uppercase tracking-wider mb-0.5">Target F0</p>
+                        <p className="text-lg font-bold text-scada-ink">
+                            {(() => {
+                                const n = Number(batch.foValSetting);
+                                return (batch.foValSetting !== null && batch.foValSetting !== undefined && Number.isFinite(n))
+                                    ? n
+                                    : "-";
+                            })()}
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-xs text-scada-muted uppercase tracking-wider mb-0.5">Hasil Sterilisasi</p>
+                        <span className={`px-2.5 py-1 rounded text-xs font-bold ${
+                            batch.sterilizationResult === "pass"
+                                ? "bg-scada-run text-white"
+                                : batch.sterilizationResult === "fail"
+                                ? "bg-scada-stop text-white"
+                                : batch.sterilizationResult === "pending"
+                                ? "bg-scada-water text-white"
+                                : "bg-scada-idle text-scada-ink"
+                        }`}>
+                            {batch.sterilizationResult?.toUpperCase() ?? "-"}
+                        </span>
+                    </div>
+                </div>
+                {/* Nilai F0 per sensor */}
                 <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-3">
                     {[
                         ["FO1", batch.fo1], ["FO2", batch.fo2], ["FO3", batch.fo3],

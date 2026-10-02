@@ -1,20 +1,21 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
 import { requireAuth, requireAdmin } from "@/lib/auth";
+import { validateRecipe } from "@/lib/recipeValidation";
 
 // ── Helper: konversi row snake_case → camelCase ──────────────────────────────
 function rowToFormula(row) {
     return {
         id:             row.id,
         formulaNo:      row.formula_no,
-        controlTemp:    parseFloat(row.control_temp),
-        spaceTemp:      parseFloat(row.space_temp),
-        sterilTemp:     parseFloat(row.steril_temp),
-        sterilTime:     parseInt(row.steril_time_min, 10),
-        alarmPres:      parseFloat(row.alarm_pres),
-        coolingTemp1:   parseFloat(row.cooling_temp1),
-        coolingTemp2:   parseFloat(row.cooling_temp2),
-        foValSetting:   parseFloat(row.fo_val_setting),
+        controlTemp:    row.control_temp    !== null ? parseFloat(row.control_temp)    : null,
+        spaceTemp:      row.space_temp      !== null ? parseFloat(row.space_temp)      : null,
+        sterilTemp:     row.steril_temp     !== null ? parseFloat(row.steril_temp)     : null,
+        sterilTime:     row.steril_time_min !== null ? parseInt(row.steril_time_min, 10) : null,
+        alarmPres:      row.alarm_pres      !== null ? parseFloat(row.alarm_pres)      : null,
+        coolingTemp1:   row.cooling_temp1   !== null ? parseFloat(row.cooling_temp1)   : null,
+        coolingTemp2:   row.cooling_temp2   !== null ? parseFloat(row.cooling_temp2)   : null,
+        foValSetting:   row.fo_val_setting  !== null ? parseFloat(row.fo_val_setting)  : null,
         controlType:    row.control_type,
         sterilMaterial: row.steril_material,
         createdAt:      row.created_at,
@@ -32,7 +33,13 @@ export async function GET() {
         const result = await pool.query(
             "SELECT * FROM recipes ORDER BY formula_no ASC"
         );
-        return Response.json(result.rows.map(rowToFormula));
+        // Tambahkan field validation ke setiap resep
+        const formulas = result.rows.map((row) => {
+            const formula = rowToFormula(row);
+            const validation = validateRecipe(row); // pakai row (snake_case) langsung
+            return { ...formula, validation };
+        });
+        return Response.json(formulas);
     } catch (error) {
         console.error("[GET /api/formulas]", error);
         return Response.json({ ok: false, error: error.message }, { status: 500 });
@@ -60,12 +67,28 @@ export async function POST(request) {
             return Response.json({ ok: false, error: "Formula No tidak boleh kosong" }, { status: 400 });
         }
 
-        // Validasi: semua angka harus >= 0
-        const numericFields = { controlTemp, spaceTemp, sterilTemp, sterilTime, alarmPres, coolingTemp1, coolingTemp2, foValSetting };
-        for (const [key, val] of Object.entries(numericFields)) {
-            if (val === undefined || val === null || parseFloat(val) < 0 || isNaN(parseFloat(val))) {
-                return Response.json({ ok: false, error: `Field ${key} tidak valid (harus >= 0)` }, { status: 400 });
-            }
+        // ── Validasi nilai resep dengan validateRecipe ────────────────────────
+        // Bangun object snake_case sesuai format yang diterima validateRecipe.
+        const recipeCandidate = {
+            control_temp:    controlTemp,
+            space_temp:      spaceTemp,
+            steril_temp:     sterilTemp,
+            steril_time_min: sterilTime,
+            alarm_pres:      alarmPres,
+            cooling_temp1:   coolingTemp1,
+            cooling_temp2:   coolingTemp2,
+            fo_val_setting:  foValSetting,
+        };
+        const validation = validateRecipe(recipeCandidate);
+        if (!validation.ok) {
+            return Response.json(
+                {
+                    ok: false,
+                    error: "Resep tidak valid: " + validation.problems.map((p) => p.message).join("; "),
+                    invalidFields: validation.problems,
+                },
+                { status: 400 }
+            );
         }
 
         // Validasi: cek duplikat formulaNo
@@ -94,7 +117,7 @@ export async function POST(request) {
                 parseFloat(alarmPres),
                 parseFloat(coolingTemp1),
                 parseFloat(coolingTemp2),
-                parseFloat(foValSetting),
+                foValSetting !== null && foValSetting !== undefined ? parseFloat(foValSetting) : null,
                 controlType,
                 sterilMaterial,
             ]
@@ -119,7 +142,11 @@ export async function POST(request) {
             ]
         );
 
-        return Response.json(newFormula, { status: 201 });
+        // Kembalikan formula baru + warnings kalau ada
+        return Response.json(
+            { ...newFormula, validation, warnings: validation.warnings },
+            { status: 201 }
+        );
     } catch (error) {
         console.error("[POST /api/formulas]", error);
         return Response.json({ ok: false, error: error.message }, { status: 500 });

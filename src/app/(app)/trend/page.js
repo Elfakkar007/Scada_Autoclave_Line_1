@@ -24,7 +24,7 @@ const LINE_CONFIG = [
     { key: "th",  label: "TH",  color: "#e879f9", yAxis: "left"  },  // pink/ungu
     { key: "tm",  label: "TM",  color: "#c084fc", yAxis: "left"  },  // lavender
     { key: "tl",  label: "TL",  color: "#f0abfc", yAxis: "left"  },  // pink muda
-    { key: "p",   label: "P",   color: "#3b82f6", yAxis: "right", dash: "5 3" }, // biru, dashed
+    { key: "p",   label: "P (kPa)", color: "#3b82f6", yAxis: "right", dash: "5 3" }, // biru, dashed
 ];
 
 // ── Helper: format tanggal singkat ────────────────────────────────────────────
@@ -64,7 +64,9 @@ function CustomTooltip({ active, payload, label }) {
                     <span style={{ color: entry.color }}>{entry.name}</span>
                     <span className="font-mono text-scada-ink">
                         {entry.value !== null && entry.value !== undefined
-                            ? entry.value
+                            ? (entry.dataKey === "p"
+                                ? Math.round(entry.value)   // tekanan dalam kPa, bilangan bulat
+                                : entry.value)
                             : "—"}
                     </span>
                 </div>
@@ -278,7 +280,7 @@ export default function TrendPage() {
                                         tickLine={false}
                                         axisLine={{ stroke: "#B8C0BE" }}
                                         label={{
-                                            value: "Tekanan (KPa)",
+                                            value: "kPa",
                                             angle: 90,
                                             position: "insideRight",
                                             fill: "#5C6B6A",
