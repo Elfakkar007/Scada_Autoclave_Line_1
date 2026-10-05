@@ -29,13 +29,13 @@ const ABORTED_STERILIZATION_RESULT = "fail";
 // Dengan 121.1 hasilnya sekitar 2.3% lebih rendah.
 // Konfirmasi ke QA sebelum dipakai untuk rilis.
 const F0_T_REF = 121.0; // °C — suhu referensi sterilisasi (z=10 standar farmasi)
-const F0_Z     = 10;    // nilai z (°C) — konstanta kinetika inaktivasi
+const F0_Z = 10;    // nilai z (°C) — konstanta kinetika inaktivasi
 
 // ── Rumus F0 ──────────────────────────────────────────────────────────────────
 /**
  * Hitung F0 dari deretan titik data trend untuk satu kolom suhu.
  *
- * Rumus F0 standar farmasi: F0 = SUM( 10^((T - 121.1) / 10) * dt_menit )
+ * Rumus F0 standar farmasi: F0 = SUM( 10^((T - F0_T_REF) / F0_Z) * dt_menit )
  *
  * Pendekatan: right-endpoint (nilai T di titik AKHIR interval).
  * Catatan metode: right-endpoint MELEBIHKAN F0 saat suhu sedang naik

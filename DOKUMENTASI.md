@@ -73,6 +73,12 @@ Menggunakan *route group* `(app)`. Folder ini mengelompokkan halaman-halaman yan
   - **`trend/`**: Halaman grafik tren historis data (suhu, tekanan).
   - **`users/`**: Halaman manajemen *user* dan akses.
 
+#### 📁 `src/app/print/`
+Direktori yang mengelompokkan halaman-halaman khusus untuk dicetak (Print) ke PDF atau kertas. Halaman di sini tidak menggunakan layout dashboard utama (tanpa navbar/sidebar) agar tampilan cetak lebih bersih.
+- **`audit-log/`**: Halaman cetak laporan audit trail.
+- **`batch-records/`**: Halaman cetak daftar batch.
+- **`data-report/[batchNo]/`**: Halaman cetak laporan detail suatu batch, didesain meniru format printout fisik SCADA konvensional.
+
 #### 📁 `src/app/login/`
 - **`page.js`**: Halaman antarmuka login. Mengirimkan kredensial user ke `/api/auth` untuk mendapatkan token.
 
@@ -102,6 +108,7 @@ Berisi komponen-komponen antarmuka React yang *reusable* (bisa digunakan kembali
 ### 3. 📁 `src/lib/`
 Kumpulan kode *library*, utilitas, dan konfigurasi pendukung yang tidak memiliki UI, tapi menunjang kerja sistem.
 - **`auth.js`**: Kumpulan fungsi utilitas terkait autentikasi. Biasanya berisi kode untuk memverifikasi password, men-generate JSON Web Token (JWT), atau memverifikasi otorisasi/role pengguna (contoh: cek apakah user punya role 'admin' atau 'operator').
+- **`dateRange.js`**: Helper fungsi untuk membangun filter rentang tanggal (SQL WHERE clause) dengan zona waktu Asia/Jakarta (WIB), digunakan secara luas di endpoint API yang membutuhkan filter tanggal.
 - **`db.js`**: File konfigurasi koneksi ke *database* (misalnya MySQL, PostgreSQL, atau SQL Server). Mengekspor *connection pool* yang akan digunakan oleh endpoint-endpoint di folder `/api/` untuk *query* data.
 - **`dummyData.js`**: Kumpulan data simulasi/dummy untuk keperluan *development* dan testing ketika data sebenarnya dari database atau PLC belum tersedia.
 - **`plc.js`**: Menangani koneksi pembacaan data (snapshot) langsung dari PLC via KEPServerEX, termasuk fungsi *scaling* untuk mengubah nilai raw sensor menjadi satuan standar (seperti °C dan kPa) dan mendeteksi fase mesin.

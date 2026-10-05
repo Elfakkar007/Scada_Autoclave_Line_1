@@ -20,13 +20,13 @@ import { readPlcSnapshot } from "./plc.js";
 import { finalizeBatch } from "./batchFinalize.js";
 
 // ── Konstanta perilaku recorder — sesuaikan di sini bila perlu ───────────────
-const ROW_INTERVAL_MS     = 60_000; // jarak minimum antar baris trend periodik (ms)
+const ROW_INTERVAL_MS = 60_000; // jarak minimum antar baris trend periodik (ms)
 const POST_FINISH_MAX_ROWS = 2;     // maksimal baris tambahan setelah fase 6 (Selesai)
-const IDLE_FINALIZE_MS    = 120_000; // durasi idle minimum sebelum auto-finalize (ms)
+const IDLE_FINALIZE_MS = 120_000; // durasi idle minimum sebelum auto-finalize (ms)
 
 // ── State modul — bertahan di memori selama server hidup ─────────────────────
-let busy          = false;     // guard: cegah panggilan rekursif / overlap
-let idleSince     = null;      // Date pertama kali fase idle terdeteksi, atau null
+let busy = false;     // guard: cegah panggilan rekursif / overlap
+let idleSince = null;      // Date pertama kali fase idle terdeteksi, atau null
 let streakBatchId = null;      // batchId yang sedang dipantau idle-nya
 
 // Throttle log PLC offline: hanya log sekali per menit
@@ -56,7 +56,7 @@ export async function recordTrendTick() {
         );
         if (batchResult.rows.length === 0) {
             // Tidak ada batch running — reset state idle dan selesai
-            idleSince     = null;
+            idleSince = null;
             streakBatchId = null;
             return;
         }
@@ -79,8 +79,8 @@ export async function recordTrendTick() {
         }
 
         // ── 4. Update waktu & timer batch_records ─────────────────────────────
-        const phase   = snap.phase?.rawValue ?? null;
-        const timers  = snap.timers ?? {};
+        const phase = snap.phase?.rawValue ?? null;
+        const timers = snap.timers ?? {};
         const heatSec = Number.isFinite(timers.heatSec) ? timers.heatSec : null;
         const sterSec = Number.isFinite(timers.sterSec) ? timers.sterSec : null;
         const coolSec = Number.isFinite(timers.coolSec) ? timers.coolSec : null;
@@ -91,7 +91,7 @@ export async function recordTrendTick() {
                 await pool.query(
                     `UPDATE batch_records
                      SET heat_begin    = COALESCE(heat_begin, now()),
-                         heat_time_min = $1
+                         heat_time_min = COALESCE($1, heat_time_min)
                      WHERE id = $2`,
                     [heatSec !== null ? heatSec / 60.0 : null, batchId]
                 );
@@ -102,11 +102,11 @@ export async function recordTrendTick() {
             if (phase === 4) {
                 await pool.query(
                     `UPDATE batch_records
-                     SET heat_begin    = COALESCE(heat_begin, now()),
-                         heat_time_min = COALESCE(heat_time_min, $1),
-                         ster_begin    = COALESCE(ster_begin, now()),
-                         ster_time_min = $2
-                     WHERE id = $3`,
+                        SET heat_begin    = COALESCE(heat_begin, now()),
+                            heat_time_min = COALESCE($1, heat_time_min),
+                            ster_begin    = COALESCE(ster_begin, now()),
+                            ster_time_min = COALESCE($2, ster_time_min)
+                        WHERE id = $3`,
                     [
                         heatSec !== null ? heatSec / 60.0 : null,
                         sterSec !== null ? sterSec / 60.0 : null,
@@ -122,7 +122,7 @@ export async function recordTrendTick() {
                 await pool.query(
                     `UPDATE batch_records
                      SET cool_begin    = COALESCE(cool_begin, CASE WHEN $1 THEN now() END),
-                         cool_time_min = $2
+                         cool_time_min = COALESCE($2, cool_time_min)
                      WHERE id = $3`,
                     [phase === 5, coolSec !== null ? coolSec / 60.0 : null, batchId]
                 );
@@ -174,9 +174,9 @@ export async function recordTrendTick() {
             //   (b) fase berbeda dari baris terakhir (baris peristiwa), ATAU
             //   (c) selisih waktu >= ROW_INTERVAL_MS
             // Pengecualian: jangan INSERT kalau fase 6 sudah terlalu banyak baris
-            const noRows    = lastRow === null;
+            const noRows = lastRow === null;
             const phaseChanged = lastRow !== null && lastRow.phase_code !== phase;
-            const timeElapsed  = lastRow !== null &&
+            const timeElapsed = lastRow !== null &&
                 (Date.now() - new Date(lastRow.ts).getTime()) >= ROW_INTERVAL_MS;
 
             const shouldInsert = !tooManyFinish && (noRows || phaseChanged || timeElapsed);
@@ -227,7 +227,7 @@ export async function recordTrendTick() {
         try {
             // Reset state kalau batchId berubah (batch baru dimulai)
             if (batchId !== streakBatchId) {
-                idleSince     = null;
+                idleSince = null;
                 streakBatchId = batchId;
             }
 
@@ -245,7 +245,7 @@ export async function recordTrendTick() {
             //   - Mesin sudah idle >= IDLE_FINALIZE_MS
             //   - Batch sudah berjalan lebih dari 90 detik (hindari false trigger saat startup)
             if (idleSince !== null && runBegin) {
-                const idleElapsedMs  = Date.now() - idleSince.getTime();
+                const idleElapsedMs = Date.now() - idleSince.getTime();
                 const batchElapsedMs = Date.now() - new Date(runBegin).getTime();
 
                 if (idleElapsedMs >= IDLE_FINALIZE_MS && batchElapsedMs > 90_000) {
@@ -257,7 +257,7 @@ export async function recordTrendTick() {
                     const result = await finalizeBatch(batchId, { plcPhase: phase });
 
                     // Reset state idle setelah finalisasi
-                    idleSince     = null;
+                    idleSince = null;
                     streakBatchId = null;
 
                     if (!result.alreadyFinalized) {
@@ -275,10 +275,10 @@ export async function recordTrendTick() {
                                     "batch",
                                     batchNo,
                                     JSON.stringify({
-                                        status:              result.status,
+                                        status: result.status,
                                         sterilizationResult: result.sterilizationResult,
-                                        foMin:               result.foMin,
-                                        plcPhaseAtFinalize:  phase,
+                                        foMin: result.foMin,
+                                        plcPhaseAtFinalize: phase,
                                     }),
                                     "system",
                                     `Ditutup otomatis: PLC kembali Idle tanpa Stop dari web. Status: ${result.status}`,

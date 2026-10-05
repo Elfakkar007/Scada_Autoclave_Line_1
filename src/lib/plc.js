@@ -48,7 +48,7 @@ const TAG_MAP = {
     steam1: "STEAM_1",
     steam2: "STEAM_2",
     steamExhs: "STEAM_EXHS",
-    cooling1: "COOLING 1",     // ada spasi di nama aslinya - cek lagi
+    cooling1: "COOLING_1",     // dikonfirmasi dari KEPServer Quick Client: underscore, bukan spasi
     cooling2: "COOLING_2",
     wtrFill: "WTR_FILL",
     wtrDrain: "WTR_DRAIN",
@@ -66,10 +66,10 @@ const TAG_MAP = {
     start: "START",
     stop: "STOP",
     runLamp: "RUN_LAMP",
-    // Mode kontrol: CTRL SEL (M15.0) harus false (mode waktu).
+    // Mode kontrol: CTRL_SEL (M15.0) harus false (mode waktu).
     // Kalau true, sterilisasi menunggu sinyal F0 dari luar dan mesin bisa macet.
-    // PERHATIAN: nama tag di KEPServerEX harus persis "CTRL SEL" (ada spasi) — jangan diubah.
-    ctrlSel: "CTRL SEL",
+    // PERHATIAN: nama tag di KEPServerEX harus persis "CTRL_SEL".
+    ctrlSel: "CTRL_SEL",
     // Alarm
     buzzer: "BUZZER",
     warningBuz: "WARNING_BUZ",
@@ -101,13 +101,13 @@ const SCALE_BY_10 = new Set([
 // Sumber kebenaran: .awl export ladder logic PLC (bukan estimasi dari kombinasi valve/timer).
 const PHASE_MAP = {
     0: { code: 'idle_door_open', label: 'Idle (pintu belum tertutup)', confirmed: true },
-    1: { code: 'idle_ready',     label: 'Siap (pintu tertutup)',        confirmed: true },
-    2: { code: 'filling',        label: 'FILLING',                      confirmed: true },
-    3: { code: 'heating',        label: 'HEATING',                      confirmed: true },
-    4: { code: 'steril',         label: 'STERIL.',                      confirmed: true },
-    5: { code: 'cooling',        label: 'COOLING',                      confirmed: true },
-    7: { code: 'drain',          label: 'DRAIN',                        confirmed: true },
-    6: { code: 'finished',       label: 'END',                          confirmed: true },
+    1: { code: 'idle_ready', label: 'Siap (pintu tertutup)', confirmed: true },
+    2: { code: 'filling', label: 'FILLING', confirmed: true },
+    3: { code: 'heating', label: 'HEATING', confirmed: true },
+    4: { code: 'steril', label: 'STERIL.', confirmed: true },
+    5: { code: 'cooling', label: 'COOLING', confirmed: true },
+    7: { code: 'drain', label: 'DRAIN', confirmed: true },
+    6: { code: 'finished', label: 'END', confirmed: true },
     // Terkonfirmasi dari kode ladder: status "finished" (kode 6) BERTAHAN sampai
     // tombol STOP ditekan — tidak otomatis kembali ke idle.
 };
@@ -169,9 +169,9 @@ function resolvePhase(v) {
         PREPARE: { code: "prepare", label: "PREPARE" },
         FILLING: { code: "filling", label: "FILLING" },
         HEATING: { code: "heating", label: "HEATING" },
-        STERIL:  { code: "steril",  label: "STERIL."  },
+        STERIL: { code: "steril", label: "STERIL." },
         COOLING: { code: "cooling", label: "COOLING" },
-        END:     { code: "end",     label: "END"     },
+        END: { code: "end", label: "END" },
     };
     const fallback = legacyMap[legacyLabel] ?? { code: "unknown", label: legacyLabel };
     return {
@@ -184,10 +184,10 @@ function resolvePhase(v) {
 // Fungsi internal: fetch raw tag values dari IoT Gateway
 async function readPlcTags() {
     const protocol = process.env.IOT_GATEWAY_PROTOCOL || "http";
-    const host     = process.env.IOT_GATEWAY_HOST;
-    const port     = process.env.IOT_GATEWAY_PORT;
-    const user     = process.env.IOT_GATEWAY_USER;
-    const pass     = process.env.IOT_GATEWAY_PASS;
+    const host = process.env.IOT_GATEWAY_HOST;
+    const port = process.env.IOT_GATEWAY_PORT;
+    const user = process.env.IOT_GATEWAY_USER;
+    const pass = process.env.IOT_GATEWAY_PASS;
 
     if (!host || !port || !user || !pass) {
         throw new Error(
@@ -315,7 +315,7 @@ export async function readPlcSnapshot() {
                 //            Kalau bypass=true, jangan izinkan Start dari web.
                 locked: !!v.doorLock,
                 bypass: !!v.doorLock, // alias eksplisit untuk logika guard Start
-                seal:    !!v.doorSeal,
+                seal: !!v.doorSeal,
                 clsFrnt: !!v.clsFrnt,
                 clsRear: !!v.clsRear,
                 opnFrnt: !!v.opnFrnt,
@@ -334,13 +334,13 @@ export async function readPlcSnapshot() {
             // null bila tag tidak terbaca. Semua pengguna wajib pakai optional chaining
             // karena field ini tidak tersedia di data dummy (plcOk=false).
             setpoints: {
-                ctrlTemp:    v.ctrlTemp    ?? null,  // °C (sudah dibagi 10)
-                sterSet:     v.sterSet     ?? null,  // °C (sudah dibagi 10)
+                ctrlTemp: v.ctrlTemp ?? null,  // °C (sudah dibagi 10)
+                sterSet: v.sterSet ?? null,  // °C (sudah dibagi 10)
                 sterSetTime: v.sterSetTime ?? null,  // menit (tidak dibagi 10)
-                tempSpace:   v.tempSpace   ?? null,  // °C (sudah dibagi 10)
-                cool1Temp:   v.cool1Temp   ?? null,  // °C (sudah dibagi 10)
-                cool2Temp:   v.cool2Temp   ?? null,  // °C (sudah dibagi 10)
-                alrmPres:    v.alrmPres    ?? null,  // raw (scaling belum dikonfirmasi)
+                tempSpace: v.tempSpace ?? null,  // °C (sudah dibagi 10)
+                cool1Temp: v.cool1Temp ?? null,  // °C (sudah dibagi 10)
+                cool2Temp: v.cool2Temp ?? null,  // °C (sudah dibagi 10)
+                alrmPres: v.alrmPres ?? null,  // raw (scaling belum dikonfirmasi)
             },
             // phase: object {code, label, confirmed, rawValue}
             // Sumber utama PROCCES_TEXT (VW98), fallback ke detectPhase() berbasis valve.
