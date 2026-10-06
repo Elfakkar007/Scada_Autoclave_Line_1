@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { validateBatchNo, BATCH_NO_MAX_LEN, BATCH_NO_RULE_TEXT } from "@/lib/batchNo";
 
 const EMPTY_FORM = {
     batchNo: "",
@@ -24,6 +25,10 @@ export default function PreparePage() {
     const [userFullName, setUserFullName] = useState("");
     // Checkbox konfirmasi keselamatan — wajib dicentang sebelum bisa submit
     const [safetyAck, setSafetyAck] = useState(false);
+    // Run kosongan (tes tanpa produk): Batch No, Loading, Produk diisi otomatis oleh server
+    const [emptyRun, setEmptyRun] = useState(false);
+    // Penjaga anti-klik ganda: state React baru berlaku setelah render, ref berlaku seketika
+    const submittingRef = useRef(false);
 
     // Ambil daftar formula dan info user dari session
     useEffect(() => {
@@ -36,7 +41,7 @@ export default function PreparePage() {
         fetch("/api/auth/me")
             .then((r) => r.json())
             .then((json) => { if (json.ok) setUserFullName(json.user.fullName ?? json.user.username); })
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     function handleChange(key, value) {
@@ -47,28 +52,38 @@ export default function PreparePage() {
 
     // Formula yang saat ini dipilih (dengan data validation dari API)
     const selectedFormula = formulas.find((f) => f.formulaNo === form.formulaNo) ?? null;
-    const formulaProblems  = selectedFormula?.validation?.problems ?? [];
-    const formulaWarnings  = selectedFormula?.validation?.warnings ?? [];
-    const formulaInvalid   = selectedFormula !== null && selectedFormula?.validation?.ok === false;
-    const formulaHasWarn   = formulaWarnings.length > 0 && !formulaInvalid;
+    const formulaProblems = selectedFormula?.validation?.problems ?? [];
+    const formulaWarnings = selectedFormula?.validation?.warnings ?? [];
+    const formulaInvalid = selectedFormula !== null && selectedFormula?.validation?.ok === false;
+    const formulaHasWarn = formulaWarnings.length > 0 && !formulaInvalid;
 
     // Tombol submit disabled jika ada field yang kosong atau formula tidak valid
-    const allFilled = Object.values(form).every((v) => String(v).trim() !== "");
-    const canSubmit = allFilled && safetyAck && !formulaInvalid;
+    const requiredKeys = emptyRun ? ["machineId", "formulaNo"] : Object.keys(EMPTY_FORM);
+    const allFilled = requiredKeys.every((k) => String(form[k]).trim() !== "");
+    // Format Batch No dicek di klien hanya untuk umpan balik cepat; server tetap memvalidasi ulang
+    const batchNoCheck = !emptyRun && form.batchNo.trim() !== "" ? validateBatchNo(form.batchNo) : null;
+    const batchNoInvalid = batchNoCheck !== null && !batchNoCheck.ok;
+    const canSubmit = allFilled && safetyAck && !formulaInvalid && !batchNoInvalid;
 
     async function handleSubmit(e) {
         e.preventDefault();
-        if (!canSubmit) return;
+        if (!canSubmit || submittingRef.current) return;
+        submittingRef.current = true;
 
         setSubmitting(true);
         setError(null);
         setErrorFields([]);
 
+        let started = false;
         try {
+            // operator & actor ditentukan server dari session
+            const payload = emptyRun
+                ? { emptyRun: true, machineId: form.machineId, formulaNo: form.formulaNo }
+                : { ...form, emptyRun: false };
             const res = await fetch("/api/batch/start", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(form), // operator & actor ditentukan server dari session
+                body: JSON.stringify(payload),
             });
             const json = await res.json();
 
@@ -83,12 +98,17 @@ export default function PreparePage() {
                 return;
             }
 
-            // Sukses: redirect ke dashboard
+            // Sukses: redirect ke dashboard. Tombol sengaja TIDAK diaktifkan lagi
+            // supaya tidak bisa diklik ulang selama perpindahan halaman.
+            started = true;
             router.push("/");
         } catch {
             setError("Gagal terhubung ke server. Periksa koneksi jaringan.");
         } finally {
-            setSubmitting(false);
+            if (!started) {
+                submittingRef.current = false;
+                setSubmitting(false);
+            }
         }
     }
 
@@ -153,29 +173,61 @@ export default function PreparePage() {
 
                     <div className="border-t border-scada-rule" />
 
-                    {/* Baris 1: Batch No & Loading No */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label className={labelBase}>Batch No.</label>
-                            <input
-                                type="text"
-                                className={inputBase}
-                                placeholder="contoh: B-2024-001"
-                                value={form.batchNo}
-                                onChange={(e) => handleChange("batchNo", e.target.value)}
-                            />
+                    {/* ── Run kosongan (tes tanpa produk) ── */}
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <input
+                            id="empty-run-checkbox"
+                            type="checkbox"
+                            checked={emptyRun}
+                            onChange={(e) => { setEmptyRun(e.target.checked); setError(null); setErrorFields([]); }}
+                            className="mt-0.5 w-4 h-4 cursor-pointer shrink-0"
+                        />
+                        <span className="text-sm text-scada-ink">
+                            <strong className="font-semibold">Run kosongan</strong> (tes mesin tanpa produk)
+                        </span>
+                    </label>
+
+                    {emptyRun ? (
+                        <div className="rounded border border-scada-rule bg-scada-bg px-4 py-3 text-sm text-scada-ink space-y-1">
+                            <p>
+                                Batch No. diisi otomatis: <span className="font-mono font-semibold">KOSONGAN dd.mm.yy</span>{" "}
+                                (akhiran -2, -3 jika sudah ada pada hari yang sama).
+                            </p>
+                            <p className="text-xs text-scada-muted">
+                                Loading No. = N/A; Product Name dan Specification = “-”.
+                            </p>
                         </div>
-                        <div>
-                            <label className={labelBase}>Loading No.</label>
-                            <input
-                                type="text"
-                                className={inputBase}
-                                placeholder="contoh: L-001"
-                                value={form.loadingNo}
-                                onChange={(e) => handleChange("loadingNo", e.target.value)}
-                            />
+                    ) : (
+                        /* Baris 1: Batch No & Loading No */
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label className={labelBase}>Batch No.</label>
+                                <input
+                                    type="text"
+                                    className={inputBase}
+                                    placeholder="contoh: B-2024-001"
+                                    maxLength={BATCH_NO_MAX_LEN}
+                                    value={form.batchNo}
+                                    onChange={(e) => handleChange("batchNo", e.target.value)}
+                                />
+                                {batchNoInvalid ? (
+                                    <p className="mt-1 text-xs text-scada-stop">{batchNoCheck.error}</p>
+                                ) : (
+                                    <p className="mt-1 text-xs text-scada-muted">{BATCH_NO_RULE_TEXT} Harus unik.</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className={labelBase}>Loading No.</label>
+                                <input
+                                    type="text"
+                                    className={inputBase}
+                                    placeholder="contoh: L-001"
+                                    value={form.loadingNo}
+                                    onChange={(e) => handleChange("loadingNo", e.target.value)}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Baris 2: Operator (dari session, read-only) & Mach. ID */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -198,29 +250,31 @@ export default function PreparePage() {
                         </div>
                     </div>
 
-                    {/* Baris 3: Product Name & Specification */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label className={labelBase}>Product Name</label>
-                            <input
-                                type="text"
-                                className={inputBase}
-                                placeholder="Nama produk"
-                                value={form.productName}
-                                onChange={(e) => handleChange("productName", e.target.value)}
-                            />
+                    {/* Baris 3: Product Name & Specification (tidak dipakai pada run kosongan) */}
+                    {!emptyRun && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label className={labelBase}>Product Name</label>
+                                <input
+                                    type="text"
+                                    className={inputBase}
+                                    placeholder="Nama produk"
+                                    value={form.productName}
+                                    onChange={(e) => handleChange("productName", e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className={labelBase}>Specification</label>
+                                <input
+                                    type="text"
+                                    className={inputBase}
+                                    placeholder="Spesifikasi produk"
+                                    value={form.productSpec}
+                                    onChange={(e) => handleChange("productSpec", e.target.value)}
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <label className={labelBase}>Specification</label>
-                            <input
-                                type="text"
-                                className={inputBase}
-                                placeholder="Spesifikasi produk"
-                                value={form.productSpec}
-                                onChange={(e) => handleChange("productSpec", e.target.value)}
-                            />
-                        </div>
-                    </div>
+                    )}
 
                     {/* Baris 4: Pilih Formula */}
                     <div>
@@ -297,13 +351,15 @@ export default function PreparePage() {
                         </button>
                     </div>
 
-                    {(!allFilled || !safetyAck || formulaInvalid) && (
+                    {(!allFilled || !safetyAck || formulaInvalid || batchNoInvalid) && (
                         <p className="text-xs text-scada-muted italic">
                             {formulaInvalid
                                 ? "Formula yang dipilih tidak lengkap — perbaiki terlebih dahulu."
-                                : !safetyAck
-                                ? "Centang kotak konfirmasi keselamatan di atas sebelum memulai."
-                                : "Semua field harus diisi sebelum memulai sterilisasi."}
+                                : batchNoInvalid
+                                    ? "Perbaiki format Batch No. terlebih dahulu."
+                                    : !safetyAck
+                                        ? "Centang kotak konfirmasi keselamatan di atas sebelum memulai."
+                                        : "Semua field harus diisi sebelum memulai sterilisasi."}
                         </p>
                     )}
                 </div>

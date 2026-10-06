@@ -278,7 +278,7 @@ export default function BatchDetailPage() {
 
             {/* ── Nilai F0 ── */}
             <SectionCard title="Nilai F0">
-                {/* Ringkasan: fo_min dan hasil sterilisasi */}
+                {/* Ringkasan: F0 Min berdampingan dengan FOVal Setting (tanpa vonis lulus/gagal) */}
                 <div className="flex flex-wrap items-center gap-4 mb-4 pb-4 border-b border-scada-rule">
                     <div>
                         <p className="text-xs text-scada-muted uppercase tracking-wider mb-0.5">F0 Min (worst-case)</p>
@@ -292,7 +292,7 @@ export default function BatchDetailPage() {
                         </p>
                     </div>
                     <div>
-                        <p className="text-xs text-scada-muted uppercase tracking-wider mb-0.5">Target F0</p>
+                        <p className="text-xs text-scada-muted uppercase tracking-wider mb-0.5">FOVal Setting</p>
                         <p className="text-lg font-bold text-scada-ink">
                             {(() => {
                                 const n = Number(batch.foValSetting);
@@ -302,21 +302,14 @@ export default function BatchDetailPage() {
                             })()}
                         </p>
                     </div>
-                    <div>
-                        <p className="text-xs text-scada-muted uppercase tracking-wider mb-0.5">Hasil Sterilisasi</p>
-                        <span className={`px-2.5 py-1 rounded text-xs font-bold ${
-                            batch.sterilizationResult === "pass"
-                                ? "bg-scada-run text-white"
-                                : batch.sterilizationResult === "fail"
-                                ? "bg-scada-stop text-white"
-                                : batch.sterilizationResult === "pending"
-                                ? "bg-scada-water text-white"
-                                : "bg-scada-idle text-scada-ink"
-                        }`}>
-                            {batch.sterilizationResult?.toUpperCase() ?? "-"}
-                        </span>
-                    </div>
                 </div>
+                {/* Peringatan bila F0 dihitung dari data tidak lengkap (ada gap / nilai tidak valid) */}
+                {batch.f0Meta && batch.f0Meta.complete === false && (
+                    <p className="mb-3 text-xs text-scada-muted">
+                        Perhatian: F0 dihitung dari data yang tidak lengkap (interval lebih dari {batch.f0Meta.maxGapSec ?? 150} detik
+                        atau nilai suhu tidak valid dilewati), jadi nilainya batas bawah. Detail ada di f0_meta batch ini.
+                    </p>
+                )}
                 {/* Nilai F0 per sensor */}
                 <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-3">
                     {[

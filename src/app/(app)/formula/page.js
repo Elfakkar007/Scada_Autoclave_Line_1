@@ -47,14 +47,14 @@ const LEFT_FIELDS = [
     { key: "sterilTemp",     label: "Steril. Temp",     unit: "°C",  type: "number" },
     { key: "sterilTime",     label: "Steril. Time",     unit: "MIN", type: "integer" },
     { key: "controlType",    label: "Control Type",     unit: "",    type: "select",
-      options: ["Time", "Level"] },
+      options: ["Time"] }, // dikunci: mode F0/"Level" tidak dipakai produksi
 ];
 
 const RIGHT_FIELDS = [
     { key: "alarmPres",      label: "Alarm Pres.",      unit: "KPa", type: "number" },
     { key: "coolingTemp1",   label: "Cooling Temp1",    unit: "°C",  type: "number" },
     { key: "coolingTemp2",   label: "Cooling Temp2",    unit: "°C",  type: "number" },
-    { key: "foValSetting",   label: "FOVal Setting",    unit: "MIN", type: "number" },
+    { key: "foValSetting",   label: "FOVal (opsional)",  unit: "MIN", type: "number" },
     { key: "sterilMaterial", label: "Steril. Material", unit: "",    type: "select",
       options: ["Soft bottle", "Hard bottle"] },
 ];
@@ -168,7 +168,9 @@ export default function FormulaPage() {
             setFormulas((prev) => prev.filter((f) => f.formulaNo !== ""));
         }
         setSelectedNo(formula.formulaNo);
-        setForm({ ...formula });
+        // Control Type dikunci "Time": resep lama yang bernilai lain tampil sebagai Time
+        // dan menjadi Time saat disimpan (server juga memaksa Time).
+        setForm({ ...formula, controlType: "Time" });
         setIsNewEntry(false);
         setErrors({});
     }
@@ -192,7 +194,6 @@ export default function FormulaPage() {
             { key: "alarmPres",    min: 100,  max: 300,  unit: "kPa",   integer: true  },
             { key: "coolingTemp1", min: 30,   max: 130,  unit: "°C",    integer: false },
             { key: "coolingTemp2", min: 20,   max: 130,  unit: "°C",    integer: false },
-            { key: "foValSetting", min: 1,    max: 100,  unit: "menit", integer: false },
         ];
 
         for (const { key, min, max, unit, integer } of fieldRanges) {
@@ -213,6 +214,15 @@ export default function FormulaPage() {
             }
             if (integer && !Number.isInteger(val)) {
                 errs[key] = "Harus bilangan bulat";
+            }
+        }
+
+        // FOVal Setting: opsional. Kosong boleh; bila diisi harus angka positif (tanpa batas atas).
+        const fovRaw = form.foValSetting;
+        if (fovRaw !== "" && fovRaw !== null && fovRaw !== undefined) {
+            const fov = Number(fovRaw);
+            if (!Number.isFinite(fov) || fov <= 0) {
+                errs.foValSetting = "Harus angka positif (atau kosongkan)";
             }
         }
 
@@ -266,7 +276,7 @@ export default function FormulaPage() {
                         alarmPres:    parseFloat(form.alarmPres),
                         coolingTemp1: parseFloat(form.coolingTemp1),
                         coolingTemp2: parseFloat(form.coolingTemp2),
-                        foValSetting: form.foValSetting !== "" ? parseFloat(form.foValSetting) : null,
+                        foValSetting: form.foValSetting !== "" && form.foValSetting != null ? parseFloat(form.foValSetting) : null,
                     }),
                 });
                 const json = await res.json();
@@ -335,7 +345,7 @@ export default function FormulaPage() {
                     alarmPres:    parseFloat(form.alarmPres),
                     coolingTemp1: parseFloat(form.coolingTemp1),
                     coolingTemp2: parseFloat(form.coolingTemp2),
-                    foValSetting: form.foValSetting !== "" ? parseFloat(form.foValSetting) : null,
+                    foValSetting: form.foValSetting !== "" && form.foValSetting != null ? parseFloat(form.foValSetting) : null,
                 }),
             });
             const json = await res.json();

@@ -13,8 +13,11 @@
  * @param {object}  [options]        - Opsi validasi.
  * @param {boolean} [options.strict] - Bila true: formula_no / control_type /
  *                                     steril_material wajib teks tidak kosong, dan
- *                                     fo_val_setting wajib angka dalam rentang
- *                                     FO_VAL_MIN..FO_VAL_MAX. Default: false.
+ *                                     control_type harus persis "Time". Default: false.
+ *
+ * fo_val_setting OPSIONAL: kosong boleh; bila diisi harus angka positif bebas
+ * (tidak ada batas atas/bawah selain > 0). Ia hanya "wadah" angka dari QA per produk
+ * dan tidak dipakai untuk vonis lulus/gagal.
  */
 
 // ── Rentang valid per field — sesuaikan dengan QA ────────────────────────────
@@ -29,9 +32,9 @@ const RANGE = {
     cooling_temp2:   { min: 20,   max: 130,  unit: "°C",    integer: false },
 };
 
-// Rentang fo_val_setting saat strict — sesuaikan dengan QA
-const FO_VAL_MIN = 1;   // menit F0 minimum yang dianggap valid
-const FO_VAL_MAX = 100; // menit F0 maksimum yang dianggap valid
+// Control Type dikunci ke "Time": mode F0 tidak pernah dipakai produksi
+// (bit PLC M13.2 tidak pernah di-set). Diekspor agar route/halaman memakai konstanta yang sama.
+export const ALLOWED_CONTROL_TYPE = "Time";
 
 // Field wajib numerik yang divalidasi pada semua mode
 const REQUIRED_FIELDS = Object.keys(RANGE);
@@ -119,33 +122,29 @@ export function validateRecipe(recipe, { strict = false } = {}) {
         }
     }
 
-    // ── fo_val_setting ────────────────────────────────────────────────────────
-    // Saat strict: wajib angka dalam rentang FO_VAL_MIN..FO_VAL_MAX → problem.
-    // Saat tidak strict: kosong/0 → warning saja (tidak memblokir).
+    // ── fo_val_setting (opsional) ─────────────────────────────────────────────
+    // Kosong = boleh. Bila diisi: harus angka > 0. Saat strict → problem; tidak strict → warning.
     const fovRaw = recipe?.fo_val_setting;
     const fovEmpty = fovRaw === null || fovRaw === undefined || String(fovRaw).trim() === "";
-    const fovNum  = fovEmpty ? NaN : Number(fovRaw);
+    if (!fovEmpty) {
+        const fovNum = Number(fovRaw);
+        if (!Number.isFinite(fovNum) || fovNum <= 0) {
+            const item = { field: "fo_val_setting", message: "fo_val_setting harus angka positif (atau dikosongkan)" };
+            if (strict) problems.push(item); else warnings.push(item);
+        }
+    }
 
+    // ── control_type: hanya "Time" ────────────────────────────────────────────
+    const ct = recipe?.control_type;
+    const ctEmpty = ct === null || ct === undefined || String(ct).trim() === "";
     if (strict) {
-        if (fovEmpty) {
-            problems.push({
-                field:   "fo_val_setting",
-                message: `fo_val_setting wajib diisi (${FO_VAL_MIN}-${FO_VAL_MAX} menit)`,
-            });
-        } else if (!Number.isFinite(fovNum) || fovNum < FO_VAL_MIN || fovNum > FO_VAL_MAX) {
-            problems.push({
-                field:   "fo_val_setting",
-                message: `fo_val_setting harus ${FO_VAL_MIN}-${FO_VAL_MAX} menit`,
-            });
+        if (ctEmpty) {
+            problems.push({ field: "control_type", message: "control_type wajib diisi" });
+        } else if (String(ct).trim() !== ALLOWED_CONTROL_TYPE) {
+            problems.push({ field: "control_type", message: `control_type harus "${ALLOWED_CONTROL_TYPE}"` });
         }
-    } else {
-        // Mode biasa: kosong atau 0 hanya menghasilkan warning
-        if (fovEmpty || fovNum === 0) {
-            warnings.push({
-                field:   "fo_val_setting",
-                message: "fo_val_setting kosong: hasil sterilisasi akan 'pending'",
-            });
-        }
+    } else if (!ctEmpty && String(ct).trim() !== ALLOWED_CONTROL_TYPE) {
+        warnings.push({ field: "control_type", message: `control_type bukan "${ALLOWED_CONTROL_TYPE}"` });
     }
 
     // ── Validasi teks tambahan (hanya saat strict) ────────────────────────────
@@ -154,12 +153,6 @@ export function validateRecipe(recipe, { strict = false } = {}) {
         const fno = recipe?.formula_no;
         if (fno === null || fno === undefined || String(fno).trim() === "") {
             problems.push({ field: "formula_no", message: "formula_no wajib diisi" });
-        }
-
-        // control_type wajib teks tidak kosong
-        const ct = recipe?.control_type;
-        if (ct === null || ct === undefined || String(ct).trim() === "") {
-            problems.push({ field: "control_type", message: "control_type wajib dipilih" });
         }
 
         // steril_material wajib teks tidak kosong

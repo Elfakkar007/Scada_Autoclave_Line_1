@@ -4,16 +4,16 @@ import { buildDateRangeFilter } from "@/lib/dateRange";
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
-        const search  = searchParams.get("search")  ?? "";
-        const status  = searchParams.get("status")  ?? "";
-        const from    = searchParams.get("from")    ?? "";
-        const to      = searchParams.get("to")      ?? "";
-        const limit   = Math.min(parseInt(searchParams.get("limit")  ?? "20", 10), 100);
-        const offset  = Math.max(parseInt(searchParams.get("offset") ?? "0",  10), 0);
+        const search = searchParams.get("search") ?? "";
+        const status = searchParams.get("status") ?? "";
+        const from = searchParams.get("from") ?? "";
+        const to = searchParams.get("to") ?? "";
+        const limit = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 100);
+        const offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10), 0);
 
         // ── Bangun kondisi WHERE secara dinamis ──────────────────────────
         const conditions = [];
-        const values     = [];
+        const values = [];
 
         if (search.trim()) {
             values.push(`%${search.trim()}%`);
@@ -65,8 +65,7 @@ export async function GET(request) {
                 run_finish,
                 total_time_min,
                 status,
-                fo_min,
-                sterilization_result
+                fo_min
              FROM batch_records
              ${whereClause}
              ORDER BY COALESCE(run_begin, created_at) DESC
@@ -76,22 +75,21 @@ export async function GET(request) {
         );
 
         const data = dataResult.rows.map((row) => ({
-            batchNo:              row.batch_no,
-            operator:             row.operator,
-            productName:          row.product_name,
-            machineId:            row.machine_id,
-            sterTemp:             row.ster_temp !== null ? parseFloat(row.ster_temp) : null,
-            runBegin:             row.run_begin,
-            runFinish:            row.run_finish,
-            totalTimeMin:         row.total_time_min !== null ? parseFloat(row.total_time_min) : null,
-            status:               row.status,
-            foMin:                row.fo_min !== null ? parseFloat(row.fo_min) : null,
-            sterilizationResult:  row.sterilization_result ?? null,
+            batchNo: row.batch_no,
+            operator: row.operator,
+            productName: row.product_name,
+            machineId: row.machine_id,
+            sterTemp: row.ster_temp !== null ? parseFloat(row.ster_temp) : null,
+            runBegin: row.run_begin,
+            runFinish: row.run_finish,
+            totalTimeMin: row.total_time_min !== null ? parseFloat(row.total_time_min) : null,
+            status: row.status,
+            foMin: row.fo_min !== null ? parseFloat(row.fo_min) : null,
         }));
 
         return Response.json({ data, total });
     } catch (error) {
         console.error("[GET /api/batch-records]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        return Response.json({ ok: false, error: "Terjadi kesalahan di server. Hubungi admin." }, { status: 500 });
     }
 }

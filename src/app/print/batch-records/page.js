@@ -103,14 +103,14 @@ function BatchRecordsPrintContent() {
                                 {["Batch No","Loading","Produk","Operator","Mach.ID","Ster°C",
                                   "Run Begin","Run Finish","Total","Heat","Ster","Cool",
                                   "F0Min","FO1","FO2","FO3","FO4","FO5","FO6","FOH","FOM","FOL",
-                                  "Hasil","Status"].map((h) => (
+                                  "Status"].map((h) => (
                                     <th key={h}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {rows.length === 0 ? (
-                                <tr><td colSpan={24} style={{ textAlign:"center", padding:8 }}>Tidak ada data</td></tr>
+                                <tr><td colSpan={23} style={{ textAlign:"center", padding:8 }}>Tidak ada data</td></tr>
                             ) : rows.map((r, i) => (
                                 <tr key={i}>
                                     <td style={{ textAlign:"left", whiteSpace:"nowrap", fontWeight:600 }}>{r.batchNo}</td>
@@ -135,7 +135,6 @@ function BatchRecordsPrintContent() {
                                     <td>{fmtN(r.foh)}</td>
                                     <td>{fmtN(r.fom)}</td>
                                     <td>{fmtN(r.fol)}</td>
-                                    <td>{r.sterilizationResult || "-"}</td>
                                     <td>{r.status}</td>
                                 </tr>
                             ))}

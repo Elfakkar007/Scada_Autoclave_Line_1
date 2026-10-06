@@ -276,8 +276,8 @@ export async function recordTrendTick() {
                                     batchNo,
                                     JSON.stringify({
                                         status: result.status,
-                                        sterilizationResult: result.sterilizationResult,
                                         foMin: result.foMin,
+                                        f0Complete: result.f0Complete,
                                         plcPhaseAtFinalize: phase,
                                     }),
                                     "system",

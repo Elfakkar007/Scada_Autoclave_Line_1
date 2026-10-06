@@ -15,7 +15,8 @@ import { readPlcSnapshot } from "@/lib/plc";
 import pool from "@/lib/db";
 
 export async function GET() {
-    // Baca semua data PLC (sudah include scaling, phase, dummy fallback jika PLC mati)
+    // Baca semua data PLC (sudah include scaling dan phase).
+    // Jika PLC mati: plcOk=false dan semua nilai null (bukan dummy, kecuali mode dev).
     const { plcOk, plcError, ...sensorData } = await readPlcSnapshot();
 
     try {
@@ -62,7 +63,8 @@ export async function GET() {
             ...sensorData,
             plcOk, plcError,
             running: false,
-            dbError: error.message,
+            // Jangan bocorkan error.message (bisa berisi detail DB) ke klien; detail ada di log server.
+            dbError: "Database tidak dapat dibaca",
         });
     }
 }

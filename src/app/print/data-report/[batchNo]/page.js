@@ -183,6 +183,11 @@ export default function PrintDataReport() {
                     <div style={{ borderBottom: "1px dotted #aaa", padding: "1px 0", fontSize: 11 }}>
                         {f0Row2}
                     </div>
+                    {/* F0 Min berdampingan dengan FOVal Setting — hanya angka, tanpa vonis lulus/gagal */}
+                    <div style={{ borderBottom: "1px dotted #aaa", padding: "1px 0", fontSize: 11 }}>
+                        {`F0 Min: ${fmtTemp(batch.foMin)}  FOVal: ${fmtTemp(batch.foValSetting)}`}
+                        {batch.f0Meta && batch.f0Meta.complete === false ? "  (* F0 dihitung dari data tidak lengkap)" : ""}
+                    </div>
 
                     <HRow cols={[
                         { label: "Run.Begin :", value: fmtTime(batch.runBegin), flex: 1 },

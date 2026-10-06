@@ -19,11 +19,11 @@ function fmtNum(v) {
 function buildQuery(searchParams) {
     const search = searchParams.get("search") ?? "";
     const status = searchParams.get("status") ?? "";
-    const from   = searchParams.get("from")   ?? "";
-    const to     = searchParams.get("to")     ?? "";
+    const from = searchParams.get("from") ?? "";
+    const to = searchParams.get("to") ?? "";
 
     const conditions = [];
-    const values     = [];
+    const values = [];
 
     if (search.trim()) {
         values.push(`%${search.trim()}%`);
@@ -80,7 +80,8 @@ export async function GET(request) {
                     machine_id, ster_temp, run_begin, run_finish, total_time_min,
                     heat_time_min, ster_time_min, cool_time_min,
                     fo_min, fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol,
-                    sterilization_result, status
+                    (SELECT r.fo_val_setting FROM recipes r WHERE r.id = batch_records.recipe_id) AS fo_val_setting,
+                    status
              FROM batch_records
              ${q.where}
              ORDER BY COALESCE(run_begin, created_at) DESC`,
@@ -109,31 +110,31 @@ export async function GET(request) {
         // ── Format JSON ───────────────────────────────────────────────────
         if (format === "json") {
             const data = rows.map((r) => ({
-                batchNo:             r.batch_no        ?? "",
-                loadingNo:           r.loading_no      ?? "",
-                productName:         r.product_name    ?? "",
-                productSpec:         r.product_spec    ?? "",
-                operator:            r.operator        ?? "",
-                machineId:           r.machine_id      ?? "",
-                sterTemp:            fmtNum(r.ster_temp),
-                runBegin:            toWIB(r.run_begin),
-                runFinish:           toWIB(r.run_finish),
-                totalTimeMin:        fmtNum(r.total_time_min),
-                heatTimeMin:         fmtNum(r.heat_time_min),
-                sterTimeMin:         fmtNum(r.ster_time_min),
-                coolTimeMin:         fmtNum(r.cool_time_min),
-                foMin:               fmtNum(r.fo_min),
-                fo1:                 fmtNum(r.fo1),
-                fo2:                 fmtNum(r.fo2),
-                fo3:                 fmtNum(r.fo3),
-                fo4:                 fmtNum(r.fo4),
-                fo5:                 fmtNum(r.fo5),
-                fo6:                 fmtNum(r.fo6),
-                foh:                 fmtNum(r.foh),
-                fom:                 fmtNum(r.fom),
-                fol:                 fmtNum(r.fol),
-                sterilizationResult: r.sterilization_result ?? "",
-                status:              r.status          ?? "",
+                batchNo: r.batch_no ?? "",
+                loadingNo: r.loading_no ?? "",
+                productName: r.product_name ?? "",
+                productSpec: r.product_spec ?? "",
+                operator: r.operator ?? "",
+                machineId: r.machine_id ?? "",
+                sterTemp: fmtNum(r.ster_temp),
+                runBegin: toWIB(r.run_begin),
+                runFinish: toWIB(r.run_finish),
+                totalTimeMin: fmtNum(r.total_time_min),
+                heatTimeMin: fmtNum(r.heat_time_min),
+                sterTimeMin: fmtNum(r.ster_time_min),
+                coolTimeMin: fmtNum(r.cool_time_min),
+                foMin: fmtNum(r.fo_min),
+                foValSetting: fmtNum(r.fo_val_setting),
+                fo1: fmtNum(r.fo1),
+                fo2: fmtNum(r.fo2),
+                fo3: fmtNum(r.fo3),
+                fo4: fmtNum(r.fo4),
+                fo5: fmtNum(r.fo5),
+                fo6: fmtNum(r.fo6),
+                foh: fmtNum(r.foh),
+                fom: fmtNum(r.fom),
+                fol: fmtNum(r.fol),
+                status: r.status ?? "",
             }));
             return Response.json({ rows: data, total: data.length });
         }
@@ -144,31 +145,31 @@ export async function GET(request) {
         const ws = wb.addWorksheet("Data Report");
 
         ws.columns = [
-            { header: "Batch No",       key: "batchNo",             width: 16 },
-            { header: "Loading No",     key: "loadingNo",           width: 14 },
-            { header: "Produk",         key: "productName",         width: 26 },
-            { header: "Spesifikasi",    key: "productSpec",         width: 20 },
-            { header: "Operator",       key: "operator",            width: 16 },
-            { header: "Mach. ID",       key: "machineId",           width: 12 },
-            { header: "Ster. Temp",     key: "sterTemp",            width: 12 },
-            { header: "Run Begin",      key: "runBegin",            width: 22 },
-            { header: "Run Finish",     key: "runFinish",           width: 22 },
-            { header: "Total (min)",    key: "totalTimeMin",        width: 12 },
-            { header: "Heat Time",      key: "heatTimeMin",         width: 12 },
-            { header: "Ster Time",      key: "sterTimeMin",         width: 12 },
-            { header: "Cool Time",      key: "coolTimeMin",         width: 12 },
-            { header: "F0 Min",         key: "foMin",               width: 10 },
-            { header: "FO1",            key: "fo1",                 width: 9  },
-            { header: "FO2",            key: "fo2",                 width: 9  },
-            { header: "FO3",            key: "fo3",                 width: 9  },
-            { header: "FO4",            key: "fo4",                 width: 9  },
-            { header: "FO5",            key: "fo5",                 width: 9  },
-            { header: "FO6",            key: "fo6",                 width: 9  },
-            { header: "FOH",            key: "foh",                 width: 9  },
-            { header: "FOM",            key: "fom",                 width: 9  },
-            { header: "FOL",            key: "fol",                 width: 9  },
-            { header: "Hasil",          key: "sterilizationResult", width: 10 },
-            { header: "Status",         key: "status",              width: 12 },
+            { header: "Batch No", key: "batchNo", width: 16 },
+            { header: "Loading No", key: "loadingNo", width: 14 },
+            { header: "Produk", key: "productName", width: 26 },
+            { header: "Spesifikasi", key: "productSpec", width: 20 },
+            { header: "Operator", key: "operator", width: 16 },
+            { header: "Mach. ID", key: "machineId", width: 12 },
+            { header: "Ster. Temp", key: "sterTemp", width: 12 },
+            { header: "Run Begin", key: "runBegin", width: 22 },
+            { header: "Run Finish", key: "runFinish", width: 22 },
+            { header: "Total (min)", key: "totalTimeMin", width: 12 },
+            { header: "Heat Time", key: "heatTimeMin", width: 12 },
+            { header: "Ster Time", key: "sterTimeMin", width: 12 },
+            { header: "Cool Time", key: "coolTimeMin", width: 12 },
+            { header: "F0 Min", key: "foMin", width: 10 },
+            { header: "FOVal Setting", key: "foValSetting", width: 13 },
+            { header: "FO1", key: "fo1", width: 9 },
+            { header: "FO2", key: "fo2", width: 9 },
+            { header: "FO3", key: "fo3", width: 9 },
+            { header: "FO4", key: "fo4", width: 9 },
+            { header: "FO5", key: "fo5", width: 9 },
+            { header: "FO6", key: "fo6", width: 9 },
+            { header: "FOH", key: "foh", width: 9 },
+            { header: "FOM", key: "fom", width: 9 },
+            { header: "FOL", key: "fol", width: 9 },
+            { header: "Status", key: "status", width: 12 },
         ];
 
         const headerRow = ws.getRow(1);
@@ -178,37 +179,37 @@ export async function GET(request) {
 
         rows.forEach((r) => {
             ws.addRow({
-                batchNo:             r.batch_no        ?? "",
-                loadingNo:           r.loading_no      ?? "",
-                productName:         r.product_name    ?? "",
-                productSpec:         r.product_spec    ?? "",
-                operator:            r.operator        ?? "",
-                machineId:           r.machine_id      ?? "",
-                sterTemp:            fmtNum(r.ster_temp),
-                runBegin:            toWIB(r.run_begin),
-                runFinish:           toWIB(r.run_finish),
-                totalTimeMin:        fmtNum(r.total_time_min),
-                heatTimeMin:         fmtNum(r.heat_time_min),
-                sterTimeMin:         fmtNum(r.ster_time_min),
-                coolTimeMin:         fmtNum(r.cool_time_min),
-                foMin:               fmtNum(r.fo_min),
-                fo1:                 fmtNum(r.fo1),
-                fo2:                 fmtNum(r.fo2),
-                fo3:                 fmtNum(r.fo3),
-                fo4:                 fmtNum(r.fo4),
-                fo5:                 fmtNum(r.fo5),
-                fo6:                 fmtNum(r.fo6),
-                foh:                 fmtNum(r.foh),
-                fom:                 fmtNum(r.fom),
-                fol:                 fmtNum(r.fol),
-                sterilizationResult: r.sterilization_result ?? "",
-                status:              r.status          ?? "",
+                batchNo: r.batch_no ?? "",
+                loadingNo: r.loading_no ?? "",
+                productName: r.product_name ?? "",
+                productSpec: r.product_spec ?? "",
+                operator: r.operator ?? "",
+                machineId: r.machine_id ?? "",
+                sterTemp: fmtNum(r.ster_temp),
+                runBegin: toWIB(r.run_begin),
+                runFinish: toWIB(r.run_finish),
+                totalTimeMin: fmtNum(r.total_time_min),
+                heatTimeMin: fmtNum(r.heat_time_min),
+                sterTimeMin: fmtNum(r.ster_time_min),
+                coolTimeMin: fmtNum(r.cool_time_min),
+                foMin: fmtNum(r.fo_min),
+                foValSetting: fmtNum(r.fo_val_setting),
+                fo1: fmtNum(r.fo1),
+                fo2: fmtNum(r.fo2),
+                fo3: fmtNum(r.fo3),
+                fo4: fmtNum(r.fo4),
+                fo5: fmtNum(r.fo5),
+                fo6: fmtNum(r.fo6),
+                foh: fmtNum(r.foh),
+                fom: fmtNum(r.fom),
+                fol: fmtNum(r.fol),
+                status: r.status ?? "",
             });
         });
 
-        const buf      = await wb.xlsx.writeBuffer();
-        const from     = q.from || "semua";
-        const to       = q.to   || "semua";
+        const buf = await wb.xlsx.writeBuffer();
+        const from = q.from || "semua";
+        const to = q.to || "semua";
         const filename = `batch-records_${from}_${to}.xlsx`;
 
         return new Response(buf, {
@@ -220,6 +221,6 @@ export async function GET(request) {
         });
     } catch (error) {
         console.error("[GET /api/batch-records/export]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        return Response.json({ ok: false, error: "Terjadi kesalahan di server. Hubungi admin." }, { status: 500 });
     }
 }

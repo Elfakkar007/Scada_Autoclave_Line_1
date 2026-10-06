@@ -228,7 +228,7 @@ export default function DataReportPage() {
                                     <th className={thClass}>Run Finish</th>
                                     <th className={thClass}>Total (min)</th>
                                     <th className={thClass}>Status</th>
-                                    <th className={thClass}>Hasil</th>
+                                    <th className={thClass}>F0 Min</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-scada-rule">
@@ -250,19 +250,9 @@ export default function DataReportPage() {
                                         <td className={tdClass}>{row.totalTimeMin !== null ? row.totalTimeMin : "-"}</td>
                                         <td className={tdClass}><StatusBadge status={row.status} /></td>
                                         <td className={tdClass}>
-                                            {row.sterilizationResult ? (
-                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                                                    row.sterilizationResult === "pass"
-                                                        ? "bg-scada-run text-white"
-                                                        : row.sterilizationResult === "fail"
-                                                        ? "bg-scada-stop text-white"
-                                                        : row.sterilizationResult === "pending"
-                                                        ? "bg-scada-water text-white"
-                                                        : "bg-scada-idle text-scada-ink"
-                                                }`}>
-                                                    {row.sterilizationResult.toUpperCase()}
-                                                </span>
-                                            ) : "-"}
+                                            {row.foMin !== null && row.foMin !== undefined && Number.isFinite(Number(row.foMin))
+                                                ? Number(row.foMin).toFixed(1)
+                                                : "-"}
                                         </td>
                                     </tr>
                                 ))}

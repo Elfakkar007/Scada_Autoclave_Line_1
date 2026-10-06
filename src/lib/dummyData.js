@@ -1,3 +1,4 @@
+// HANYA untuk development. Dipakai plc.js bila ENABLE_DUMMY_PLC=true dan NODE_ENV bukan production.
 export function getDummyStatus() {
     return {
         status: "STERIL.",
@@ -5,6 +6,7 @@ export function getDummyStatus() {
         th: 121.0, tm: 121.0, tl: 120.8,
         p1: -1, p2: 0,
         running: true,
+        isDummy: true, // penanda: data simulasi, UI wajib menampilkan banner
         updatedAt: new Date().toISOString(),
     };
 }

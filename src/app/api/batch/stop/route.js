@@ -79,7 +79,7 @@ export async function POST() {
             });
         }
 
-        const { status, sterilizationResult, foMin } = finalizeResult;
+        const { status, foMin, f0Complete } = finalizeResult;
 
         // ── Tulis audit log ────────────────────────────────────────────────────
         try {
@@ -111,8 +111,8 @@ export async function POST() {
             ok: true,
             batchNo:              batch.batch_no,
             status,
-            sterilizationResult,
             foMin:                foMin !== null ? parseFloat(foMin.toFixed(2)) : null,
+            f0Complete,
             plcStopWritten,
             plcStuckRisk,
         });

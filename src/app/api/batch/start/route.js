@@ -4,11 +4,86 @@ import { requireAuth } from "@/lib/auth";
 import { readPlcSnapshot } from "@/lib/plc";
 import { writePlcTags, pulsePlcTag } from "@/lib/plcWrite";
 import { validateRecipe } from "@/lib/recipeValidation";
+import { validateBatchNo } from "@/lib/batchNo";
 
-// ── Konstanta validasi PLC ────────────────────────────────────────────────────
-// Rentang resep dikelola di src/lib/recipeValidation.js.
-// Konstanta berikut hanya untuk cek batas word PLC saat menulis setpoint.
-const VALID_PLC_INT_MAX = 32767; // nilai integer maksimal PLC (word signed)
+// Rentang nilai resep dikelola di src/lib/recipeValidation.js.
+// Aturan format nomor batch ada di src/lib/batchNo.js (dipakai juga oleh klien).
+
+const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
+
+// ── Lock anti-klik ganda (sisi server) ────────────────────────────────────────
+// Seluruh alur START memakan waktu detik (verifikasi setpoint s.d. 4 dtk, polling
+// fase s.d. 10 dtk), dan baris batch_records baru dibuat di AKHIR alur. Tanpa lock,
+// dua request yang datang berdekatan sama-sama lolos semua cek dan sama-sama
+// menulis setpoint + mengirim pulsa START ke PLC.
+//
+// Memakai PostgreSQL advisory lock (bukan variabel di memori) supaya tetap benar
+// walau modul di-load ulang (hot reload dev) atau ada lebih dari satu proses.
+// Lock dipegang di koneksi khusus sampai alur selesai; kalau koneksi putus, lock
+// otomatis lepas.
+const START_LOCK_KEY = 7401001; // angka bebas, harus unik untuk operasi START
+
+/** @returns {Promise<{ release: () => Promise<void> } | null>} null = lock sedang dipegang request lain */
+async function acquireStartLock() {
+    const client = await pool.connect();
+    let acquired = false;
+    try {
+        const r = await client.query("SELECT pg_try_advisory_lock($1) AS ok", [START_LOCK_KEY]);
+        acquired = r.rows[0]?.ok === true;
+    } catch (err) {
+        client.release(true); // buang koneksi
+        throw err;
+    }
+    if (!acquired) {
+        client.release();
+        return null;
+    }
+    return {
+        async release() {
+            let destroy = false;
+            try {
+                await client.query("SELECT pg_advisory_unlock($1)", [START_LOCK_KEY]);
+            } catch (err) {
+                // Kalau unlock gagal, koneksi HARUS dibuang (bukan dikembalikan ke pool),
+                // karena lock menempel di sesi koneksi ini.
+                console.error("[batch/start] Gagal melepas advisory lock, koneksi dibuang:", err.message);
+                destroy = true;
+            }
+            client.release(destroy);
+        },
+    };
+}
+
+// ── Nama otomatis untuk "Run kosongan" ────────────────────────────────────────
+// Format: "KOSONGAN dd.mm.yy" (WIB). Kalau sudah ada hari itu: "-2", "-3", dst.
+function wibDateStamp(date = new Date()) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Jakarta", day: "2-digit", month: "2-digit", year: "2-digit",
+    }).formatToParts(date);
+    const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
+    return `${get("day")}.${get("month")}.${get("year")}`;
+}
+
+async function nextEmptyRunName() {
+    const base = `KOSONGAN ${wibDateStamp()}`;
+    const res = await pool.query(
+        `SELECT lower(btrim(batch_no)) AS k
+         FROM batch_records
+         WHERE lower(btrim(batch_no)) = lower($1)
+            OR lower(btrim(batch_no)) LIKE lower($2)`,
+        [base, `${base}-%`]
+    );
+    const taken = new Set(res.rows.map((r) => r.k));
+    let candidate = base;
+    let n = 2;
+    while (taken.has(candidate.toLowerCase())) {
+        candidate = `${base}-${n}`;
+        n += 1;
+    }
+    return candidate;
+}
+
+const STATUS_LABEL = { running: "sedang berjalan", finished: "selesai", aborted: "dibatalkan" };
 
 /**
  * Polling readPlcSnapshot sampai phase.rawValue masuk ke salah satu target,
@@ -43,28 +118,70 @@ async function pollUntilPhase(targetPhases, timeoutMs = 10_000, intervalMs = 500
 }
 
 export async function POST(request) {
+    let lock = null;
     try {
         // ▼ PROTEKSI SERVER-SIDE: wajib login (admin atau operator boleh)
         const cookieStore = await cookies();
         const { session, errorResponse } = await requireAuth(cookieStore);
         if (errorResponse) return errorResponse;
 
+        // ▼ Lock anti-klik ganda: hanya satu proses START pada satu waktu
+        lock = await acquireStartLock();
+        if (!lock) {
+            return Response.json(
+                {
+                    ok: false,
+                    error: "Permintaan START lain sedang diproses. Tunggu sampai selesai dan jangan menekan tombol berulang.",
+                },
+                { status: 409 }
+            );
+        }
+
+        return await runStart(request, session);
+    } catch (error) {
+        console.error("[POST /api/batch/start]", error);
+        return Response.json({ ok: false, error: GENERIC_SERVER_ERROR }, { status: 500 });
+    } finally {
+        if (lock) await lock.release();
+    }
+}
+
+async function runStart(request, session) {
+    try {
         const body = await request.json();
-        const {
-            batchNo, loadingNo, machineId,
-            productName, productSpec, formulaNo,
-            // "operator" dan "actor" dari body DIABAIKAN — diambil dari session
-        } = body;
+        // "operator" dan "actor" dari body DIABAIKAN — diambil dari session
+        const { machineId, formulaNo } = body;
+        let { batchNo, loadingNo, productName, productSpec } = body;
+
+        // Run kosongan (tes tanpa produk): nomor batch dibuat server, sisanya baku.
+        const emptyRun = body.emptyRun === true;
+        if (emptyRun) {
+            batchNo = null;   // diisi nextEmptyRunName() setelah cek running
+            loadingNo = "N/A";
+            productName = "-";
+            productSpec = "-";
+        }
 
         // Operator diambil dari session (tidak bisa dipalsukan)
         const operator = session.fullName ?? session.username;
 
         // Validasi: semua field identitas wajib tidak boleh kosong
-        const required = { batchNo, loadingNo, machineId, productName, productSpec, formulaNo };
+        const required = emptyRun
+            ? { machineId, formulaNo }
+            : { batchNo, loadingNo, machineId, productName, productSpec, formulaNo };
         for (const [key, val] of Object.entries(required)) {
             if (!val || String(val).trim() === "") {
                 return Response.json({ ok: false, error: `Field ${key} tidak boleh kosong` }, { status: 400 });
             }
+        }
+
+        // Validasi format Batch No (karakter aman untuk URL dan nama file)
+        if (!emptyRun) {
+            const bn = validateBatchNo(batchNo);
+            if (!bn.ok) {
+                return Response.json({ ok: false, error: bn.error }, { status: 400 });
+            }
+            batchNo = bn.value; // sudah di-trim
         }
 
         // Validasi: formulaNo harus ada di tabel recipes
@@ -107,13 +224,13 @@ export async function POST(request) {
 
         // Ambil nilai yang sudah divalidasi (langsung dari DB; Number() aman karena
         // validateRecipe sudah memastikan semua bukan null dan dalam rentang)
-        const ctrlTemp   = Number(recipe.control_temp);
-        const spaceTemp  = Number(recipe.space_temp);
+        const ctrlTemp = Number(recipe.control_temp);
+        const spaceTemp = Number(recipe.space_temp);
         const sterilTemp = Number(recipe.steril_temp);
         const sterilTime = Number(recipe.steril_time_min);
-        const alrmPres   = Number(recipe.alarm_pres);
-        const cool1Temp  = Number(recipe.cooling_temp1);
-        const cool2Temp  = Number(recipe.cooling_temp2);
+        const alrmPres = Number(recipe.alarm_pres);
+        const cool1Temp = Number(recipe.cooling_temp1);
+        const cool2Temp = Number(recipe.cooling_temp2);
 
         // Validasi: cek apakah ada batch yang sedang running
         const runningCheck = await pool.query(
@@ -124,6 +241,44 @@ export async function POST(request) {
                 { ok: false, error: "Masih ada batch yang sedang berjalan" },
                 { status: 409 }
             );
+        }
+
+        // ── Nomor batch harus unik — DICEK SEBELUM menyentuh PLC ────────────────
+        // Baris batch_records baru dibuat SETELAH PLC terbukti mulai. Kalau duplikat
+        // baru ketahuan saat INSERT, mesin sudah jalan tanpa catatan. Karena itu cek
+        // di sini. Unique index (lower(btrim(batch_no))) di DB hanya jaring pengaman.
+        // Lock START sedang dipegang, jadi tidak ada request START lain yang menyela.
+        if (emptyRun) {
+            batchNo = await nextEmptyRunName();
+        } else {
+            const dup = await pool.query(
+                `SELECT status, run_begin
+                 FROM batch_records
+                 WHERE lower(btrim(batch_no)) = lower($1)
+                 LIMIT 1`,
+                [batchNo]
+            );
+            if (dup.rows.length > 0) {
+                const d = dup.rows[0];
+                const statusLabel = STATUS_LABEL[d.status] ?? d.status;
+                const when = d.run_begin
+                    ? ` pada ${new Date(d.run_begin).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`
+                    : "";
+                let hint = d.status === "aborted"
+                    ? ` Batch yang dibatalkan tetap memakai nomornya; tambahkan akhiran, mis. "${batchNo}-R1".`
+                    : " Gunakan nomor batch lain.";
+                if (/^kosongan/i.test(batchNo)) {
+                    hint += ' Untuk tes tanpa produk, centang "Run kosongan".';
+                }
+                return Response.json(
+                    {
+                        ok: false,
+                        code: "batch_no_duplicate",
+                        error: `Batch No "${batchNo}" sudah pernah dipakai (status: ${statusLabel}${when}).${hint}`,
+                    },
+                    { status: 409 }
+                );
+            }
         }
 
         // ── Baca snapshot PLC ──────────────────────────────────────────────────
@@ -188,7 +343,8 @@ export async function POST(request) {
         const opnRear = door?.opnRear ?? false;
         const clsFrnt = door?.clsFrnt ?? false;
         const clsRear = door?.clsRear ?? false;
-        const sealOk  = door?.seal    ?? false;
+        // seal = tag DOOR_SEAL (Q0.5, status segel AKTUAL / syarat Start), bukan M1.2 (permintaan seal)
+        const sealOk = door?.seal ?? false;
 
         if (opnFrnt || opnRear) {
             const pintus = [
@@ -246,16 +402,15 @@ export async function POST(request) {
 
         // ── Tulis setpoint resep ke PLC ───────────────────────────────────────
         // Gunakan nilai Number() hasil validasi di atas.
-        // ALRM_PRES: scaling tekanan belum jelas — ditulis apa adanya sampai ada konfirmasi.
-        // TODO: validasi skala ALRM_PRES ke gauge mesin (kemungkinan perlu x10 atau x100).
+        // ALRM_PRES dalam kPa, TIDAK di-scale (ditulis apa adanya).
         const setpointPairs = [
-            { tag: "CTRL_TEMP",     value: Math.round(ctrlTemp  * 10) },
-            { tag: "TEMP_SPACE",    value: Math.round(spaceTemp  * 10) },
-            { tag: "STER_SET",      value: Math.round(sterilTemp * 10) },
+            { tag: "CTRL_TEMP", value: Math.round(ctrlTemp * 10) },
+            { tag: "TEMP_SPACE", value: Math.round(spaceTemp * 10) },
+            { tag: "STER_SET", value: Math.round(sterilTemp * 10) },
             { tag: "STER_SET_TIME", value: sterilTime },     // TIDAK dikali 10, satuan menit (terkonfirmasi)
-            { tag: "ALRM_PRES",     value: alrmPres },       // dalam kPa, ditulis apa adanya (terkonfirmasi)
-            { tag: "COOL1_TEMP",    value: Math.round(cool1Temp * 10) },
-            { tag: "COOL2_TEMP",    value: Math.round(cool2Temp * 10) },
+            { tag: "ALRM_PRES", value: alrmPres },       // dalam kPa, ditulis apa adanya (terkonfirmasi)
+            { tag: "COOL1_TEMP", value: Math.round(cool1Temp * 10) },
+            { tag: "COOL2_TEMP", value: Math.round(cool2Temp * 10) },
         ];
 
         const writeSetpointResult = await writePlcTags(setpointPairs);
@@ -276,19 +431,19 @@ export async function POST(request) {
         // Berhenti begitu semua pasangan cocok. Kalau sampai batas waktu masih ada
         // yang tidak cocok, gagal dengan audit_log + response 502.
         {
-            const VERIFY_TIMEOUT_MS  = 4000;
+            const VERIFY_TIMEOUT_MS = 4000;
             const VERIFY_INTERVAL_MS = 500;
             const verifyDeadline = Date.now() + VERIFY_TIMEOUT_MS;
 
             // Pasangan yang perlu diverifikasi (alrmPres dibandingkan persis === seperti sterSetTime)
             const buildVerifyPairs = (sp) => [
-                { tag: "CTRL_TEMP",     expected: ctrlTemp,   got: sp?.ctrlTemp,    exact: false },
-                { tag: "TEMP_SPACE",    expected: spaceTemp,  got: sp?.tempSpace,   exact: false },
-                { tag: "STER_SET",      expected: sterilTemp, got: sp?.sterSet,     exact: false },
-                { tag: "STER_SET_TIME", expected: sterilTime, got: sp?.sterSetTime, exact: true  },
-                { tag: "COOL1_TEMP",    expected: cool1Temp,  got: sp?.cool1Temp,   exact: false },
-                { tag: "COOL2_TEMP",    expected: cool2Temp,  got: sp?.cool2Temp,   exact: false },
-                { tag: "ALRM_PRES",     expected: alrmPres,   got: sp?.alrmPres,    exact: true  }, // kPa, perbandingan ===
+                { tag: "CTRL_TEMP", expected: ctrlTemp, got: sp?.ctrlTemp, exact: false },
+                { tag: "TEMP_SPACE", expected: spaceTemp, got: sp?.tempSpace, exact: false },
+                { tag: "STER_SET", expected: sterilTemp, got: sp?.sterSet, exact: false },
+                { tag: "STER_SET_TIME", expected: sterilTime, got: sp?.sterSetTime, exact: true },
+                { tag: "COOL1_TEMP", expected: cool1Temp, got: sp?.cool1Temp, exact: false },
+                { tag: "COOL2_TEMP", expected: cool2Temp, got: sp?.cool2Temp, exact: false },
+                { tag: "ALRM_PRES", expected: alrmPres, got: sp?.alrmPres, exact: true }, // kPa, perbandingan ===
             ];
 
             const hasMismatch = (pairs) => pairs.filter(({ expected, got, exact }) => {
@@ -297,7 +452,7 @@ export async function POST(request) {
             });
 
             let lastValidSp = null;
-            let mismatch    = null;
+            let mismatch = null;
 
             while (Date.now() < verifyDeadline) {
                 let snapVerify;
@@ -319,7 +474,7 @@ export async function POST(request) {
 
                 lastValidSp = snapVerify.setpoints;
                 const pairs = buildVerifyPairs(lastValidSp);
-                mismatch    = hasMismatch(pairs);
+                mismatch = hasMismatch(pairs);
 
                 if (mismatch.length === 0) {
                     // Semua cocok — lanjut ke START
@@ -341,7 +496,7 @@ export async function POST(request) {
                 );
             }
 
-            const finalPairs    = buildVerifyPairs(lastValidSp);
+            const finalPairs = buildVerifyPairs(lastValidSp);
             const finalMismatch = hasMismatch(finalPairs);
 
             if (finalMismatch.length > 0) {
@@ -394,7 +549,7 @@ export async function POST(request) {
 
         if (!reached) {
             const lastPhaseLabel = lastSnapshot?.phase?.label ?? "tidak diketahui";
-            const lastRaw        = lastSnapshot?.phase?.rawValue ?? "N/A";
+            const lastRaw = lastSnapshot?.phase?.rawValue ?? "N/A";
 
             // Pesan error: sertakan peringatan stuckRisk kalau tag START mungkin tertahan
             const stuckWarning = pulse.stuckRisk
@@ -459,14 +614,20 @@ export async function POST(request) {
             newBatch = insertResult.rows[0];
         } catch (dbErr) {
             // PLC sudah mulai jalan, tapi pencatatan database gagal — ini kritis.
+            // 23505 = pelanggaran unique (nomor batch bentrok, atau one_running_batch).
+            // Seharusnya tidak terjadi karena sudah dicek di awal + lock; ini jaring pengaman.
             console.error(
                 "[batch/start] KRITIS: PLC sudah mulai berjalan tapi INSERT batch_records gagal!",
-                dbErr.message
+                dbErr.code, dbErr.constraint ?? "", dbErr.message
             );
+            const isUniqueViolation = dbErr?.code === "23505";
             return Response.json(
                 {
                     ok: false,
-                    error: "PLC sudah mulai berjalan, tapi batch gagal dicatat di database. Segera catat secara manual dan hubungi admin.",
+                    critical: true,
+                    error: isUniqueViolation
+                        ? "PLC sudah mulai berjalan, tapi nomor batch bentrok dengan catatan lain sehingga batch tidak tersimpan. Segera catat secara manual dan hubungi admin."
+                        : "PLC sudah mulai berjalan, tapi batch gagal dicatat di database. Segera catat secara manual dan hubungi admin.",
                 },
                 { status: 500 }
             );
@@ -484,9 +645,9 @@ export async function POST(request) {
                     "start_batch",
                     "batch",
                     newBatch.batch_no,
-                    JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName }),
+                    JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName, emptyRun }),
                     "web",
-                    `Batch ${newBatch.batch_no} dimulai oleh ${session.username} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
+                    `Batch ${newBatch.batch_no}${emptyRun ? " (run kosongan)" : ""} dimulai oleh ${session.username} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
                 ]
             );
         } catch (auditErr) {
@@ -497,22 +658,23 @@ export async function POST(request) {
         return Response.json(
             {
                 ok: true,
-                batchNo:     newBatch.batch_no,
-                operator:    newBatch.operator,
-                machineId:   newBatch.machine_id,
+                batchNo: newBatch.batch_no,
+                operator: newBatch.operator,
+                machineId: newBatch.machine_id,
                 productName: newBatch.product_name,
-                runBegin:    newBatch.run_begin,
+                runBegin: newBatch.run_begin,
+                emptyRun,
                 // Peringatan kalau pulsa START tidak sempurna meski fase sudah tercapai
                 ...(pulse.ok ? {} : {
-                    warning:   "START mungkin tertahan aktif di PLC (pulsa tidak sempurna). " +
-                               "Pantau mesin dan verifikasi status tag START di KEPServerEX.",
+                    warning: "START mungkin tertahan aktif di PLC (pulsa tidak sempurna). " +
+                        "Pantau mesin dan verifikasi status tag START di KEPServerEX.",
                     stuckRisk: pulse.stuckRisk,
                 }),
             },
             { status: 201 }
         );
     } catch (error) {
-        console.error("[POST /api/batch/start]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        console.error("[POST /api/batch/start] runStart", error);
+        return Response.json({ ok: false, error: GENERIC_SERVER_ERROR }, { status: 500 });
     }
 }

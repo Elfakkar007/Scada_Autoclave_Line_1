@@ -20,13 +20,13 @@ const DEFAULT_MATERIAL = "Soft Bottle";
 // Ini keputusan sementara — evaluasi ulang setelah ladder logic fase 6 dikonfirmasi.
 const PHASE_CODE_TO_TIMELINE = {
   idle_door_open: "PREPARE",
-  idle_ready:     "PREPARE",
-  filling:        "FILLING",
-  heating:        "HEATING",
-  steril:         "STERIL.",
-  cooling:        "COOLING",
-  drain:          "COOLING", // sementara gabung ke COOLING (timeline tidak punya kotak DRAIN)
-  finished:       "END",
+  idle_ready: "PREPARE",
+  filling: "FILLING",
+  heating: "HEATING",
+  steril: "STERIL.",
+  cooling: "COOLING",
+  drain: "COOLING", // sementara gabung ke COOLING (timeline tidak punya kotak DRAIN)
+  finished: "END",
   // 'unknown': tidak memetakan ke kotak manapun
 };
 
@@ -161,12 +161,13 @@ function Plate({ x, y, w, h = 34, label, value, unit }) {
   );
 }
 
-function PidDiagram({ valves, doors, p1, p2, level, conductivity }) {
+function PidDiagram({ valves, doors, p1, p2, level, conductivity, noData = false }) {
   // valves berasal dari data.valves (tag asli PLC). exhaust dipetakan ke
   // steamExhs (tag STEAM_EXHS) — itu tag yang sama dengan label "EXHAUST"
   // di diagram ini. "drain" bawah & "air" (compressed air) TIDAK dipetakan
   // ke tag apapun karena belum ada tag PLC yang confirmed untuk itu —
   // tetap unknown, sama seperti SOFT WATER, biar diagram tetap jujur.
+  // noData = PLC tidak terbaca: semua valve ditampilkan "-" (tidak diketahui), bukan CLOSED.
   const v = {
     steam1: valves?.steam1 ?? false,
     steam2: valves?.steam2 ?? false,
@@ -261,13 +262,13 @@ function PidDiagram({ valves, doors, p1, p2, level, conductivity }) {
         </text>
 
         {/* ── Steam ── */}
-        <Valve x={100} y={40} open={v.steam1} tone={STEAM} label="STEAM 1" lx={30} ly={18} />
-        <Valve x={100} y={100} open={v.steam2} tone={STEAM} label="STEAM 2" lx={30} ly={78} />
-        <Valve x={100} y={240} open={v.waterDrain} tone={WATER} label="WATER DRAIN" lx={30} ly={218} />
+        <Valve x={100} y={40} open={v.steam1} unknown={noData} tone={STEAM} label="STEAM 1" lx={30} ly={18} />
+        <Valve x={100} y={100} open={v.steam2} unknown={noData} tone={STEAM} label="STEAM 2" lx={30} ly={78} />
+        <Valve x={100} y={240} open={v.waterDrain} unknown={noData} tone={WATER} label="WATER DRAIN" lx={30} ly={218} />
 
         {/* ── Cooling ── */}
-        <Valve x={100} y={380} open={v.cool1} tone={WATER} label="COOLING WATER 1" lx={30} ly={358} />
-        <Valve x={100} y={440} open={v.cool2} tone={WATER} label="COOLING WATER 2" lx={30} ly={418} />
+        <Valve x={100} y={380} open={v.cool1} unknown={noData} tone={WATER} label="COOLING WATER 1" lx={30} ly={358} />
+        <Valve x={100} y={440} open={v.cool2} unknown={noData} tone={WATER} label="COOLING WATER 2" lx={30} ly={418} />
 
         {/* ── Drain bawah — belum ada tag PLC confirmed, status unknown ── */}
         <Valve x={360} y={430} vertical unknown label="DRAIN" lx={376} ly={426} />
@@ -276,7 +277,7 @@ function PidDiagram({ valves, doors, p1, p2, level, conductivity }) {
         <Valve x={740} y={60} unknown label="COMPRESSED AIR" lx={870} ly={38} anchor="end" />
 
         {/* ── Exhaust & soft water ── */}
-        <Valve x={760} y={300} open={v.exhaust} tone={INK} label="EXHAUST" lx={870} ly={278} anchor="end" />
+        <Valve x={760} y={300} open={v.exhaust} unknown={noData} tone={INK} label="EXHAUST" lx={870} ly={278} anchor="end" />
         {/* SOFT WATER: belum ada tag PLC, status valve tidak diketahui */}
         <Valve x={760} y={440} unknown label="SOFT WATER" lx={870} ly={418} anchor="end" />
       </svg>
@@ -286,17 +287,23 @@ function PidDiagram({ valves, doors, p1, p2, level, conductivity }) {
 
 /* ─────────────── Komponen UI (HTML) ─────────────── */
 
-function Gauge({ label, value }) {
+function Gauge({ label, value, noData = false }) {
   return (
     <div className="border border-[#B8C0BE] rounded-[3px] bg-white">
       <div className="px-2 py-1 border-b border-[#D8DEDC] text-xs text-[#5C6B6A]">
         {label}
       </div>
       <div className="m-1 px-2 py-1.5 bg-[#EEF1F0] rounded-[2px] shadow-[inset_0_1px_2px_rgba(30,42,46,0.15)] flex items-baseline justify-end gap-1">
-        <span className="text-xl font-medium text-[#1E2A2E]" style={MONO}>
-          {fmt(value)}
-        </span>
-        <span className="text-[10px] text-[#5C6B6A]">°C</span>
+        {noData ? (
+          <span className="text-[11px] font-semibold text-[#A23B2E] py-[5px]">NO DATA</span>
+        ) : (
+          <>
+            <span className="text-xl font-medium text-[#1E2A2E]" style={MONO}>
+              {fmt(value)}
+            </span>
+            <span className="text-[10px] text-[#5C6B6A]">°C</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -304,6 +311,7 @@ function Gauge({ label, value }) {
 
 function DoorRow({ label, state }) {
   const open = state === "open";
+  const noData = state === "nodata";
   return (
     <div className="flex items-center justify-between py-2 border-b border-[#D8DEDC] last:border-b-0">
       <span className="text-sm">{label}</span>
@@ -315,7 +323,7 @@ function DoorRow({ label, state }) {
           className={`w-2.5 h-2.5 rounded-full ${open ? "bg-[#4F7A52]" : "border border-[#B8C0BE]"
             }`}
         />
-        {open ? "OPEN" : "CLOSED"}
+        {noData ? "NO DATA" : open ? "OPEN" : "CLOSED"}
       </span>
     </div>
   );
@@ -367,6 +375,9 @@ function PhaseTimeline({ activePhase }) {
 export default function Home() {
   const [data, setData] = useState(null);
   const [stopping, setStopping] = useState(false);
+  // true bila /api/status sendiri gagal dijangkau (server web mati / jaringan putus).
+  // Tanpa ini, dashboard akan terus menampilkan angka terakhir yang basi.
+  const [fetchFailed, setFetchFailed] = useState(false);
 
   // State untuk tombol Reset Mesin
   const [resetDialog, setResetDialog] = useState(false);  // dialog konfirmasi tampil?
@@ -374,9 +385,15 @@ export default function Home() {
   const [resetMsg, setResetMsg] = useState(null);          // { ok, text } atau null
 
   const fetchData = useCallback(async () => {
-    const res = await fetch("/api/status");
-    const json = await res.json();
-    setData(json);
+    try {
+      const res = await fetch("/api/status");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setData(json);
+      setFetchFailed(false);
+    } catch {
+      setFetchFailed(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -424,10 +441,14 @@ export default function Home() {
   if (!data) {
     return (
       <main className="min-h-screen bg-[#EEF1F0] text-[#1E2A2E] p-8">
-        Memuat data...
+        {fetchFailed ? "NO DATA: server web tidak merespons." : "Memuat data..."}
       </main>
     );
   }
+
+  // noData: PLC tidak terbaca ATAU server web tidak terjangkau.
+  // Dalam kondisi ini tidak ada angka/status yang boleh tampil selain "NO DATA".
+  const noData = fetchFailed || data.plcOk === false;
 
   // phase kini object {code, label, confirmed, rawValue} dari /api/status.
   // Kalau masih pakai dummy lama (string), code di bawah tetap aman karena
@@ -436,10 +457,10 @@ export default function Home() {
 
   // Tentukan kotak mana di timeline yang perlu di-highlight.
   // code 'unknown' atau null -> tidak highlight kotak manapun.
-  const activePhase = phaseObj ? (PHASE_CODE_TO_TIMELINE[phaseObj.code] ?? null) : null;
+  const activePhase = !noData && phaseObj ? (PHASE_CODE_TO_TIMELINE[phaseObj.code] ?? null) : null;
 
-  const isRunning = data.runLamp ?? data.running; // utamakan status PLC asli (RUN_LAMP), fallback ke status DB kalau field ini belum ada (mis. saat masih dummy)
-  const statusLabel = phaseObj ? phaseObj.label : (data.phase ?? "--");
+  const isRunning = noData ? null : (data.runLamp ?? data.running); // utamakan status PLC asli (RUN_LAMP), fallback ke status DB kalau field ini belum ada (mis. saat masih dummy)
+  const statusLabel = noData ? "NO DATA" : (phaseObj ? phaseObj.label : (data.phase ?? "--"));
   const phaseConfirmed = phaseObj ? phaseObj.confirmed : true; // kalau data lama (string), anggap sudah ok
 
   const sensors = [
@@ -457,12 +478,34 @@ export default function Home() {
           className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1.5"
         >
           {sensors.map(([label, value]) => (
-            <Gauge key={label} label={label} value={value} />
+            <Gauge key={label} label={label} value={value} noData={noData} />
           ))}
         </section>
 
+        {/* ── Banner koneksi: PLC putus / server tidak terjangkau / data simulasi (dev) ── */}
+        {noData && (
+          <div
+            role="alert"
+            className="bg-white border-l-[3px] border-[#A23B2E] px-3 py-2 text-sm text-[#1E2A2E]"
+          >
+            <span className="font-semibold">
+              {fetchFailed ? "Server web tidak merespons." : "PLC tidak terhubung."}
+            </span>{" "}
+            Data sensor tidak ditampilkan. Jangan mengandalkan layar ini sampai koneksi pulih.
+          </div>
+        )}
+        {!noData && data.isDummy && (
+          <div
+            role="alert"
+            className="bg-white border-l-[3px] border-[#B9762F] px-3 py-2 text-sm text-[#1E2A2E]"
+          >
+            <span className="font-semibold">DATA SIMULASI (mode development).</span>{" "}
+            Angka di layar ini bukan dari PLC.
+          </div>
+        )}
+
         {/* ── Strip peringatan interlock dan mode (muncul hanya bila kondisi aktif) ── */}
-        {data.plcOk && (
+        {!noData && data.plcOk && (
           <div className="flex flex-col gap-1">
             {/* Bypass interlock aktif */}
             {data.door?.bypass && (
@@ -502,10 +545,11 @@ export default function Home() {
                 front: data.door?.opnFrnt ? "open" : "closed",
                 rear: data.door?.opnRear ? "open" : "closed",
               }}
-              p1={data.p1}
-              p2={data.p2}
-              level={data.level}
-              conductivity={data.conductivity}
+              p1={noData ? null : data.p1}
+              p2={noData ? null : data.p2}
+              level={noData ? null : data.level}
+              conductivity={noData ? null : data.conductivity}
+              noData={noData}
             />
           </section>
 
@@ -519,8 +563,8 @@ export default function Home() {
 
             <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-2">
               <div className="flex items-center gap-1.5 text-xs text-[#5C6B6A] mb-1.5 pb-1.5 border-b border-[#D8DEDC]">
-                <span className={`w-1.5 h-1.5 rounded-full ${data.plcOk === false ? "bg-[#A23B2E]" : "bg-[#4F7A52]"}`} />
-                Comm: {data.plcOk === false ? "Abnormal" : "Normal"}
+                <span className={`w-1.5 h-1.5 rounded-full ${noData ? "bg-[#A23B2E]" : "bg-[#4F7A52]"}`} />
+                Comm: {noData ? "Abnormal" : "Normal"}
               </div>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[11px] text-[#5C6B6A]">Status proses</span>
@@ -554,10 +598,10 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-1.5 text-xs mb-2">
                 <span
-                  className={`w-2 h-2 rounded-full ${isRunning ? "bg-[#4F7A52]" : "bg-[#A23B2E]"
+                  className={`w-2 h-2 rounded-full ${isRunning === null ? "border border-[#B8C0BE]" : isRunning ? "bg-[#4F7A52]" : "bg-[#A23B2E]"
                     }`}
                 />
-                {isRunning ? "Mesin berjalan" : "Mesin berhenti"}
+                {isRunning === null ? "Status mesin tidak diketahui" : isRunning ? "Mesin berjalan" : "Mesin berhenti"}
               </div>
               {data.running && data.batchNo && (
                 <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs border-t border-[#D8DEDC] pt-2">
@@ -590,22 +634,20 @@ export default function Home() {
             </section>
 
             <section className="bg-white border border-[#D8DEDC] rounded-[4px] px-2 py-1">
-              <DoorRow label="Front door" state={data.door?.opnFrnt ? "open" : "closed"} />
-              <DoorRow label="Rear door" state={data.door?.opnRear ? "open" : "closed"} />
+              <DoorRow label="Front door" state={noData ? "nodata" : data.door?.opnFrnt ? "open" : "closed"} />
+              <DoorRow label="Rear door" state={noData ? "nodata" : data.door?.opnRear ? "open" : "closed"} />
               {/* Bypass interlock (M6.0): merah saat aktif, outline abu saat tidak aktif */}
               <div className="flex items-center justify-between py-2 border-t border-[#D8DEDC]">
                 <span className="text-sm">Bypass interlock</span>
                 <span
-                  className={`flex items-center gap-2 text-xs font-semibold ${
-                    data.door?.bypass ? "text-[#A23B2E]" : "text-[#5C6B6A]"
-                  }`}
+                  className={`flex items-center gap-2 text-xs font-semibold ${!noData && data.door?.bypass ? "text-[#A23B2E]" : "text-[#5C6B6A]"
+                    }`}
                 >
                   <span
-                    className={`w-2.5 h-2.5 rounded-full ${
-                      data.door?.bypass ? "bg-[#A23B2E]" : "border border-[#B8C0BE]"
-                    }`}
+                    className={`w-2.5 h-2.5 rounded-full ${!noData && data.door?.bypass ? "bg-[#A23B2E]" : "border border-[#B8C0BE]"
+                      }`}
                   />
-                  {data.door?.bypass ? "AKTIF" : "TIDAK AKTIF"}
+                  {noData ? "NO DATA" : data.door?.bypass ? "AKTIF" : "TIDAK AKTIF"}
                 </span>
               </div>
             </section>
@@ -634,7 +676,7 @@ export default function Home() {
               >
                 <span className="font-semibold">DOOR</span>
                 <span className="text-[11px]">
-                  Read only: {data.door?.bypass ? "Bypass" : data.door?.seal ? "Sealed" : "Released"}
+                  Read only: {noData ? "NO DATA" : data.door?.bypass ? "Bypass" : data.door?.seal ? "Sealed" : "Released"}
                 </span>
               </div>
 
@@ -647,7 +689,7 @@ export default function Home() {
               </button>
 
               {/* ── Tombol Reset Mesin: hanya tampil saat fase=6 dan tidak ada batch running ── */}
-              {data.plcOk && data.phase?.rawValue === 6 && !data.running && (
+              {!noData && data.plcOk && data.phase?.rawValue === 6 && !data.running && (
                 <div className="pt-1 border-t border-[#D8DEDC]">
                   {/* Dialog konfirmasi inline */}
                   {resetDialog ? (
@@ -715,7 +757,7 @@ export default function Home() {
             <span>
               Update terakhir{" "}
               <span className="text-[#1E2A2E] ml-1" style={MONO}>
-                {new Date(data.updatedAt).toLocaleTimeString("id-ID")}
+                {noData ? "--:--:--" : new Date(data.updatedAt).toLocaleTimeString("id-ID")}
               </span>
             </span>
           </div>
