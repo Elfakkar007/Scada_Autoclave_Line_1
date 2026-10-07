@@ -1,14 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
     const router = useRouter();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-    const [error, setError]       = useState(null);
-    const [loading, setLoading]   = useState(false);
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
+    // Daftar user aktif untuk dropdown: null = belum dimuat, [] = kosong/gagal
+    const [users, setUsers] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetch("/api/auth/users")
+            .then((r) => r.json())
+            .then((json) => {
+                if (cancelled) return;
+                if (json.ok === false) throw new Error("gagal");
+                setUsers(json.users ?? []);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setUsers([]);
+                setError("Gagal memuat daftar user. Muat ulang halaman.");
+            });
+        return () => { cancelled = true; };
+    }, []);
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -18,10 +37,10 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            const res  = await fetch("/api/auth/login", {
-                method:  "POST",
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ username: username.trim(), password }),
+                body: JSON.stringify({ username: username.trim(), password }),
             });
             const json = await res.json();
 
@@ -58,15 +77,21 @@ export default function LoginPage() {
                             <label className="block text-xs text-slate-400 uppercase mb-1.5">
                                 Username
                             </label>
-                            <input
-                                type="text"
-                                autoComplete="username"
+                            <select
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                disabled={loading}
-                                className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
-                                placeholder="Masukkan username"
-                            />
+                                disabled={loading || users === null}
+                                className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
+                            >
+                                <option value="">
+                                    {users === null ? "Memuat daftar user…" : "Pilih username"}
+                                </option>
+                                {(users ?? []).map((u) => (
+                                    <option key={u.username} value={u.username}>
+                                        {u.fullName} ({u.username})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         {/* Password */}

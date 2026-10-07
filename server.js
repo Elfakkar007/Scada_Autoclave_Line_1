@@ -43,6 +43,19 @@ app.prepare().then(async () => {
 
     createServer(async (req, res) => {
         try {
+            // Item 7: tentukan IP klien di SINI, dari alamat koneksi sebenarnya, lalu
+            // teruskan lewat header x-client-ip. Header dari klien SELALU ditimpa,
+            // jadi tidak bisa dipalsukan. Dipakai untuk audit_log dan batas login.
+            // Bila di depan server ada reverse proxy tepercaya, set TRUST_PROXY=true
+            // agar IP diambil dari entri pertama x-forwarded-for.
+            let clientIp = req.socket?.remoteAddress || "unknown";
+            if (process.env.TRUST_PROXY === "true") {
+                const xff = req.headers["x-forwarded-for"];
+                const first = typeof xff === "string" ? xff.split(",")[0].trim() : "";
+                if (first) clientIp = first;
+            }
+            req.headers["x-client-ip"] = clientIp.replace(/^::ffff:/, "");
+
             await handle(req, res);
         } catch (err) {
             console.error("[server] Error menangani request:", err);

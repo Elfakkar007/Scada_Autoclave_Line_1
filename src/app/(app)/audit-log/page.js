@@ -89,17 +89,17 @@ export default function AuditLogPage() {
             .catch(() => router.replace("/"));
     }, [router]);
 
-    const [rows, setRows]         = useState([]);
-    const [total, setTotal]       = useState(0);
-    const [loading, setLoading]   = useState(true);
-    const [search, setSearch]     = useState("");
-    const [action, setAction]     = useState("");
+    const [rows, setRows] = useState([]);
+    const [total, setTotal] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [action, setAction] = useState("");
     const [entityType, setEntityType] = useState("");
     const [fromDate, setFromDate] = useState("");
-    const [toDate, setToDate]     = useState("");
-    const [offset, setOffset]     = useState(0);
-    const [error, setError]       = useState(null);
-    const [filters, setFilters]   = useState({ actions: [], entityTypes: [] });
+    const [toDate, setToDate] = useState("");
+    const [offset, setOffset] = useState(0);
+    const [error, setError] = useState(null);
+    const [filters, setFilters] = useState({ actions: [], entityTypes: [] });
     const [detailRow, setDetailRow] = useState(null);
     const [exportErr, setExportErr] = useState(null);
     const [exporting, setExporting] = useState(false);
@@ -108,7 +108,7 @@ export default function AuditLogPage() {
         fetch("/api/audit-log/filters")
             .then((r) => r.json())
             .then((data) => setFilters(data))
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     const fetchData = useCallback(async (searchVal, actionVal, entityTypeVal, from, to, offsetVal) => {
@@ -116,13 +116,13 @@ export default function AuditLogPage() {
         setError(null);
         try {
             const params = new URLSearchParams({ limit: String(LIMIT), offset: String(offsetVal) });
-            if (searchVal.trim())     params.set("search",     searchVal.trim());
-            if (actionVal.trim())     params.set("action",     actionVal.trim());
+            if (searchVal.trim()) params.set("search", searchVal.trim());
+            if (actionVal.trim()) params.set("action", actionVal.trim());
             if (entityTypeVal.trim()) params.set("entityType", entityTypeVal.trim());
-            if (from.trim())          params.set("from",       from.trim());
-            if (to.trim())            params.set("to",         to.trim());
+            if (from.trim()) params.set("from", from.trim());
+            if (to.trim()) params.set("to", to.trim());
 
-            const res  = await fetch(`/api/audit-log?${params}`);
+            const res = await fetch(`/api/audit-log?${params}`);
             const json = await res.json();
             if (!res.ok) throw new Error(json.error ?? "Gagal memuat data");
             setRows(json.data ?? []);
@@ -156,11 +156,11 @@ export default function AuditLogPage() {
     // ── Fungsi export ─────────────────────────────────────────────────────────
     function buildExportParams(fmt) {
         const p = new URLSearchParams({ format: fmt });
-        if (search.trim())     p.set("search",     search.trim());
-        if (action.trim())     p.set("action",     action.trim());
+        if (search.trim()) p.set("search", search.trim());
+        if (action.trim()) p.set("action", action.trim());
         if (entityType.trim()) p.set("entityType", entityType.trim());
-        if (fromDate.trim())   p.set("from",       fromDate.trim());
-        if (toDate.trim())     p.set("to",         toDate.trim());
+        if (fromDate.trim()) p.set("from", fromDate.trim());
+        if (toDate.trim()) p.set("to", toDate.trim());
         return p.toString();
     }
 
@@ -174,9 +174,9 @@ export default function AuditLogPage() {
                 throw new Error(json.error ?? `Gagal export (HTTP ${res.status})`);
             }
             const blob = await res.blob();
-            const url  = URL.createObjectURL(blob);
-            const a    = document.createElement("a");
-            a.href     = url;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
             a.download = `audit-log_${fromDate || "semua"}_${toDate || "semua"}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
@@ -189,22 +189,24 @@ export default function AuditLogPage() {
 
     function handlePrint() {
         const url = `/print/audit-log?${buildExportParams("json")}`;
-        window.open(url, "_blank", "noopener,noreferrer");
+        // Tanpa "noopener": halaman cetak (satu origin, tepercaya) perlu bisa menutup dirinya
+        // sendiri dan memfokuskan kembali tab ini lewat tombol Kembali.
+        window.open(url, "_blank");
     }
 
-    const totalPages  = Math.ceil(total / LIMIT);
+    const totalPages = Math.ceil(total / LIMIT);
     const currentPage = Math.floor(offset / LIMIT) + 1;
-    const hasPrev     = offset > 0;
-    const hasNext     = offset + LIMIT < total;
+    const hasPrev = offset > 0;
+    const hasNext = offset + LIMIT < total;
 
     const ACTION_COLORS = {
-        create:      "bg-scada-run text-white",
-        update:      "bg-scada-water text-white",
-        delete:      "bg-scada-stop text-white",
-        login:       "bg-scada-bg text-scada-ink border border-scada-idle",
-        logout:      "bg-scada-idle text-scada-ink",
+        create: "bg-scada-run text-white",
+        update: "bg-scada-water text-white",
+        delete: "bg-scada-stop text-white",
+        login: "bg-scada-bg text-scada-ink border border-scada-idle",
+        logout: "bg-scada-idle text-scada-ink",
         start_batch: "bg-scada-steam text-white",
-        stop_batch:  "bg-scada-stop text-white",
+        stop_batch: "bg-scada-stop text-white",
     };
 
     const thClass = "px-3 py-3 text-left text-xs text-scada-muted uppercase tracking-wider font-semibold whitespace-nowrap";
@@ -267,7 +269,7 @@ export default function AuditLogPage() {
             <div className="flex flex-col sm:flex-row gap-3 mb-5">
                 <input
                     type="text"
-                    placeholder="Cari actor / entity / deskripsi…"
+                    placeholder="Cari nama / username / entity / deskripsi…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="flex-1 bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink placeholder-scada-muted focus:outline-none focus:border-scada-water transition-colors"
@@ -326,7 +328,14 @@ export default function AuditLogPage() {
                                 {rows.map((row) => (
                                     <tr key={row.id} className="hover:bg-scada-bg transition-colors">
                                         <td className={tdClass + " whitespace-nowrap font-mono text-xs"}>{fmt(row.eventTime)}</td>
-                                        <td className={tdClass + " font-semibold"}>{row.actor ?? "-"}</td>
+                                        <td className={tdClass}>
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className="font-semibold">{row.actorName ?? row.actor ?? "-"}</span>
+                                                {row.actorName && row.actor && (
+                                                    <span className="text-xs text-scada-muted font-mono">{row.actor}</span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className={tdClass}><Badge value={row.actorRole} /></td>
                                         <td className={tdClass}>
                                             <Badge value={row.action} colorClass={ACTION_COLORS[row.action] ?? "bg-scada-bg text-scada-ink border border-scada-idle"} />

@@ -13,19 +13,20 @@ function toWIB(dateVal) {
 
 // Bangun query + values dari semua filter
 function buildQuery(searchParams) {
-    const search     = searchParams.get("search")     ?? "";
-    const action     = searchParams.get("action")     ?? "";
+    const search = searchParams.get("search") ?? "";
+    const action = searchParams.get("action") ?? "";
     const entityType = searchParams.get("entityType") ?? "";
-    const from       = searchParams.get("from")       ?? "";
-    const to         = searchParams.get("to")         ?? "";
+    const from = searchParams.get("from") ?? "";
+    const to = searchParams.get("to") ?? "";
 
     const conditions = [];
-    const values     = [];
+    const values = [];
 
     if (search.trim()) {
         values.push(`%${search.trim()}%`);
         conditions.push(
             `(actor ILIKE $${values.length}
+              OR actor_name ILIKE $${values.length}
               OR entity_id ILIKE $${values.length}
               OR description ILIKE $${values.length})`
         );
@@ -73,7 +74,7 @@ export async function GET(request) {
         }
 
         const dataRes = await pool.query(
-            `SELECT event_time, actor, actor_role, action, entity_type, entity_id,
+            `SELECT event_time, actor, actor_name, actor_role, action, entity_type, entity_id,
                     source, description, old_value, new_value
              FROM audit_log ${q.where}
              ORDER BY event_time DESC`,
@@ -102,16 +103,17 @@ export async function GET(request) {
         // ── Format JSON (untuk halaman cetak) ────────────────────────────
         if (format === "json") {
             const data = rows.map((r) => ({
-                eventTime:   toWIB(r.event_time),
-                actor:       r.actor        ?? "",
-                actorRole:   r.actor_role   ?? "",
-                action:      r.action       ?? "",
-                entityType:  r.entity_type  ?? "",
-                entityId:    r.entity_id    ?? "",
-                source:      r.source       ?? "",
-                description: r.description  ?? "",
-                oldValue:    r.old_value    ? JSON.stringify(r.old_value) : "",
-                newValue:    r.new_value    ? JSON.stringify(r.new_value) : "",
+                eventTime: toWIB(r.event_time),
+                actor: r.actor ?? "",
+                actorName: r.actor_name ?? "",
+                actorRole: r.actor_role ?? "",
+                action: r.action ?? "",
+                entityType: r.entity_type ?? "",
+                entityId: r.entity_id ?? "",
+                source: r.source ?? "",
+                description: r.description ?? "",
+                oldValue: r.old_value ? JSON.stringify(r.old_value) : "",
+                newValue: r.new_value ? JSON.stringify(r.new_value) : "",
             }));
             return Response.json({ rows: data, total: data.length });
         }
@@ -123,16 +125,17 @@ export async function GET(request) {
 
         // Header
         ws.columns = [
-            { header: "Waktu (WIB)",   key: "eventTime",   width: 22 },
-            { header: "Aktor",         key: "actor",        width: 16 },
-            { header: "Role",          key: "actorRole",    width: 12 },
-            { header: "Aksi",          key: "action",       width: 20 },
-            { header: "Entitas",       key: "entityType",   width: 14 },
-            { header: "ID Entitas",    key: "entityId",     width: 18 },
-            { header: "Sumber",        key: "source",       width: 10 },
-            { header: "Deskripsi",     key: "description",  width: 50 },
-            { header: "Nilai Lama",    key: "oldValue",     width: 40 },
-            { header: "Nilai Baru",    key: "newValue",     width: 40 },
+            { header: "Waktu (WIB)", key: "eventTime", width: 22 },
+            { header: "Nama", key: "actorName", width: 24 },
+            { header: "Username", key: "actor", width: 14 },
+            { header: "Role", key: "actorRole", width: 12 },
+            { header: "Aksi", key: "action", width: 20 },
+            { header: "Entitas", key: "entityType", width: 14 },
+            { header: "ID Entitas", key: "entityId", width: 18 },
+            { header: "Sumber", key: "source", width: 10 },
+            { header: "Deskripsi", key: "description", width: 50 },
+            { header: "Nilai Lama", key: "oldValue", width: 40 },
+            { header: "Nilai Baru", key: "newValue", width: 40 },
         ];
 
         // Style header
@@ -144,22 +147,23 @@ export async function GET(request) {
         // Data
         rows.forEach((r) => {
             ws.addRow({
-                eventTime:   toWIB(r.event_time),
-                actor:       r.actor        ?? "",
-                actorRole:   r.actor_role   ?? "",
-                action:      r.action       ?? "",
-                entityType:  r.entity_type  ?? "",
-                entityId:    r.entity_id    ?? "",
-                source:      r.source       ?? "",
-                description: r.description  ?? "",
-                oldValue:    r.old_value    ? JSON.stringify(r.old_value)  : "",
-                newValue:    r.new_value    ? JSON.stringify(r.new_value)  : "",
+                eventTime: toWIB(r.event_time),
+                actorName: r.actor_name ?? "",
+                actor: r.actor ?? "",
+                actorRole: r.actor_role ?? "",
+                action: r.action ?? "",
+                entityType: r.entity_type ?? "",
+                entityId: r.entity_id ?? "",
+                source: r.source ?? "",
+                description: r.description ?? "",
+                oldValue: r.old_value ? JSON.stringify(r.old_value) : "",
+                newValue: r.new_value ? JSON.stringify(r.new_value) : "",
             });
         });
 
-        const buf  = await wb.xlsx.writeBuffer();
+        const buf = await wb.xlsx.writeBuffer();
         const from = q.from || "semua";
-        const to   = q.to   || "semua";
+        const to = q.to || "semua";
         const filename = `audit-log_${from}_${to}.xlsx`;
 
         return new Response(buf, {
@@ -171,6 +175,6 @@ export async function GET(request) {
         });
     } catch (error) {
         console.error("[GET /api/audit-log/export]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        return Response.json({ ok: false, error: "Terjadi kesalahan di server. Hubungi admin." }, { status: 500 });
     }
 }

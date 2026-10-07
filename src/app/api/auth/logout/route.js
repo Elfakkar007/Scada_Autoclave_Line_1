@@ -1,31 +1,26 @@
 import { cookies } from "next/headers";
-import pool from "@/lib/db";
 import { getSessionFromCookies } from "@/lib/auth";
+import { tryAudit } from "@/lib/auditLog";
 
 export async function POST() {
     try {
         const cookieStore = await cookies();
         const session = await getSessionFromCookies(cookieStore);
 
-        // Kalau ada session valid, catat di audit_log
+        // Catat di audit_log bila ada sesi valid. tryAudit TIDAK melempar error:
+        // kegagalan database tidak boleh mencegah pengguna logout.
         if (session) {
-            await pool.query(
-                `INSERT INTO audit_log
-                    (actor, actor_role, action, entity_type, entity_id, source, description)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [
-                    session.username,
-                    session.role ?? "unknown",
-                    "logout",
-                    "user",
-                    session.username,
-                    "web",
-                    `User ${session.username} logout`,
-                ]
-            );
+            await tryAudit({
+                actor: session.username,
+                actorRole: session.role ?? "unknown",
+                action: "logout",
+                entityType: "user",
+                entityId: session.username,
+                description: `User ${session.username} logout`,
+            }, "auth/logout");
         }
 
-        // Hapus cookie session
+        // Hapus cookie sesi APA PUN hasil audit-nya
         cookieStore.delete("session_token");
 
         return Response.json({ ok: true });

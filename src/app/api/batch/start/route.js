@@ -7,6 +7,7 @@ import { validateRecipe } from "@/lib/recipeValidation";
 import { validateBatchNo } from "@/lib/batchNo";
 import { buildRecipeSnapshot } from "@/lib/recipeSnapshot";
 import { START_LOCK_KEY } from "@/lib/recipeGuard";
+import { insertAudit } from "@/lib/auditLog";
 
 // Rentang nilai resep dikelola di src/lib/recipeValidation.js.
 // Aturan format nomor batch ada di src/lib/batchNo.js (dipakai juga oleh klien).
@@ -433,6 +434,9 @@ async function runStart(request, session) {
             );
         }
 
+        // Hasil baca-balik setpoint yang lolos verifikasi; dipakai untuk audit (item 7).
+        let verifiedSetpoints = null;
+
         // ── Verifikasi setpoint pasca-tulis: loop retry sampai 4000 ms ──────────────
         // Baca ulang tiap 500 ms. Pembacaan dengan plcOk=false diabaikan (lanjut).
         // Berhenti begitu semua pasangan cocok. Kalau sampai batas waktu masih ada
@@ -505,6 +509,7 @@ async function runStart(request, session) {
 
             const finalPairs = buildVerifyPairs(lastValidSp);
             const finalMismatch = hasMismatch(finalPairs);
+            verifiedSetpoints = lastValidSp; // dipakai setelah blok ini bila tidak ada mismatch
 
             if (finalMismatch.length > 0) {
                 console.error("[batch/start] Setpoint tidak cocok setelah verifikasi:", finalMismatch);
@@ -537,6 +542,39 @@ async function runStart(request, session) {
                     { status: 502 }
                 );
             }
+        }
+
+        // ── Audit setpoint terkirim (item 7) — WAJIB tersimpan SEBELUM pulsa START ─────
+        // Di titik ini setpoint sudah ditulis ke PLC dan terbaca balik cocok. Catatan ini
+        // membuktikan nilai apa yang ada di mesin saat START dikirim. Kalau audit gagal,
+        // START DIBATALKAN (fail-closed): lebih baik tidak jalan daripada jalan tanpa jejak.
+        // Setpoint yang sudah tertulis di PLC tidak berbahaya tanpa START.
+        // (Beda dengan STOP/reset: itu tetap dikirim walau audit gagal.)
+        try {
+            await insertAudit(pool, {
+                actor: session.username,
+                actorRole: session.role,
+                action: "plc_setpoints_written",
+                entityType: "batch",
+                entityId: String(batchNo).trim(),
+                newValue: {
+                    formulaNo,
+                    recipeId: recipe.id,
+                    written: Object.fromEntries(setpointPairs.map((p) => [p.tag, p.value])),
+                    readBack: verifiedSetpoints,
+                    recipeSnapshot,
+                },
+                description: `Setpoint formula ${formulaNo} ditulis ke PLC dan terverifikasi oleh ${session.username}; START akan dikirim untuk batch ${String(batchNo).trim()}`,
+            });
+        } catch (auditErr) {
+            console.error("[batch/start] Gagal catat audit plc_setpoints_written, START dibatalkan:", auditErr.message);
+            return Response.json(
+                {
+                    ok: false,
+                    error: "Gagal mencatat audit sebelum START, sehingga START tidak dikirim. Setpoint sudah tertulis di PLC tetapi mesin belum dijalankan. Hubungi admin lalu coba lagi.",
+                },
+                { status: 500 }
+            );
         }
 
         // ── Kirim START sebagai pulsa (bukan tulis true saja) ─────────────────

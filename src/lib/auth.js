@@ -20,6 +20,22 @@ export async function createSessionToken(payload) {
     return token;
 }
 
+// ── 1b. Opsi cookie sesi (item 7) ─────────────────────────────────────────────
+// `secure` TIDAK lagi mengikuti NODE_ENV: di produksi yang diakses lewat
+// http://IP-lokal, cookie secure ditolak browser sehingga login selalu gagal.
+// Sekarang ditentukan env COOKIE_SECURE ("true" hanya bila diakses lewat HTTPS).
+// Bila tidak diset, default false.
+// Dipakai oleh login (set) dan sebaiknya juga oleh logout (hapus) supaya atributnya sama.
+export function sessionCookieOptions() {
+    return {
+        httpOnly: true,
+        secure: process.env.COOKIE_SECURE === "true",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 8, // 8 jam, sama dengan masa berlaku JWT
+        path: "/",
+    };
+}
+
 // ── 2. Verifikasi token — return payload atau null ────────────────────────────
 export async function verifySessionToken(token) {
     try {

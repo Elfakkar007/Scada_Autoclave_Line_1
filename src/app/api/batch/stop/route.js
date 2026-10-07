@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import { readPlcSnapshot } from "@/lib/plc";
 import { pulsePlcTag } from "@/lib/plcWrite";
 import { finalizeBatch } from "@/lib/batchFinalize";
+import { tryAudit } from "@/lib/auditLog";
 
 export async function POST() {
     try {
@@ -39,6 +40,19 @@ export async function POST() {
         } catch (snapErr) {
             console.warn("[batch/stop] Gagal baca snapshot PLC sebelum STOP:", snapErr.message);
         }
+
+        // ── Audit SEBELUM pulsa STOP (item 7) ─────────────────────────────────
+        // STOP adalah tindakan keselamatan: kalau audit gagal, STOP TETAP dikirim
+        // (tryAudit tidak melempar; kegagalan hanya masuk log server).
+        await tryAudit({
+            actor: session.username,
+            actorRole: session.role,
+            action: "stop_requested",
+            entityType: "batch",
+            entityId: batch.batch_no,
+            oldValue: { batchNo: batch.batch_no, plcPhaseBefore: plcPhase },
+            description: `STOP diminta oleh ${session.username} untuk batch ${batch.batch_no} (fase PLC: ${plcPhase ?? "tidak terbaca"}); pulsa STOP akan dikirim`,
+        }, "batch/stop");
 
         // ── Kirim perintah STOP ke PLC sebagai pulsa ──────────────────────────
         // PENTING: apapun hasilnya, TETAP lanjutkan finalisasi batch di sistem kita.

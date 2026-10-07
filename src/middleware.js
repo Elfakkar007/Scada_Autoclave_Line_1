@@ -18,6 +18,7 @@ const PUBLIC_API_PATHS = [
     "/api/auth/login",
     "/api/auth/logout",
     "/api/auth/me",
+    "/api/auth/users", // daftar username + nama lengkap untuk dropdown halaman login
 ];
 
 export async function middleware(request) {

@@ -10,21 +10,22 @@ export async function GET(request) {
         if (errorResponse) return errorResponse;
 
         const { searchParams } = new URL(request.url);
-        const search     = searchParams.get("search")     ?? "";
-        const action     = searchParams.get("action")     ?? "";
+        const search = searchParams.get("search") ?? "";
+        const action = searchParams.get("action") ?? "";
         const entityType = searchParams.get("entityType") ?? "";
-        const from       = searchParams.get("from")       ?? "";
-        const to         = searchParams.get("to")         ?? "";
-        const limit      = Math.min(parseInt(searchParams.get("limit")  ?? "20", 10), 100);
-        const offset     = Math.max(parseInt(searchParams.get("offset") ?? "0",  10), 0);
+        const from = searchParams.get("from") ?? "";
+        const to = searchParams.get("to") ?? "";
+        const limit = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 100);
+        const offset = Math.max(parseInt(searchParams.get("offset") ?? "0", 10), 0);
 
         const conditions = [];
-        const values     = [];
+        const values = [];
 
         if (search.trim()) {
             values.push(`%${search.trim()}%`);
             conditions.push(
                 `(actor ILIKE $${values.length}
+                  OR actor_name ILIKE $${values.length}
                   OR entity_id ILIKE $${values.length}
                   OR description ILIKE $${values.length})`
             );
@@ -55,7 +56,7 @@ export async function GET(request) {
 
         const dataValues = [...values, limit, offset];
         const dataResult = await pool.query(
-            `SELECT id, event_time, actor, actor_role, action, entity_type,
+            `SELECT id, event_time, actor, actor_name, actor_role, action, entity_type,
                     entity_id, old_value, new_value, source, description
              FROM audit_log
              ${whereClause}
@@ -65,22 +66,23 @@ export async function GET(request) {
         );
 
         const data = dataResult.rows.map((row) => ({
-            id:          row.id,
-            eventTime:   row.event_time,
-            actor:       row.actor,
-            actorRole:   row.actor_role,
-            action:      row.action,
-            entityType:  row.entity_type,
-            entityId:    row.entity_id,
-            oldValue:    row.old_value,
-            newValue:    row.new_value,
-            source:      row.source,
+            id: row.id,
+            eventTime: row.event_time,
+            actor: row.actor,
+            actorName: row.actor_name,
+            actorRole: row.actor_role,
+            action: row.action,
+            entityType: row.entity_type,
+            entityId: row.entity_id,
+            oldValue: row.old_value,
+            newValue: row.new_value,
+            source: row.source,
             description: row.description,
         }));
 
         return Response.json({ data, total });
     } catch (error) {
         console.error("[GET /api/audit-log]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        return Response.json({ ok: false, error: "Terjadi kesalahan di server. Hubungi admin." }, { status: 500 });
     }
 }

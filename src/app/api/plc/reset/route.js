@@ -17,6 +17,7 @@ import pool from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { readPlcSnapshot } from "@/lib/plc";
 import { pulsePlcTag } from "@/lib/plcWrite";
+import { tryAudit } from "@/lib/auditLog";
 
 export async function POST() {
     try {
@@ -53,7 +54,7 @@ export async function POST() {
             );
         }
 
-        const rawPhase   = snapshot.phase?.rawValue;
+        const rawPhase = snapshot.phase?.rawValue;
         const phaseLabel = snapshot.phase?.label ?? `kode ${rawPhase}`;
 
         // ── Mesin sudah Idle (kode 0 atau 1): tidak perlu kirim STOP ─────────
@@ -78,6 +79,18 @@ export async function POST() {
                 { status: 409 }
             );
         }
+
+        // ── Audit SEBELUM pulsa reset (item 7) ────────────────────────────────
+        // Reset adalah tindakan keselamatan: bila audit gagal, pulsa TETAP dikirim.
+        await tryAudit({
+            actor: session.username,
+            actorRole: session.role,
+            action: "plc_reset_requested",
+            entityType: "plc",
+            entityId: null,
+            oldValue: { phaseBefore: rawPhase, phaseBeforeLabel: phaseLabel },
+            description: `Reset STOP diminta oleh ${session.username}. Fase sebelum: ${phaseLabel} (kode ${rawPhase}); pulsa STOP akan dikirim`,
+        }, "plc/reset");
 
         // ── Kirim STOP sebagai pulsa (fase = 6, tidak ada batch running) ─────
         // STOP (M1.5) dibaca PLC sebagai LEVEL — wajib ditulis sebagai pulsa.
@@ -104,22 +117,21 @@ export async function POST() {
                     "plc",
                     null,
                     JSON.stringify({
-                        phaseBefore:      rawPhase,
+                        phaseBefore: rawPhase,
                         phaseBeforeLabel: phaseLabel,
-                        pulseOk:          pulse.ok,
-                        stuckRisk:        pulse.stuckRisk,
+                        pulseOk: pulse.ok,
+                        stuckRisk: pulse.stuckRisk,
                         // phaseAfter hanya dicatat kalau snapshot pasca-pulsa valid
-                        phaseAfter:       (snapshotAfter?.plcOk === true)
-                                            ? snapshotAfter.phase?.rawValue ?? null
-                                            : null,
+                        phaseAfter: (snapshotAfter?.plcOk === true)
+                            ? snapshotAfter.phase?.rawValue ?? null
+                            : null,
                     }),
                     "web",
                     `Reset STOP dikirim oleh ${session.username}. Fase sebelum: ${phaseLabel} (kode ${rawPhase}). ` +
                     `Pulsa ok=${pulse.ok}, stuckRisk=${pulse.stuckRisk}. ` +
-                    `Fase setelah: ${
-                        snapshotAfter?.plcOk === true
-                            ? (snapshotAfter.phase?.label ?? "tidak diketahui")
-                            : "tidak terbaca (PLC offline pasca-pulsa)"
+                    `Fase setelah: ${snapshotAfter?.plcOk === true
+                        ? (snapshotAfter.phase?.label ?? "tidak diketahui")
+                        : "tidak terbaca (PLC offline pasca-pulsa)"
                     }`,
                 ]
             );
@@ -131,16 +143,16 @@ export async function POST() {
         return Response.json({
             ok: pulse.ok,
             pulse: {
-                wroteOn:   pulse.wroteOn,
-                wroteOff:  pulse.wroteOff,
+                wroteOn: pulse.wroteOn,
+                wroteOff: pulse.wroteOff,
                 stuckRisk: pulse.stuckRisk,
-                error:     pulse.error,
+                error: pulse.error,
             },
             // phaseAfter hanya berisi data nyata jika snapshot pasca-pulsa berhasil dibaca
             phaseAfter: (snapshotAfter?.plcOk === true) ? snapshotAfter.phase : null,
         });
     } catch (error) {
         console.error("[POST /api/plc/reset]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        return Response.json({ ok: false, error: "Terjadi kesalahan di server. Hubungi admin." }, { status: 500 });
     }
 }
