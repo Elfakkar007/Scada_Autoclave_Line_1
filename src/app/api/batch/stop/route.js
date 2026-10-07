@@ -13,12 +13,10 @@ export async function POST() {
         if (errorResponse) return errorResponse;
 
         // Cari batch yang sedang running
+        // (tidak perlu join recipes: fo_val_setting tidak dipakai di sini, dan nilai resep
+        // batch ada di batch_records.recipe_snapshot sejak item 6)
         const runningResult = await pool.query(
-            `SELECT br.*, r.fo_val_setting
-             FROM batch_records br
-             LEFT JOIN recipes r ON br.recipe_id = r.id
-             WHERE br.status = 'running'
-             LIMIT 1`
+            `SELECT * FROM batch_records WHERE status = 'running' LIMIT 1`
         );
         if (runningResult.rows.length === 0) {
             return Response.json(
@@ -47,11 +45,11 @@ export async function POST() {
         // Operator harus tetap bisa menutup batch meskipun komunikasi PLC bermasalah.
         // STOP (M1.5) dibaca PLC sebagai LEVEL — wajib ditulis sebagai pulsa (true, tunggu, false).
         let plcStopWritten = false;
-        let plcStuckRisk   = false;
+        let plcStuckRisk = false;
         try {
             const pulse = await pulsePlcTag("STOP");
             plcStopWritten = pulse.ok;
-            plcStuckRisk   = pulse.stuckRisk ?? false;
+            plcStuckRisk = pulse.stuckRisk ?? false;
             if (!pulse.ok) {
                 console.error(
                     "[batch/stop] Gagal kirim STOP ke PLC (finalisasi batch tetap dilanjutkan):",
@@ -94,9 +92,9 @@ export async function POST() {
                     "batch",
                     batch.batch_no,
                     JSON.stringify({
-                        batchNo:   batch.batch_no,
-                        operator:  batch.operator,
-                        runBegin:  batch.run_begin,
+                        batchNo: batch.batch_no,
+                        operator: batch.operator,
+                        runBegin: batch.run_begin,
                     }),
                     "web",
                     `Batch ${batch.batch_no} diselesaikan oleh ${session.username}. Status akhir: ${status}`,
@@ -109,15 +107,15 @@ export async function POST() {
 
         return Response.json({
             ok: true,
-            batchNo:              batch.batch_no,
+            batchNo: batch.batch_no,
             status,
-            foMin:                foMin !== null ? parseFloat(foMin.toFixed(2)) : null,
+            foMin: foMin !== null ? parseFloat(foMin.toFixed(2)) : null,
             f0Complete,
             plcStopWritten,
             plcStuckRisk,
         });
     } catch (error) {
         console.error("[POST /api/batch/stop]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        return Response.json({ ok: false, error: "Terjadi kesalahan di server. Hubungi admin." }, { status: 500 });
     }
 }

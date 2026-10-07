@@ -80,7 +80,14 @@ export async function GET(request) {
                     machine_id, ster_temp, run_begin, run_finish, total_time_min,
                     heat_time_min, ster_time_min, cool_time_min,
                     fo_min, fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol,
-                    (SELECT r.fo_val_setting FROM recipes r WHERE r.id = batch_records.recipe_id) AS fo_val_setting,
+                    -- Sumber utama = snapshot resep saat START (item 6). Resep "live" hanya fallback
+                    -- untuk batch tanpa snapshot. CASE (bukan COALESCE) disengaja: snapshot yang
+                    -- foValSetting-nya kosong harus tetap kosong, jangan diisi dari resep yang
+                    -- mungkin baru diberi nilai.
+                    CASE WHEN recipe_snapshot IS NOT NULL
+                         THEN (recipe_snapshot->>'foValSetting')::numeric
+                         ELSE (SELECT r.fo_val_setting FROM recipes r WHERE r.id = batch_records.recipe_id)
+                    END AS fo_val_setting,
                     status
              FROM batch_records
              ${q.where}

@@ -35,14 +35,14 @@ Direktori root berisi file-file konfigurasi level proyek, dependensi, dan *envir
   Dokumentasi bawaan proyek yang menjelaskan cara instalasi dan menjalankan aplikasi.
 
 - **`middleware.js` (berada di dalam `src/`)**
-  File middleware dari Next.js. Kemungkinan besar digunakan untuk mengecek token autentikasi (JWT) pada *cookies* dan meredirect user ke halaman `/login` jika belum login, atau melindungi akses ke endpoint `/api`.
+  File middleware dari Next.js. Digunakan untuk mengecek validitas token autentikasi (JWT) pada *cookies* menggunakan library `jose`. Berfungsi merutekan ulang pengguna ke halaman `/login` jika belum login atau token kedaluwarsa, dan mencegah akses `/login` jika sudah memiliki sesi aktif, sambil melewatkan endpoint publik (seperti `/api/auth/login`).
 
 - **📁 `public/`**
   Direktori untuk menyimpan aset-aset statis seperti gambar, logo, dan font yang bisa diakses secara publik oleh browser.
 
 - **📁 `scripts/`**
   Kumpulan *script* utilitas atau *helper* yang bisa dijalankan terpisah via Node.js.
-  - `hash-password.js`: Script utilitas yang kemungkinan digunakan untuk melakukan *hashing* password user sebelum dimasukkan ke database (misalnya menggunakan bcrypt).
+  - `hash-password.js`: Script utilitas untuk menghasilkan *hash* password menggunakan `bcryptjs`. Dijalankan secara manual via terminal untuk membuat akun (misalnya akun *admin* pertama kali) langsung melalui *query* SQL (contoh: via pgAdmin).
 
 ---
 
@@ -107,12 +107,17 @@ Berisi komponen-komponen antarmuka React yang *reusable* (bisa digunakan kembali
 
 ### 3. 📁 `src/lib/`
 Kumpulan kode *library*, utilitas, dan konfigurasi pendukung yang tidak memiliki UI, tapi menunjang kerja sistem.
-- **`auth.js`**: Kumpulan fungsi utilitas terkait autentikasi. Biasanya berisi kode untuk memverifikasi password, men-generate JSON Web Token (JWT), atau memverifikasi otorisasi/role pengguna (contoh: cek apakah user punya role 'admin' atau 'operator').
-- **`dateRange.js`**: Helper fungsi untuk membangun filter rentang tanggal (SQL WHERE clause) dengan zona waktu Asia/Jakarta (WIB), digunakan secara luas di endpoint API yang membutuhkan filter tanggal.
-- **`db.js`**: File konfigurasi koneksi ke *database* (misalnya MySQL, PostgreSQL, atau SQL Server). Mengekspor *connection pool* yang akan digunakan oleh endpoint-endpoint di folder `/api/` untuk *query* data.
-- **`dummyData.js`**: Kumpulan data simulasi/dummy untuk keperluan *development* dan testing ketika data sebenarnya dari database atau PLC belum tersedia.
-- **`plc.js`**: Menangani koneksi pembacaan data (snapshot) langsung dari PLC via KEPServerEX, termasuk fungsi *scaling* untuk mengubah nilai raw sensor menjadi satuan standar (seperti °C dan kPa) dan mendeteksi fase mesin.
-- **`plcWrite.js`**: Menangani fungsi untuk menulis tag atau mengirim pulsa perintah (seperti Start/Stop) ke PLC.
-- **`trendRecorder.js`**: Script Node.js murni (*background task*) yang mencatat *trend* data (suhu, tekanan, dan F0) ke dalam tabel database secara periodik selama *batch* mesin sedang berjalan (running).
+- **`auth.js`**: Kumpulan fungsi utilitas terkait autentikasi. Berisi kode untuk memverifikasi password, men-generate JSON Web Token (JWT) dengan `jose`, dan memverifikasi otorisasi pengguna berdasarkan akses dan role (contoh: cek apakah user punya role 'admin' atau 'operator').
 - **`batchFinalize.js`**: Fungsi utilitas yang terpusat untuk memfinalisasi *record batch*, memperbarui status menjadi selesai, serta merekap total waktu, nilai minimum F0, dan status kelulusan sterilisasi.
-- **`recipeValidation.js`**: Modul yang bertugas memvalidasi nilai input parameter resep (formula) sebelum disimpan ke dalam database atau sebelum dimulai ke PLC (mencegah input 0 pada field krusial atau suhu yang keluar dari rentang batas aman QA).
+- **`batchNo.js`**: Berisi aturan dan validasi reguler format penamaan Nomor Batch (berjalan murni tanpa *dependency* sehingga aman dipakai langsung oleh komponen antarmuka maupun API).
+- **`dateRange.js`**: Helper fungsi untuk membangun filter rentang tanggal (SQL WHERE clause) dengan zona waktu Asia/Jakarta (WIB), digunakan secara luas di endpoint API laporan yang membutuhkan filter tanggal.
+- **`db.js`**: File konfigurasi koneksi *connection pool* ke database PostgreSQL menggunakan `pg`. Mengekspor koneksi untuk digunakan oleh endpoint `/api/` dan proses *background*.
+- **`dummyData.js`**: Kumpulan data simulasi/dummy untuk keperluan *development* dan testing ketika koneksi sesungguhnya ke agen PLC tidak tersedia.
+- **`f0.js`**: Modul yang memuat algoritma matematika perhitungan letalitas (*F0*) menggunakan rumus integral pendekatan metode trapesium secara murni (tanpa akses DB).
+- **`f0.test.mjs`**: *Test runner* (pengujian unit) untuk algoritma kalkulasi `f0.js`.
+- **`plc.js`**: Menangani koneksi HTTP permintaan data (*snapshot*) langsung dari PLC via *KEPServerEX IoT Gateway*, mencakup proses baca (*read*), penanda kondisi darurat (*alarm*), pembacaan fase (*process step*), serta konversi dan *scaling* angka *raw* ke satuan *engineering* riil (°C, kPa).
+- **`plcWrite.js`**: Menangani permintaan tulis (*write*) *tag* atau pengiriman pulsa (sinyal Start/Stop) ke PLC.
+- **`recipeGuard.js`**: Modul penjaga integritas resep melalui sistem *PostgreSQL advisory lock*, untuk menghindari *race condition* atau perubahan resep tepat saat proses *Start Batch* sedang berjalan.
+- **`recipeSnapshot.js`**: Menyimpan dan mengambil cetakan resep (*snapshot* JSONB) persis sebelum batch mulai berjalan, sehingga histori parameter *batch* tidak akan terpengaruh modifikasi resep di masa depan.
+- **`recipeValidation.js`**: Modul validasi ketat (*strict mode*) terhadap nilai dan parameter rentang resep untuk mencegah operator memasukkan *input* angka krusial (seperti 0 derajat) atau suhu tak lazim yang mengganggu sistem QA (Quality Assurance) sebelum dikirim ke PLC.
+- **`trendRecorder.js`**: Script proses *background* Node.js yang bertugas merekam histori pergerakan nilai tren (suhu, tekanan, F0 per sensor) secara terus-menerus dan periodik ke tabel database selama mesin di fase eksekusi (*running*).
