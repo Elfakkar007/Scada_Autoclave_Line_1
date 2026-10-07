@@ -116,7 +116,8 @@ export async function recordTrendTick() {
             }
 
             // Fase 5,7,6 (Cooling/Drain/Selesai) — catat cool_begin sekali, update cool_time_min.
-            // Saat masuk fase 5: PLC me-reset counter ster_time, jadi ambil dari resep.
+            // Saat masuk fase 5: PLC me-reset counter ster_time, jadi ambil dari snapshot resep
+            // batch (item 6), BUKAN dari tabel recipes yang bisa sudah diedit.
             if (phase === 5 || phase === 7 || phase === 6) {
                 // Update cool_begin & cool_time_min
                 await pool.query(
@@ -127,15 +128,23 @@ export async function recordTrendTick() {
                     [phase === 5, coolSec !== null ? coolSec / 60.0 : null, batchId]
                 );
 
-                // Salin ster_time_min dari resep HANYA bila nilainya masih berbeda
-                // (PLC reset counter sterTime begitu masuk fase 5, jadi nilai DB sudah kehilangan data)
+                // Salin ster_time_min dari recipe_snapshot HANYA bila nilainya masih berbeda
+                // (PLC reset counter sterTime begitu masuk fase 5, jadi nilai DB sudah kehilangan data).
+                // Fallback ke tabel recipes hanya untuk batch tanpa snapshot (batch yang sudah
+                // berjalan saat item 6 dipasang); batch baru selalu punya snapshot.
                 await pool.query(
                     `UPDATE batch_records b
-                     SET ster_time_min = r.steril_time_min
-                     FROM recipes r
-                     WHERE b.recipe_id = r.id
-                       AND b.id = $1
-                       AND b.ster_time_min IS DISTINCT FROM r.steril_time_min`,
+                     SET ster_time_min = src.v
+                     FROM (
+                         SELECT b2.id,
+                                COALESCE((b2.recipe_snapshot->>'sterilTimeMin')::numeric, r.steril_time_min) AS v
+                         FROM batch_records b2
+                         LEFT JOIN recipes r ON r.id = b2.recipe_id
+                         WHERE b2.id = $1
+                     ) src
+                     WHERE b.id = src.id
+                       AND src.v IS NOT NULL
+                       AND b.ster_time_min IS DISTINCT FROM src.v`,
                     [batchId]
                 );
             }

@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import { snapshotNumber } from "@/lib/recipeSnapshot";
 
 export async function GET(request, { params }) {
     try {
@@ -12,9 +13,11 @@ export async function GET(request, { params }) {
             return Response.json({ ok: false, error: "Nomor batch pada URL tidak valid" }, { status: 400 });
         }
 
-        // ── Ambil data batch + fo_val_setting dari resep ───────────────────────
+        // ── Ambil data batch + fo_val_setting dari resep (hanya fallback batch lama) ──
+        // Sumber utama = b.recipe_snapshot (item 6). Kolom live_fo_val_setting hanya dipakai
+        // bila batch tidak punya snapshot (batch sebelum item 6).
         const batchResult = await pool.query(
-            `SELECT b.*, r.fo_val_setting
+            `SELECT b.*, r.fo_val_setting AS live_fo_val_setting
              FROM batch_records b
              LEFT JOIN recipes r ON b.recipe_id = r.id
              WHERE b.batch_no = $1`,
@@ -29,6 +32,9 @@ export async function GET(request, { params }) {
         }
 
         const row = batchResult.rows[0];
+        // Snapshot resep saat START. NULL = batch lama → fallback ke resep "live" (bisa sudah berubah).
+        const recipeSnapshot = row.recipe_snapshot ?? null;
+        const recipeSource = recipeSnapshot ? "snapshot" : "live";
         const batch = {
             id: row.id,
             batchNo: row.batch_no,
@@ -61,9 +67,15 @@ export async function GET(request, { params }) {
             fol: row.fol !== null ? parseFloat(row.fol) : null,
             foMin: row.fo_min !== null ? parseFloat(row.fo_min) : null,
             // foValSetting hanya angka pembanding dari QA (opsional), bukan dasar vonis.
-            // Catatan: masih dibaca langsung dari resep (snapshot resep = item 6).
+            // Dibaca dari snapshot resep batch; batch lama (tanpa snapshot) memakai resep live.
             f0Meta: row.f0_meta ?? null, // parameter hitung F0 + catatan gap (null untuk batch lama)
-            foValSetting: row.fo_val_setting !== null ? parseFloat(row.fo_val_setting) : null,
+            foValSetting: recipeSnapshot
+                ? snapshotNumber(recipeSnapshot, "foValSetting")
+                : (row.live_fo_val_setting !== null && row.live_fo_val_setting !== undefined
+                    ? parseFloat(row.live_fo_val_setting)
+                    : null),
+            recipeSnapshot,
+            recipeSource, // "snapshot" | "live" (live = batch sebelum item 6, nilai bisa sudah berubah)
             status: row.status,
             createdAt: row.created_at,
         };

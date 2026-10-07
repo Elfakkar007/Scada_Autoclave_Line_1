@@ -5,6 +5,8 @@ import { readPlcSnapshot } from "@/lib/plc";
 import { writePlcTags, pulsePlcTag } from "@/lib/plcWrite";
 import { validateRecipe } from "@/lib/recipeValidation";
 import { validateBatchNo } from "@/lib/batchNo";
+import { buildRecipeSnapshot } from "@/lib/recipeSnapshot";
+import { START_LOCK_KEY } from "@/lib/recipeGuard";
 
 // Rentang nilai resep dikelola di src/lib/recipeValidation.js.
 // Aturan format nomor batch ada di src/lib/batchNo.js (dipakai juga oleh klien).
@@ -21,7 +23,8 @@ const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
 // walau modul di-load ulang (hot reload dev) atau ada lebih dari satu proses.
 // Lock dipegang di koneksi khusus sampai alur selesai; kalau koneksi putus, lock
 // otomatis lepas.
-const START_LOCK_KEY = 7401001; // angka bebas, harus unik untuk operasi START
+// START_LOCK_KEY di-import dari "@/lib/recipeGuard": route /api/formulas memakai kunci yang
+// sama untuk menolak edit/hapus resep selagi START berjalan (item 6).
 
 /** @returns {Promise<{ release: () => Promise<void> } | null>} null = lock sedang dipegang request lain */
 async function acquireStartLock() {
@@ -185,11 +188,9 @@ async function runStart(request, session) {
         }
 
         // Validasi: formulaNo harus ada di tabel recipes
-        // SELECT mengambil semua field termasuk fo_val_setting untuk validateRecipe
+        // SELECT * : dipakai untuk validateRecipe DAN untuk snapshot resep (item 6).
         const recipeResult = await pool.query(
-            `SELECT id, control_temp, cooling_temp1, cooling_temp2, control_type,
-                    space_temp, steril_temp, steril_time_min, alarm_pres, fo_val_setting
-             FROM recipes WHERE formula_no = $1`,
+            `SELECT * FROM recipes WHERE formula_no = $1`,
             [String(formulaNo).trim()]
         );
         if (recipeResult.rows.length === 0) {
@@ -231,6 +232,12 @@ async function runStart(request, session) {
         const alrmPres = Number(recipe.alarm_pres);
         const cool1Temp = Number(recipe.cooling_temp1);
         const cool2Temp = Number(recipe.cooling_temp2);
+
+        // ── Snapshot resep (item 6) ─────────────────────────────────────────────
+        // Dibangun dari baris `recipe` yang SAMA dengan yang ditulis ke PLC di bawah,
+        // jadi snapshot = apa yang benar-benar dipakai mesin, walau resep di tabel
+        // recipes diubah belakangan. Disimpan di batch_records.recipe_snapshot.
+        const recipeSnapshot = buildRecipeSnapshot(recipe);
 
         // Validasi: cek apakah ada batch yang sedang running
         const runningCheck = await pool.query(
@@ -595,8 +602,8 @@ async function runStart(request, session) {
                 `INSERT INTO batch_records
                     (batch_no, loading_no, operator, machine_id, recipe_id,
                      product_name, product_spec, ctrl_type, ster_temp, cool_temp,
-                     status, run_begin)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'running', now())
+                     recipe_snapshot, status, run_begin)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'running', now())
                  RETURNING *`,
                 [
                     String(batchNo).trim(),
@@ -606,9 +613,10 @@ async function runStart(request, session) {
                     recipe.id,
                     String(productName).trim(),
                     String(productSpec).trim(),
-                    recipe.control_type,
-                    sterilTemp,   // ster_temp = setpoint sterilisasi (bukan ctrlTemp)
-                    cool2Temp,    // cool_temp = cooling_temp2 sesuai printout SCADA lama
+                    recipeSnapshot.controlType,   // ctrl_type  = turunan snapshot (kolom header laporan)
+                    recipeSnapshot.sterilTemp,    // ster_temp  = setpoint sterilisasi (bukan ctrlTemp)
+                    recipeSnapshot.coolingTemp2,  // cool_temp  = cooling_temp2 sesuai printout SCADA lama
+                    JSON.stringify(recipeSnapshot),
                 ]
             );
             newBatch = insertResult.rows[0];
@@ -645,7 +653,7 @@ async function runStart(request, session) {
                     "start_batch",
                     "batch",
                     newBatch.batch_no,
-                    JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName, emptyRun }),
+                    JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName, emptyRun, recipeSnapshot }),
                     "web",
                     `Batch ${newBatch.batch_no}${emptyRun ? " (run kosongan)" : ""} dimulai oleh ${session.username} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
                 ]
