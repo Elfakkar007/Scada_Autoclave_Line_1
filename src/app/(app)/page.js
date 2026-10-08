@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { describeStopResponse, describeResetPulse } from "@/lib/plcCommandAlert";
 
 /* ─────────────────────────────────────────────────────────────
    Product material masih belum ada tag PLC-nya (murni data resep
@@ -383,6 +384,10 @@ export default function Home() {
   const [resetDialog, setResetDialog] = useState(false);  // dialog konfirmasi tampil?
   const [resetting, setResetting] = useState(false);       // sedang mengirim request?
   const [resetMsg, setResetMsg] = useState(null);          // { ok, text } atau null
+  // Peringatan hasil perintah STOP/reset yang tidak mulus (item 10). Sengaja TIDAK hilang
+  // sendiri: tetap tampil sampai operator menekan "Sudah dicek", walau batch sudah tertutup
+  // dan tombol Reset hilang. Bentuk: { level, title, lines } atau null.
+  const [cmdAlert, setCmdAlert] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -403,14 +408,29 @@ export default function Home() {
   }, []);
 
   async function handleStop() {
+    if (stopping) return; // cegah double-click
     if (!window.confirm(`Yakin ingin menghentikan batch ${data.batchNo}?`)) return;
     setStopping(true);
+    setCmdAlert(null);
     try {
-      await fetch("/api/batch/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actor: data.operator ?? "unknown" }),
-      });
+      let status = 0;
+      let json = null;
+      let networkError = false;
+      try {
+        const res = await fetch("/api/batch/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ actor: data.operator ?? "unknown" }),
+        });
+        status = res.status;
+        json = await res.json().catch(() => null);
+      } catch {
+        networkError = true;
+      }
+      // Hasil STOP yang tidak mulus (gagal diproses, tidak sampai ke mesin, atau mungkin
+      // tertahan ON di PLC) ditampilkan sebagai peringatan; hasil normal -> null.
+      const alertInfo = describeStopResponse({ networkError, status, json });
+      if (alertInfo) setCmdAlert(alertInfo);
       await fetchData();
     } finally {
       setStopping(false);
@@ -423,13 +443,28 @@ export default function Home() {
     setResetMsg(null);
     try {
       const res = await fetch("/api/plc/reset", { method: "POST" });
-      const json = await res.json();
-      if (json.ok) {
-        setResetMsg({ ok: true, text: json.message ?? "Reset berhasil. Mesin kembali ke Idle." });
+      const json = await res.json().catch(() => null);
+      if (!json) {
+        setResetMsg({ ok: false, text: "Respons server tidak valid. Muat ulang halaman lalu coba lagi." });
+      } else if (json.ok) {
+        const idle = json.phaseAfter?.rawValue === 0 || json.phaseAfter?.rawValue === 1;
+        setResetMsg({
+          ok: true,
+          text: json.message
+            ?? (idle ? "Reset berhasil. Mesin kembali ke Idle." : "Perintah STOP terkirim. Menunggu mesin kembali ke Idle."),
+        });
         setResetDialog(false);
         await fetchData();
       } else {
-        setResetMsg({ ok: false, text: json.error ?? "Reset gagal." });
+        // Kegagalan PULSA (STOP tidak sampai / mungkin tertahan ON) -> peringatan permanen.
+        // Penolakan guard (409/503) tetap memakai pesan server lewat resetMsg seperti sebelumnya.
+        const pulseAlert = describeResetPulse(json);
+        if (pulseAlert) {
+          setCmdAlert(pulseAlert);
+          setResetDialog(false);
+        } else {
+          setResetMsg({ ok: false, text: json.error ?? "Reset gagal." });
+        }
       }
     } catch (err) {
       setResetMsg({ ok: false, text: `Gagal mengirim request: ${err.message}` });
@@ -687,6 +722,31 @@ export default function Home() {
               >
                 {stopping ? "Menghentikan…" : "STOP"}
               </button>
+
+              {/* ── Peringatan hasil STOP/reset (item 10): di dalam alur layout, di bawah STOP,
+                  jadi tidak pernah menutupi tombol STOP. Tetap tampil sampai dikonfirmasi. ── */}
+              {cmdAlert && (
+                <div
+                  role="alert"
+                  className={`rounded-[3px] border p-2 flex flex-col gap-1 ${cmdAlert.level === "error"
+                    ? "border-[#A23B2E] bg-[#F7E9E6]"
+                    : "border-[#B9762F] bg-[#FAF1E3]"
+                    }`}
+                >
+                  <p className={`text-[12px] font-semibold ${cmdAlert.level === "error" ? "text-[#A23B2E]" : "text-[#B9762F]"}`}>
+                    {cmdAlert.title}
+                  </p>
+                  {cmdAlert.lines.map((line, i) => (
+                    <p key={i} className="text-[11px] text-[#1E2A2E] leading-snug">{line}</p>
+                  ))}
+                  <button
+                    onClick={() => setCmdAlert(null)}
+                    className="mt-1 px-2 py-1 rounded-[3px] border border-[#B8C0BE] bg-white text-[11px] text-[#5C6B6A] hover:bg-[#EEF1F0] transition-colors"
+                  >
+                    Sudah dicek, tutup
+                  </button>
+                </div>
+              )}
 
               {/* ── Tombol Reset Mesin: hanya tampil saat fase=6 dan tidak ada batch running ── */}
               {!noData && data.plcOk && data.phase?.rawValue === 6 && !data.running && (

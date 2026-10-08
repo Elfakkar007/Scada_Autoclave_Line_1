@@ -146,7 +146,8 @@ export async function POST() {
                 wroteOn: pulse.wroteOn,
                 wroteOff: pulse.wroteOff,
                 stuckRisk: pulse.stuckRisk,
-                error: pulse.error,
+                // pulse.error sengaja TIDAK dikirim ke klien (bisa memuat detail gateway);
+                // detailnya ada di log server. Klien cukup memakai flag di atas (item 10).
             },
             // phaseAfter hanya berisi data nyata jika snapshot pasca-pulsa berhasil dibaca
             phaseAfter: (snapshotAfter?.plcOk === true) ? snapshotAfter.phase : null,

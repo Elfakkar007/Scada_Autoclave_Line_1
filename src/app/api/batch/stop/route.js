@@ -60,10 +60,14 @@ export async function POST() {
         // STOP (M1.5) dibaca PLC sebagai LEVEL — wajib ditulis sebagai pulsa (true, tunggu, false).
         let plcStopWritten = false;
         let plcStuckRisk = false;
+        // Rincian pulsa dikirim ke klien (hanya flag, tanpa teks error) supaya dashboard
+        // bisa membedakan "STOP tidak sampai" dari "STOP sampai tapi mungkin tertahan ON" (item 10).
+        let plcPulse = { wroteOn: false, wroteOff: false };
         try {
             const pulse = await pulsePlcTag("STOP");
             plcStopWritten = pulse.ok;
             plcStuckRisk = pulse.stuckRisk ?? false;
+            plcPulse = { wroteOn: pulse.wroteOn, wroteOff: pulse.wroteOff };
             if (!pulse.ok) {
                 console.error(
                     "[batch/stop] Gagal kirim STOP ke PLC (finalisasi batch tetap dilanjutkan):",
@@ -75,6 +79,8 @@ export async function POST() {
                 "[batch/stop] Exception saat kirim STOP ke PLC (finalisasi batch tetap dilanjutkan):",
                 plcErr.message
             );
+            // Nasib pulsa tidak diketahui: anggap berisiko tertahan supaya operator diperingatkan.
+            plcStuckRisk = true;
         }
 
         // ── Finalisasi batch (F0, status, satu UPDATE) ─────────────────────────
@@ -88,36 +94,33 @@ export async function POST() {
                 batchNo: batch.batch_no,
                 plcStopWritten,
                 plcStuckRisk,
+                plcPulse,
             });
         }
 
         const { status, foMin, f0Complete } = finalizeResult;
 
         // ── Tulis audit log ────────────────────────────────────────────────────
-        try {
-            await pool.query(
-                `INSERT INTO audit_log
-                    (actor, actor_role, action, entity_type, entity_id, old_value, source, description)
-                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
-                [
-                    session.username,
-                    session.role,
-                    "stop_batch",
-                    "batch",
-                    batch.batch_no,
-                    JSON.stringify({
-                        batchNo: batch.batch_no,
-                        operator: batch.operator,
-                        runBegin: batch.run_begin,
-                    }),
-                    "web",
-                    `Batch ${batch.batch_no} diselesaikan oleh ${session.username}. Status akhir: ${status}`,
-                ]
-            );
-        } catch (auditErr) {
-            // Audit log gagal tidak fatal
-            console.error("[batch/stop] Gagal catat audit stop_batch:", auditErr.message);
-        }
+        // Hasil pulsa STOP ikut dicatat (item 10). Kegagalan audit tidak fatal (tryAudit).
+        const plcNote = plcStopWritten
+            ? ""
+            : plcStuckRisk
+                ? " PERINGATAN: STOP ke PLC tidak terkonfirmasi dan mungkin tertahan aktif (stuckRisk)."
+                : " PERINGATAN: STOP ke PLC gagal ditulis.";
+        await tryAudit({
+            actor: session.username,
+            actorRole: session.role,
+            action: "stop_batch",
+            entityType: "batch",
+            entityId: batch.batch_no,
+            oldValue: {
+                batchNo: batch.batch_no,
+                operator: batch.operator,
+                runBegin: batch.run_begin,
+            },
+            newValue: { status, plcStopWritten, plcStuckRisk, plcPulse },
+            description: `Batch ${batch.batch_no} diselesaikan oleh ${session.username}. Status akhir: ${status}.${plcNote}`,
+        }, "batch/stop");
 
         return Response.json({
             ok: true,
@@ -127,6 +130,7 @@ export async function POST() {
             f0Complete,
             plcStopWritten,
             plcStuckRisk,
+            plcPulse,
         });
     } catch (error) {
         console.error("[POST /api/batch/stop]", error);

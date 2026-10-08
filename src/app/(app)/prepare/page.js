@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { validateBatchNo, BATCH_NO_MAX_LEN, BATCH_NO_RULE_TEXT } from "@/lib/batchNo";
+import { describeStartResponse } from "@/lib/plcCommandAlert";
 
 const EMPTY_FORM = {
     batchNo: "",
@@ -29,6 +30,10 @@ export default function PreparePage() {
     const [emptyRun, setEmptyRun] = useState(false);
     // Penjaga anti-klik ganda: state React baru berlaku setelah render, ref berlaku seketika
     const submittingRef = useRef(false);
+    // Peringatan hasil START yang tidak mulus (item 10): START mungkin tertahan ON, batch gagal
+    // dicatat padahal mesin jalan, atau hasil tidak diketahui. Bentuk: { alert, dismissable } atau null.
+    // Tidak hilang sendiri; selama ada, tombol Mulai terkunci.
+    const [startNotice, setStartNotice] = useState(null);
 
     // Ambil daftar formula dan info user dari session
     useEffect(() => {
@@ -63,7 +68,7 @@ export default function PreparePage() {
     // Format Batch No dicek di klien hanya untuk umpan balik cepat; server tetap memvalidasi ulang
     const batchNoCheck = !emptyRun && form.batchNo.trim() !== "" ? validateBatchNo(form.batchNo) : null;
     const batchNoInvalid = batchNoCheck !== null && !batchNoCheck.ok;
-    const canSubmit = allFilled && safetyAck && !formulaInvalid && !batchNoInvalid;
+    const canSubmit = allFilled && safetyAck && !formulaInvalid && !batchNoInvalid && startNotice === null;
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -75,38 +80,56 @@ export default function PreparePage() {
         setErrorFields([]);
 
         let started = false;
+        // true bila mesin sudah/mungkin berjalan: kunci anti-klik ganda TIDAK dilepas
+        let keepLocked = false;
         try {
             // operator & actor ditentukan server dari session
             const payload = emptyRun
                 ? { emptyRun: true, machineId: form.machineId, formulaNo: form.formulaNo }
                 : { ...form, emptyRun: false };
-            const res = await fetch("/api/batch/start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
-            const json = await res.json();
 
-            if (!res.ok || json.ok === false) {
-                // Kalau ada invalidFields dari server, simpan untuk daftar di banner
-                if (json.invalidFields && Array.isArray(json.invalidFields) && json.invalidFields.length > 0) {
-                    setErrorFields(json.invalidFields);
-                    setError(json.error ?? "Resep tidak valid.");
-                } else {
-                    setError(json.error ?? "Terjadi kesalahan, coba lagi.");
-                }
+            let json = null;
+            let networkError = false;
+            try {
+                const res = await fetch("/api/batch/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                json = await res.json().catch(() => null);
+            } catch {
+                networkError = true;
+            }
+
+            const result = describeStartResponse({ networkError, json });
+
+            if (result.outcome === "started") {
+                // Sukses bersih: redirect ke dashboard. Tombol sengaja TIDAK diaktifkan lagi
+                // supaya tidak bisa diklik ulang selama perpindahan halaman.
+                started = true;
+                router.push("/");
                 return;
             }
 
-            // Sukses: redirect ke dashboard. Tombol sengaja TIDAK diaktifkan lagi
-            // supaya tidak bisa diklik ulang selama perpindahan halaman.
-            started = true;
-            router.push("/");
-        } catch {
-            setError("Gagal terhubung ke server. Periksa koneksi jaringan.");
+            if (result.alert) {
+                // START tidak mulus (mungkin tertahan ON / batch gagal dicatat / hasil tidak
+                // diketahui): tampilkan peringatan permanen dan JANGAN redirect otomatis.
+                setStartNotice({ alert: result.alert, dismissable: result.dismissable });
+                keepLocked = !result.dismissable;
+                return;
+            }
+
+            // Ditolak biasa: banner error seperti sebelumnya. Kalau ada invalidFields dari
+            // server, simpan untuk daftar di banner.
+            if (json.invalidFields && Array.isArray(json.invalidFields) && json.invalidFields.length > 0) {
+                setErrorFields(json.invalidFields);
+                setError(json.error ?? "Resep tidak valid.");
+            } else {
+                setError(json.error ?? "Terjadi kesalahan, coba lagi.");
+            }
         } finally {
             if (!started) {
-                submittingRef.current = false;
+                if (!keepLocked) submittingRef.current = false;
                 setSubmitting(false);
             }
         }
@@ -332,6 +355,40 @@ export default function PreparePage() {
 
                     {/* Divider */}
                     <div className="border-t border-scada-rule" />
+
+                    {/* ── Peringatan hasil START (item 10): tepat di atas tombol, tidak hilang sendiri ── */}
+                    {startNotice && (
+                        <div
+                            role="alert"
+                            className={`rounded border px-4 py-3 text-sm space-y-1 ${startNotice.alert.level === "error"
+                                ? "bg-red-50 border-scada-stop text-scada-stop"
+                                : "bg-amber-50 border-amber-600 text-amber-900"
+                                }`}
+                        >
+                            <p className="font-semibold">{startNotice.alert.title}</p>
+                            {startNotice.alert.lines.map((line, i) => (
+                                <p key={i} className="text-xs leading-snug text-scada-ink">{line}</p>
+                            ))}
+                            <div className="flex gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => router.push("/")}
+                                    className="px-4 py-2 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded font-semibold text-xs transition-colors"
+                                >
+                                    Buka Dashboard
+                                </button>
+                                {startNotice.dismissable && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setStartNotice(null); submittingRef.current = false; }}
+                                        className="px-4 py-2 bg-white border border-scada-idle hover:bg-scada-bg text-scada-muted rounded text-xs transition-colors"
+                                    >
+                                        Sudah dicek, tutup
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Tombol submit */}
                     <div className="flex items-center gap-4">

@@ -7,7 +7,7 @@ import { validateRecipe } from "@/lib/recipeValidation";
 import { validateBatchNo } from "@/lib/batchNo";
 import { buildRecipeSnapshot } from "@/lib/recipeSnapshot";
 import { START_LOCK_KEY } from "@/lib/recipeGuard";
-import { insertAudit } from "@/lib/auditLog";
+import { insertAudit, tryAudit } from "@/lib/auditLog";
 
 // Rentang nilai resep dikelola di src/lib/recipeValidation.js.
 // Aturan format nomor batch ada di src/lib/batchNo.js (dipakai juga oleh klien).
@@ -428,7 +428,8 @@ async function runStart(request, session) {
                 {
                     ok: false,
                     error: "Gagal menulis parameter resep ke PLC",
-                    details: writeSetpointResult.results.filter((r) => !r.success),
+                    // Hanya nama tag yang gagal; teks error mentah gateway tetap di log server (console.error di atas).
+                    details: writeSetpointResult.results.filter((r) => !r.success).map((r) => ({ tag: r.tag })),
                 },
                 { status: 502 }
             );
@@ -667,6 +668,24 @@ async function runStart(request, session) {
                 dbErr.code, dbErr.constraint ?? "", dbErr.message
             );
             const isUniqueViolation = dbErr?.code === "23505";
+            // Jejak audit kasus terburuk (item 10): mesin sudah jalan tanpa catatan batch.
+            // tryAudit tidak melempar; bila database memang sedang bermasalah, ini bisa ikut gagal
+            // (kegagalannya tetap masuk log server).
+            await tryAudit({
+                actor: session.username,
+                actorRole: session.role,
+                action: "start_batch_critical",
+                entityType: "batch",
+                entityId: String(batchNo).trim(),
+                newValue: {
+                    formulaNo,
+                    dbErrorCode: dbErr?.code ?? null,
+                    dbConstraint: dbErr?.constraint ?? null,
+                    startPulseOk: pulse.ok,
+                    startStuckRisk: pulse.stuckRisk,
+                },
+                description: `KRITIS: PLC sudah mulai berjalan (batch ${String(batchNo).trim()}, formula ${formulaNo}) tetapi INSERT batch_records gagal (${dbErr?.code ?? "tanpa kode"}). Mesin berjalan tanpa catatan batch; catat manual.`,
+            }, "batch/start");
             return Response.json(
                 {
                     ok: false,
