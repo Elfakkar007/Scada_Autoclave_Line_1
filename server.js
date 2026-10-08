@@ -40,6 +40,8 @@ app.prepare().then(async () => {
     // Load trendRecorder via dynamic import() karena file tersebut ESM.
     // Dynamic import() adalah cara resmi Node.js untuk load ESM dari CJS.
     const { recordTrendTick } = await import("./src/lib/trendRecorder.js");
+    // Item 8: pemantau alarm PLC (ESM juga, dimuat dengan cara yang sama).
+    const { startAlarmMonitor } = await import("./src/lib/alarmMonitor.js");
 
     createServer(async (req, res) => {
         try {
@@ -78,6 +80,13 @@ app.prepare().then(async () => {
 
             console.log(
                 `> Trend recorder berjalan, poll interval ${POLL_INTERVAL_MS / 1000} detik`
+            );
+
+            // Item 8: alarm monitor punya interval 1 detik sendiri (alarm PLC berupa denyut
+            // 5-120 detik; tick 5 detik milik trend recorder terlalu jarang). Inisialisasi
+            // sudah menangkap error sendiri; .catch hanya jaring pengaman.
+            startAlarmMonitor().catch((err) =>
+                console.error("[server] Alarm monitor gagal start:", err)
             );
         }, 10_000);
     });

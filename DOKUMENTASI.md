@@ -86,7 +86,7 @@ Direktori yang mengelompokkan halaman-halaman khusus untuk dicetak (Print) ke PD
 Kumpulan endpoint *backend API* yang dieksekusi di sisi server Node.js. Dipanggil oleh frontend untuk mengambil/mengirim data.
 - **`alarms/`**: Endpoint CRUD dan list data alarm.
 - **`audit-log/`**: Endpoint untuk mengambil catatan aktivitas (audit).
-- **`auth/`**: Endpoint untuk autentikasi (login, logout, verifikasi token/session).
+- **`auth/`**: Endpoint untuk autentikasi (login, logout, verifikasi token/session, serta publikasi daftar *username* pengguna aktif untuk *dropdown* pada halaman login via `/auth/users`).
 - **`batch/`**: Endpoint untuk memulai (`start`) atau menghentikan (`stop`) sebuah batch/proses.
 - **`batch-records/`**: Endpoint untuk mengambil laporan data historis suatu batch.
 - **`db-test/`**: Endpoint utilitas untuk memeriksa dan melakukan testing koneksi ke database SQL.
@@ -107,6 +107,7 @@ Berisi komponen-komponen antarmuka React yang *reusable* (bisa digunakan kembali
 
 ### 3. 📁 `src/lib/`
 Kumpulan kode *library*, utilitas, dan konfigurasi pendukung yang tidak memiliki UI, tapi menunjang kerja sistem.
+- **`auditLog.js`**: Modul *helper* penulisan catatan audit (*audit log*) secara terpusat. Menyediakan fungsi ketat (`insertAudit`) yang akan menggagalkan eksekusi jika gagal menyimpan log (digunakan untuk tindakan krusial seperti Start Batch) dan fungsi aman (`tryAudit`) yang tidak akan memblokir eksekusi meskipun penyimpanan gagal (digunakan untuk operasi keselamatan mesin seperti Stop/Reset).
 - **`auth.js`**: Kumpulan fungsi utilitas terkait autentikasi. Berisi kode untuk memverifikasi password, men-generate JSON Web Token (JWT) dengan `jose`, dan memverifikasi otorisasi pengguna berdasarkan akses dan role (contoh: cek apakah user punya role 'admin' atau 'operator').
 - **`batchFinalize.js`**: Fungsi utilitas yang terpusat untuk memfinalisasi *record batch*, memperbarui status menjadi selesai, serta merekap total waktu, nilai minimum F0, dan status kelulusan sterilisasi.
 - **`batchNo.js`**: Berisi aturan dan validasi reguler format penamaan Nomor Batch (berjalan murni tanpa *dependency* sehingga aman dipakai langsung oleh komponen antarmuka maupun API).

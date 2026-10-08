@@ -1,80 +1,56 @@
 import pool from "@/lib/db";
+import { ALARM_FROM, ALARM_ORDER, buildAlarmFilter } from "@/lib/alarmQuery";
 
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
-        const search    = searchParams.get("search")    ?? "";
-        const eventType = searchParams.get("eventType") ?? "";
-        const limit     = Math.min(parseInt(searchParams.get("limit")  ?? "20", 10), 100);
-        const offset    = Math.max(parseInt(searchParams.get("offset") ?? "0",  10), 0);
+        // limit/offset dibersihkan: nilai non-angka tidak boleh menjadi NaN ke query.
+        const limitRaw = parseInt(searchParams.get("limit") ?? "20", 10);
+        const offsetRaw = parseInt(searchParams.get("offset") ?? "0", 10);
+        const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 20;
+        const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
 
-        // ── Bangun kondisi WHERE secara dinamis ──────────────────────────
-        const conditions = [];
-        const values     = [];
+        const q = buildAlarmFilter(searchParams);
+        if (q.error) return Response.json({ ok: false, error: q.error }, { status: 400 });
 
-        if (search.trim()) {
-            values.push(`%${search.trim()}%`);
-            conditions.push(
-                `(variable_name ILIKE $${values.length}
-                  OR operator    ILIKE $${values.length}
-                  OR alarm_type  ILIKE $${values.length})`
-            );
-        }
-
-        if (eventType.trim()) {
-            values.push(eventType.trim());
-            conditions.push(`event_type = $${values.length}`);
-        }
-
-        const whereClause = conditions.length > 0
-            ? `WHERE ${conditions.join(" AND ")}`
-            : "";
-
-        // ── COUNT total (tanpa limit/offset) ─────────────────────────────
         const countResult = await pool.query(
-            `SELECT COUNT(*) FROM alarm_log ${whereClause}`,
-            values
+            `SELECT COUNT(*) ${ALARM_FROM} ${q.where}`,
+            q.values
         );
         const total = parseInt(countResult.rows[0].count, 10);
 
-        // ── Data dengan limit/offset ──────────────────────────────────────
-        const dataValues = [...values, limit, offset];
+        // Urutan: baris alarm (punya alarm_date) di atas, event tanpa alarm_date di bawah;
+        // pemulihan satu episode berbagi alarm_date dengan alarmnya dan tampil tepat di atasnya.
+        const dataValues = [...q.values, limit, offset];
         const dataResult = await pool.query(
-            `SELECT
-                id,
-                alarm_date,
-                event_date,
-                variable_name,
-                alarm_type,
-                alarm_value,
-                recovery_value,
-                limit_value,
-                event_type,
-                operator
-             FROM alarm_log
-             ${whereClause}
-             ORDER BY alarm_date DESC NULLS LAST, created_at DESC
+            `SELECT id, alarm_date, event_date, variable_name, alarm_type, alarm_value,
+                    recovery_value, limit_value, event_type, operator, description
+             ${ALARM_FROM}
+             ${q.where}
+             ${ALARM_ORDER}
              LIMIT  $${dataValues.length - 1}
              OFFSET $${dataValues.length}`,
             dataValues
         );
 
         const data = dataResult.rows.map((row) => ({
-            id:            row.id,
-            alarmDate:     row.alarm_date,
-            eventDate:     row.event_date,
-            variableName:  row.variable_name,
-            alarmType:     row.alarm_type,
-            alarmValue:    row.alarm_value,
+            id: row.id,
+            alarmDate: row.alarm_date,
+            eventDate: row.event_date,
+            variableName: row.variable_name,
+            alarmType: row.alarm_type,
+            alarmValue: row.alarm_value,
             recoveryValue: row.recovery_value,
-            limitValue:    row.limit_value,
-            eventType:     row.event_type,
-            operator:      row.operator,
+            limitValue: row.limit_value,
+            eventType: row.event_type,
+            operator: row.operator,
+            description: row.description,
         }));
 
         return Response.json({ data, total });
     } catch (error) {
         console.error("[GET /api/alarms]", error);
-        return Response.json({ ok: false, error: error.message }, { status: 500 });
+        // Detail error hanya di log server; jangan dikirim ke klien.
+        return Response.json({ ok: false, error: "Gagal memuat data alarm" }, { status: 500 });
     }
 }

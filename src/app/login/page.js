@@ -50,7 +50,7 @@ export default function LoginPage() {
             }
 
             // Sukses: redirect ke dashboard
-            router.push("/");
+            window.location.href = "/";
         } catch {
             setError("Gagal terhubung ke server. Periksa koneksi jaringan.");
         } finally {
