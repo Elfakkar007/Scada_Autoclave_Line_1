@@ -167,27 +167,11 @@ const NAME_TO_KEY = Object.fromEntries(
     Object.entries(TAG_MAP).map(([key, name]) => [name, key])
 );
 
-// Fallback lama, dipakai hanya kalau PROCCES_TEXT (VW98) gagal dibaca dari PLC.
-// Logic ini MASIH BEST-GUESS dari kombinasi status valve/timer, belum divalidasi
-// ke perilaku mesin asli.
-// TODO:
-//   1. Filling berhenti karena level (tag L atau WATER) nyampe nilai tertentu,
-//      atau karena durasi tetap?
-//   2. Heating -> Steril triggernya suhu (TL) nyampe CTRL_TEMP persis,
-//      atau ada kondisi lain?
-//   3. Ada overlap valve pas transisi antar fase yang perlu ditoleransi?
-function detectPhase(v) {
-    if (!v.runLamp) return "PREPARE";
-    if (v.wtrFill) return "FILLING";
-    if ((v.steam1 || v.steam2) && v.tl < v.ctrlTemp) return "HEATING";
-    if (v.tl >= v.ctrlTemp && v.sterTime > 0) return "STERIL";
-    if (v.cooling1 || v.cooling2) return "COOLING";
-    return "END";
-}
-
 // Tentukan objek fase dari nilai tag PROCCES_TEXT (VW98).
-// Kalau tag berhasil dibaca, pakai PHASE_MAP sebagai sumber utama.
-// Kalau tidak (null / gagal), fallback ke detectPhase() berbasis valve.
+// Sumber utama: PHASE_MAP (dikonfirmasi dari kode ladder AWL).
+// Bila tag gagal dibaca (null), kembalikan 'unknown' — jangan tebak dari valve.
+// Alasan: tebakan berbasis valve pernah mengembalikan "PREPARE" saat fase END
+// (RUN_LAMP mati di kedua kondisi), dan tidak mengenal fase DRAIN (kode 7).
 function resolvePhase(v) {
     const raw = v.processText;
 
@@ -207,21 +191,13 @@ function resolvePhase(v) {
         };
     }
 
-    // Fallback lama, dipakai hanya kalau PROCCES_TEXT (VW98) gagal dibaca dari PLC
-    const legacyLabel = detectPhase(v);
-    const legacyMap = {
-        PREPARE: { code: "prepare", label: "PREPARE" },
-        FILLING: { code: "filling", label: "FILLING" },
-        HEATING: { code: "heating", label: "HEATING" },
-        STERIL: { code: "steril", label: "STERIL." },
-        COOLING: { code: "cooling", label: "COOLING" },
-        END: { code: "end", label: "END" },
-    };
-    const fallback = legacyMap[legacyLabel] ?? { code: "unknown", label: legacyLabel };
+    // VW98 gagal dibaca — kembalikan unknown, jangan tebak.
+    // UI akan menampilkan badge '!' dan START akan diblokir oleh gating fase.
     return {
-        ...fallback,
-        confirmed: false,   // fallback selalu unconfirmed karena hanya estimasi
-        rawValue: null,     // tidak ada nilai PROCCES_TEXT yang bisa dibaca
+        code: "unknown",
+        label: "Fase tidak terbaca (VW98 null)",
+        confirmed: false,
+        rawValue: null,
     };
 }
 
@@ -406,9 +382,11 @@ export async function readPlcSnapshot() {
             conductivity: v.conductivity, // TODO: scaling belum dikonfirmasi (raw dari tag L/VW122)
             level: v.level,               // TODO: scaling belum dikonfirmasi (raw dari tag WATER/VW124)
             valves: {
-                steam1: !!v.steam1, steam2: !!v.steam2, steamExhs: !!v.steamExhs,
-                cooling1: !!v.cooling1, cooling2: !!v.cooling2,
-                wtrFill: !!v.wtrFill, wtrDrain: !!v.wtrDrain, wtrPump: !!v.wtrPump,
+                // bitOrNull: tag gagal-baca → null (unknown/abu-abu di diagram),
+                // bukan false (CLOSED). null SENGAJA tidak diubah jadi false.
+                steam1: bitOrNull(v.steam1), steam2: bitOrNull(v.steam2), steamExhs: bitOrNull(v.steamExhs),
+                cooling1: bitOrNull(v.cooling1), cooling2: bitOrNull(v.cooling2),
+                wtrFill: bitOrNull(v.wtrFill), wtrDrain: bitOrNull(v.wtrDrain), wtrPump: bitOrNull(v.wtrPump),
             },
             door: {
                 // locked = alias lama untuk doorLock (M6.0). Dipertahankan agar UI yang ada tidak rusak.
@@ -446,7 +424,7 @@ export async function readPlcSnapshot() {
                 alrmPres: v.alrmPres ?? null,  // kPa (tidak di-scale; dibandingkan langsung dengan P1 di PLC)
             },
             // phase: object {code, label, confirmed, rawValue}
-            // Sumber utama PROCCES_TEXT (VW98), fallback ke detectPhase() berbasis valve.
+            // Sumber utama PROCCES_TEXT (VW98). Bila null → unknown (tidak ditebak).
             phase: resolvePhase(v),
             // Durasi tiap fase dari timer PLC (detik, nilai raw — tidak di-scale).
             // null bila tag tidak terbaca. Dipakai oleh trendRecorder untuk mengisi

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import Link from "next/link";
 import { describeStopResponse, describeResetPulse } from "@/lib/plcCommandAlert";
 import { AtvDiagram, PhaseGuide } from "@/components/AtvDiagram";
 import { STEPS, PHASE_CODE_TO_STEP, STEP_COLOR } from "@/lib/atvProcess";
+import StartDialog from "@/components/StartDialog";
 
 /* ─────────────────────────────────────────────────────────────
    Product material masih belum ada tag PLC-nya (murni data resep
@@ -203,6 +203,9 @@ export default function Home() {
   // sendiri: tetap tampil sampai operator menekan "Sudah dicek", walau batch sudah tertutup
   // dan tombol Reset hilang. Bentuk: { level, title, lines } atau null.
   const [cmdAlert, setCmdAlert] = useState(null);
+
+  // Dialog START batch (menggantikan halaman /prepare)
+  const [startDialogOpen, setStartDialogOpen] = useState(false);
 
   // Mode tampilan diagram: "live" (ikut PLC) atau "learn" (simulasi edukasi per fase)
   const [mode, setMode] = useState("live");
@@ -422,9 +425,42 @@ export default function Home() {
   const updatedClock = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString("id-ID") : "--:--:--";
   const lastPlcOkClock = lastPlcOkAt ? new Date(lastPlcOkAt).toLocaleTimeString("id-ID") : null;
 
-  const isRunning = noData ? null : (data.runLamp ?? data.running); // utamakan status PLC asli (RUN_LAMP), fallback ke status DB kalau field ini belum ada (mis. saat masih dummy)
+  const isRunning = noData ? null : (data.runLamp ?? data.running);
   const statusLabel = noData ? "NO DATA" : (phaseObj ? phaseObj.label : (data.phase ?? "--"));
-  const phaseConfirmed = phaseObj ? phaseObj.confirmed : true; // kalau data lama (string), anggap sudah ok
+  const phaseConfirmed = phaseObj ? phaseObj.confirmed : true;
+
+  // ── START gating berdasarkan fase PLC (item 11a / 9) ────────────────────────
+  // START hanya aktif bila:
+  //   1. PLC terbaca (bukan NO DATA)
+  //   2. Fase PLC = 1 (idle_ready, VW98=1) — bukan hanya "tidak ada batch DB"
+  //   3. Tidak ada batch yang sedang running di DB
+  // Ini mencegah START ditekan saat mesin sedang dalam proses (dimulai dari luar web).
+  const phaseRaw = phaseObj?.rawValue ?? null;
+  const PROCESS_PHASES = [2, 3, 4, 5, 7]; // filling, heating, steril, cooling, drain
+  const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
+  // Mesin berjalan dari luar web (belum ada batch di DB, tapi fase proses)
+  const machineRunningExternal = !data.running && !noData && data.plcOk === true &&
+    PROCESS_PHASES.includes(phaseRaw);
+
+  // Pesan alasan START nonaktif (ditampilkan di bawah tombol START)
+  let startBlockReason = null;
+  if (!startAllowed) {
+    if (data.running) {
+      startBlockReason = `Batch \"${data.batchNo ?? ""}\"\ sedang berjalan.`;
+    } else if (noData) {
+      startBlockReason = "PLC tidak terhubung — kondisi mesin tidak bisa diverifikasi.";
+    } else if (phaseRaw === 0) {
+      startBlockReason = "Mesin idle — pintu atau seal belum siap. Tutup pintu dulu.";
+    } else if (phaseRaw === null) {
+      startBlockReason = "Fase mesin tidak terbaca (VW98 null) — START diblokir sampai terbaca.";
+    } else if (PROCESS_PHASES.includes(phaseRaw)) {
+      startBlockReason = `Mesin sedang dalam proses: ${data.phase?.label ?? "—"} — tunggu selesai atau gunakan STOP.`;
+    } else if (phaseRaw === 6) {
+      startBlockReason = "Mesin di fase END — gunakan tombol Reset di bawah.";
+    } else {
+      startBlockReason = `Fase mesin: ${data.phase?.label ?? "tidak diketahui"} — START tidak bisa dilakukan sekarang.`;
+    }
+  }
 
   const sensors = [
     ["T1", data.t1], ["T2", data.t2], ["T3", data.t3],
@@ -494,6 +530,17 @@ export default function Home() {
             {data.ctrlSel === null && (
               <div className="bg-white border-l-[3px] border-[#B8C0BE] px-3 py-2 text-sm text-[#5C6B6A]">
                 CTRL SEL belum terbaca. Start dari web akan ditolak sampai tag terbaca.
+              </div>
+            )}
+            {/* Mesin berjalan dari luar web — menunggu adopsi otomatis (item 9) */}
+            {machineRunningExternal && (
+              <div
+                role="status"
+                className="bg-white border-l-[3px] border-[#B9762F] px-3 py-2 text-sm text-[#1E2A2E]"
+              >
+                <span className="font-semibold">Mesin berjalan dari luar web.</span>{" "}
+                Fase: <span className="font-semibold">{data.phase?.label ?? "—"}</span>.
+                {" "}Batch EXT akan dibuat otomatis dalam beberapa detik. Trend dan alarm sudah direkam.
               </div>
             )}
           </div>
@@ -626,20 +673,26 @@ export default function Home() {
             </section>
 
             <section className="flex flex-col gap-1.5">
-              {!data.running ? (
-                <Link
-                  href="/prepare"
-                  className="block text-center px-2 py-1.5 rounded-[3px] bg-[#4F7A52] hover:bg-[#446C47] active:bg-[#3A5C3D] text-white text-[13px] font-semibold transition-colors"
+              {startAllowed ? (
+                <button
+                  type="button"
+                  onClick={() => setStartDialogOpen(true)}
+                  className="block w-full text-center px-2 py-1.5 rounded-[3px] bg-[#4F7A52] hover:bg-[#446C47] active:bg-[#3A5C3D] text-white text-[13px] font-semibold transition-colors"
                 >
                   START
-                </Link>
+                </button>
               ) : (
                 <span
                   aria-disabled="true"
+                  title={startBlockReason ?? undefined}
                   className="block text-center px-2 py-1.5 rounded-[3px] border border-[#D8DEDC] text-[#B8C0BE] text-[13px] font-semibold cursor-not-allowed"
                 >
                   START
                 </span>
+              )}
+              {/* Alasan START nonaktif — tampil bila ada, kecuali batch sudah running (sudah jelas dari status) */}
+              {startBlockReason && !data.running && (
+                <p className="text-[11px] text-[#5C6B6A] leading-snug px-1">{startBlockReason}</p>
               )}
 
               {/* DOOR: read only, bukan tombol */}
@@ -791,6 +844,13 @@ export default function Home() {
           limits={data.limits}
         />
       </div>
+
+      {/* Modal START batch — menggantikan halaman /prepare */}
+      <StartDialog
+        open={startDialogOpen}
+        onClose={() => setStartDialogOpen(false)}
+        onStarted={() => { setStartDialogOpen(false); fetchData(); }}
+      />
     </main>
   );
 }

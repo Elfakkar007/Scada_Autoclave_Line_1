@@ -1,0 +1,1042 @@
+ORGANIZATION_BLOCK Ö÷³ÌÐò:OB1
+TITLE=PROGRAM COMMENTS
+BEGIN
+Network 1 // Network Title
+// Network Comment
+LD     SM0.1
+R      M3.1, 8
+S      M3.0, 1
+Network 2 
+LD     M1.5
+LD     M5.0
+ED
+OLD
+R      M3.1, 8
+R      Q2.0, 8
+R      Q0.6, 10
+R      Q3.0, 8
+S      M3.0, 1
+Network 3 
+LD     SM0.0
+LPS
+CALL   SBR10
+CALL   SBR12
+A      M3.0
+CALL   SBR0
+LRD
+A      M3.1
+CALL   SBR1
+LRD
+A      M3.2
+CALL   SBR2
+LRD
+A      M3.3
+CALL   SBR3
+LRD
+A      M3.4
+CALL   SBR4
+LRD
+A      M3.5
+CALL   SBR5
+LRD
+A      M3.6
+CALL   SBR6
+LPP
+A      M5.0
+CALL   SBR9
+Network 4 
+LD     SM0.1
+CALL   SBR11, VW200, 30, M9.0, L0.0
+CALL   SBR11, VW300, 30, M9.1, L0.0
+CALL   SBR11, VW1000, 30, M9.2, L0.0
+CALL   SBR11, VW1000, 30, M9.2, L0.0
+Network 5 
+LD     SM0.5
+EU
+TODR   VB4000
+Network 6 
+LD     M31.0
+EU
+TODW   VB3000
+Network 7 
+LD     SM0.0
+LPS
+MOVB   VB4000, VB2000
+AENO
+MOVB   VB4001, VB2001
+LRD
+MOVB   VB4002, VB2002
+AENO
+MOVB   VB4003, VB2003
+LPP
+MOVB   VB4004, VB2004
+AENO
+MOVB   VB4005, VB2005
+Network 8 
+LD     SM0.0
+A      I2.5
+TON    T160, +50
+Network 9 
+LD     SM0.0
+LPS
+LD     M3.2
+O      M3.3
+O      M3.4
+LD     M5.0
+A      M2.7
+OLD
+ALD
+AN     I1.1
+A      T160
+=      Q3.0
+LRD
+A      Q3.0
+LPS
+AN     T113
+AN     Q3.2
+=      Q3.1
+LPP
+TON    T113, +80
+LPP
+A      Q3.0
+A      T113
+AN     Q3.1
+=      Q3.2
+Network 10 
+LD     M3.1
+O      M3.2
+O      M3.4
+O      M3.5
+R      C2, 1
+R      M3.0, 1
+MOVW   +0, VW230
+Network 11 
+LD     M3.3
+R      M3.0, 1
+END_ORGANIZATION_BLOCK
+SUBROUTINE_BLOCK Æô¶¯³ÌÐò:SBR0
+TITLE=SUBROUTINE COMMENTS
+BEGIN
+Network 1 // Network Title
+// Network Comment
+LD     M3.0
+LPS
+R      C4, 6
+R      Q2.4, 1
+R      T110, 3
+=      Q2.1
+A      I1.5
+AN     I1.6
+AW<=   VW118, VW222
+LDW<=  VW126, +900
+A      I0.3
+O      M6.0
+ALD
+AN     Q0.5
+AN     I1.3
+=      Q0.0
+LRD
+A      I1.6
+AN     I1.5
+AN     I0.2
+AN     I1.0
+=      Q0.1
+LRD
+A      I0.4
+AN     I0.5
+AW<=   VW118, VW222
+LDW<=  VW126, +900
+A      I0.2
+O      M6.0
+ALD
+AN     Q0.5
+AN     I1.4
+=      Q0.2
+LRD
+A      I0.5
+AN     I0.4
+AN     I0.3
+AN     I1.2
+=      Q0.3
+LRD
+LDW<=  VW118, VW222
+O      M6.0
+LD     M1.3
+O      I0.6
+ALD
+ALD
+=      Q0.4
+=      Q2.2
+=      Q2.3
+R      Q0.5, 1
+LRD
+A      I0.2
+A      I0.3
+A      M1.2
+S      Q0.5, 1
+LRD
+LDN    I0.2
+ON     I0.3
+ON     Q0.5
+ALD
+MOVW   +0, VW98
+LRD
+LPS
+A      I0.2
+A      I0.3
+A      Q0.5
+MOVW   +1, VW98
+LPP
+AW>=   VW118, VW228
+=      Q1.5
+LRD
+A      M5.0
+R      M3.0, 1
+R      Q2.1, 1
+LPP
+A      I0.2
+A      I0.3
+A      Q0.5
+AN     I2.1
+AN     I2.2
+A      M1.4
+R      M3.0, 1
+R      Q2.1, 1
+R      Q1.5, 1
+S      M3.1, 1
+R      C1, 3
+Network 2 
+LD     M3.0
+LPS
+A      M2.5
+AN     Q0.5
+AN     I0.2
+AN     I0.3
+=      Q1.4
+LRD
+LD     I1.7
+O      M11.0
+ALD
+AN     I2.0
+AN     Q0.5
+AN     I0.3
+AN     Q3.5
+=      Q3.4
+LPP
+LD     I2.0
+O      M11.1
+ALD
+AN     I1.7
+AN     Q0.5
+AN     I0.2
+AN     Q3.4
+=      Q3.5
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ×¢Ë®:SBR1
+TITLE=
+BEGIN
+Network 1 
+LD     M3.1
+MOVW   +2, VW98
+S      Q2.4, 1
+=      Q1.0
+=      Q2.1
+=      Q1.5
+=      Q2.0
+A      I0.0
+R      Q1.0, 1
+R      Q1.5, 1
+R      Q2.0, 2
+R      M3.1, 2
+S      M3.2, 1
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ÉýÎÂ:SBR2
+TITLE=
+BEGIN
+Network 1 
+LD     M3.2
+LPS
+MOVW   +3, VW98
+AENO
+=      Q1.0
+LRD
+AN     T101
+TON    T101, +10
+LRD
+LDW<   VW100, VW236
+O      Q0.6
+ALD
+AW<    VW100, VW204
+=      Q0.6
+LRD
+LPS
+AW<    VW100, VW204
+=      Q0.7
+LRD
+AW<    VW126, VW234
+=      Q2.1
+LRD
+AW<=   VW118, VW214
+AW>=   VW126, +800
+AN     M15.1
+=      Q1.3
+LRD
+AW>=   VW118, VW212
+AW>=   VW118, +100
+=      Q1.5
+LPP
+AW>=   VW102, VW200
+AW>=   VW104, VW200
+AW>=   VW106, VW200
+AW>=   VW108, VW200
+AW>=   VW110, VW200
+AW>=   VW112, VW200
+AW>=   VW114, VW200
+AW>=   VW116, VW200
+TON    T115, +50
+LRD
+A      C5
+LPS
+AN     T200
+=      M10.0
+LPP
+TON    T200, +300
+LRD
+A      C6
+LPS
+AN     T116
+=      M10.1
+LPP
+TON    T116, +300
+LPP
+A      T115
+R      Q1.3, 3
+R      Q1.0, 1
+R      Q2.1, 1
+R      Q0.6, 2
+R      M3.2, 1
+R      T115, 1
+S      M3.3, 1
+Network 2 
+LD     T101
+LD     I2.6
+CTU    C1, +32000
+Network 3 
+LD     SM0.0
+MOVW   C1, VW600
+Network 4 
+LD     T101
+LD     I2.6
+CTU    C5, +300
+Network 5 
+LD     T101
+LD     I2.6
+CTU    C6, +3000
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK Ãð¾ú:SBR3
+TITLE=
+BEGIN
+Network 1 
+LD     M3.3
+LPS
+MOVW   +4, VW98
+AENO
+=      Q1.0
+LRD
+MOVW   VW202, VW240
+*I     +60, VW240
+LRD
+AW<    VW100, VW224
+=      Q0.7
+LRD
+AW<=   VW118, VW214
+AN     M15.1
+=      Q1.6
+LRD
+AW>=   VW118, VW212
+=      Q1.5
+LRD
+AN     T104
+TON    T104, +10
+LPP
+LDW>=  C2, VW240
+AN     M15.0
+LD     M13.2
+A      M15.0
+OLD
+ALD
+R      Q1.0, 1
+R      Q1.5, 2
+R      Q0.7, 1
+R      M3.3, 1
+S      M3.4, 1
+R      M13.2, 1
+Network 2 
+LD     T104
+LD     I2.6
+CTU    C2, VW240
+Network 3 
+LD     SM0.0
+MOVW   C2, VW230
+Network 4 
+LD     M3.3
+LDW<   VW102, VW200
+OW<    VW104, VW200
+OW<    VW106, VW200
+OW<    VW108, VW200
+OW<    VW110, VW200
+OW<    VW112, VW200
+OW<    VW114, VW200
+ALD
+AN     T102
+=      M10.2
+Network 5 
+LD     M3.3
+LDW>   VW102, VW252
+OW>    VW104, VW252
+OW>    VW106, VW252
+OW>    VW108, VW252
+OW>    VW110, VW252
+OW>    VW112, VW252
+OW>    VW114, VW252
+ALD
+AN     T102
+=      M10.3
+Network 6 
+LD     M10.3
+O      M10.2
+TON    T102, +1200
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ÀäÈ´:SBR4
+TITLE=
+BEGIN
+Network 1 
+LD     M3.4
+LPS
+MOVW   +5, VW98
+TON    T110, +300
+=      Q1.2
+=      Q2.6
+=      Q2.7
+=      Q3.6
+=      Q3.7
+AN     T103
+TON    T103, +10
+LRD
+AN     T110
+=      Q2.1
+LRD
+A      T110
+=      Q1.7
+A      I2.3
+=      M4.5
+LRD
+A      C7
+LPS
+AN     T201
+=      M10.4
+LPP
+TON    T201, +300
+LRD
+LPS
+AW<=   VW126, VW208
+=      Q1.1
+LRD
+AW>=   VW118, VW212
+=      Q1.5
+LPP
+AW<=   VW118, VW214
+=      Q1.3
+LPP
+AW<=   VW126, VW210
+R      Q1.1, 7
+R      Q2.1, 1
+R      Q2.6, 2
+R      Q3.6, 2
+R      M3.4, 1
+S      M3.5, 1
+Network 2 
+LD     T103
+LD     I2.6
+CTU    C3, +32000
+Network 3 
+LD     SM0.0
+MOVW   C3, VW602
+Network 4 
+LD     T103
+LD     I2.6
+CTU    C7, +300
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ÅÅ·Å:SBR5
+TITLE=
+BEGIN
+Network 1 
+LD     M3.5
+LPS
+MOVW   +7, VW98
+TON    T111, +80
+TON    T112, VW238
+AN     T111
+=      Q1.2
+LRD
+AN     T112
+=      Q1.4
+LRD
+AN     Q1.4
+=      Q1.5
+LPP
+A      T112
+A      Q1.5
+AW<=   VW118, VW222
+R      Q1.2, 4
+R      M3.5, 1
+S      M3.6, 1
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ½áÊø:SBR6
+TITLE=
+BEGIN
+Network 1 
+LD     M3.6
+MOVW   +6, VW98
+R      Q2.4, 1
+=      Q1.5
+LD     I0.6
+O      M1.3
+ALD
+R      Q1.5, 1
+S      M3.0, 1
+R      M3.7, 1
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK Scale_R_I:SBR7
+TITLE=
+VAR_INPUT
+Input:REAL;
+Ish:REAL;
+Isl:REAL;
+Osh:INT;
+Osl:INT;
+END_VAR
+VAR_OUTPUT
+Output:INT;
+END_VAR
+BEGIN
+Network 1 
+Network 2 
+LD     SM0.0
+ITD    LW14, LD28
+ITD    LW12, LD18
+-D     LD28, LD18
+DTR    LD18, LD22
+-R     LD8, LD0
+*R     LD0, LD22
+-R     LD8, LD4
+/R     LD4, LD22
+ROUND  LD22, LD18
++D     LD28, LD18
+DTI    LD18, LW26
+MOVW   LW26, LW16
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK Scale_I_to_R:SBR8
+TITLE=
+VAR_INPUT
+Input:INT;
+Ish:INT;
+Isl:INT;
+Osh:REAL;
+Osl:REAL;
+END_VAR
+VAR_OUTPUT
+Output:REAL;
+END_VAR
+BEGIN
+Network 1 
+Network 2 
+LD     SM0.0
+ITD    LW2, LD26
+ITD    LW4, LD30
+ITD    LW0, LD18
+-R     LD10, LD6
+-D     LD30, LD18
+DTR    LD18, LD22
+*R     LD22, LD6
+-D     LD30, LD26
+DTR    LD26, LD22
+/R     LD22, LD6
++R     LD10, LD6
+MOVR   LD6, LD14
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ÊÖ¿Ø³ÌÐò:SBR9
+TITLE=
+BEGIN
+Network 1 
+LD     M5.0
+LPS
+A      M2.0
+=      Q0.6
+LRD
+A      M2.1
+=      Q0.7
+LRD
+LD     Q0.6
+O      Q0.7
+ALD
+=      Q1.0
+LRD
+LPS
+A      M2.2
+=      Q1.1
+LPP
+A      M2.3
+=      Q1.7
+LRD
+LD     Q1.1
+O      Q1.7
+ALD
+=      Q1.2
+=      Q2.6
+=      Q2.7
+=      Q3.6
+=      Q3.7
+LPP
+LPS
+A      M2.4
+=      Q1.3
+LRD
+A      M2.5
+=      Q1.4
+LRD
+A      M2.6
+=      Q1.5
+LPP
+A      M4.0
+AN     I0.0
+=      Q2.0
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ÃþÄâÁ¿:SBR10
+TITLE=
+BEGIN
+Network 1 
+LD     SM0.0
+LPS
+MOVW   VW128, VW100
+AENO
+MOVW   VW130, VW102
+AENO
+MOVW   VW132, VW104
+AENO
+MOVW   VW134, VW106
+LRD
+MOVW   VW136, VW108
+AENO
+MOVW   VW138, VW110
+AENO
+MOVW   VW140, VW112
+AENO
+MOVW   VW142, VW114
+LRD
+MOVW   AIW0, VW116
+AENO
+MOVW   AIW4, VW400
+AENO
+MOVW   AIW6, VW410
+AENO
+MOVW   AIW12, VW500
+AENO
+MOVW   AIW14, VW510
+LRD
+MOVW   VW400, VW402
+AENO
+-I     +6400, VW402
+AENO
+MOVW   VW402, VW404
+AENO
+/I     +13, VW404
+AENO
+MOVW   VW404, VW122
+LRD
+MOVW   VW410, VW412
+AENO
+-I     +6400, VW412
+AENO
+MOVW   VW412, VW414
+AENO
+/I     +42, VW414
+AENO
+MOVW   VW414, VW124
+LRD
+MOVW   VW500, VW502
+AENO
+-I     +6400, VW502
+AENO
+MOVW   VW502, VW504
+AENO
+/I     +64, VW504
+AENO
+AN     M15.2
+MOVW   VW504, VW118
+-I     +100, VW118
+LPP
+MOVW   VW510, VW512
+AENO
+-I     +6400, VW512
+AENO
+MOVW   VW512, VW514
+AENO
+/I     +64, VW514
+AENO
+LPS
+AN     M15.2
+MOVW   VW514, VW120
+-I     +100, VW120
+LPP
+A      M15.2
+MOVW   VW514, VW118
+-I     +100, VW118
+Network 2 
+LD     SM0.0
+LPS
++I     VW300, VW100
+AENO
++I     VW302, VW102
+AENO
++I     VW304, VW104
+AENO
++I     VW306, VW106
+LRD
++I     VW308, VW108
+AENO
++I     VW310, VW110
+AENO
++I     VW312, VW112
+AENO
++I     VW314, VW114
+AENO
++I     VW316, VW116
+LPP
++I     VW318, VW118
+AENO
++I     VW320, VW120
+AENO
++I     VW322, VW122
+AENO
++I     VW324, VW124
+Network 3 
+LD     SM0.0
+MOVW   VW200, VW224
+AENO
++I     VW206, VW224
+AENO
+MOVW   VW204, VW236
+AENO
+-I     +10, VW236
+AENO
+MOVW   VW200, VW250
++I     +20, VW250
+Network 4 
+LD     SM0.0
+LPS
+AW>=   VW104, VW108
+AW>=   VW108, VW106
+MOVW   VW104, VW126
+LRD
+AW>=   VW104, VW106
+AW>=   VW106, VW108
+MOVW   VW104, VW126
+LRD
+AW>=   VW108, VW106
+AW>=   VW106, VW104
+MOVW   VW104, VW126
+LRD
+AW>=   VW108, VW104
+AW>=   VW104, VW106
+MOVW   VW104, VW126
+LRD
+AW>=   VW106, VW104
+AW>=   VW104, VW108
+MOVW   VW104, VW126
+LPP
+AW>=   VW106, VW108
+AW>=   VW108, VW104
+MOVW   VW104, VW126
+Network 5 
+LDN    M15.1
+LPS
+A      M3.2
+MOVR   VD1200, VD1012
+LRD
+A      M3.3
+MOVR   VD1204, VD1012
+LRD
+A      M3.4
+MOVR   VD1208, VD1012
+LPP
+ITD    VW126, VD1100
+AENO
+DTR    VD1100, VD1104
+AENO
+MOVR   VD1104, VD1000
+/R     10.0, VD1000
+Network 6 
+LDN    M15.1
+LD     M3.2
+O      M3.3
+ALD
+LPS
+AR>=   VD1000, VD1004
+LPS
+MOVR   VD1000, VD1008
+AENO
+-R     VD1004, VD1008
+AENO
+MOVR   VD1008, VD1016
+AENO
+*R     VD1012, VD1016
+AENO
+MOVR   VD1016, VD1024
++R     VD1020, VD1024
+LPP
+TRUNC  VD1024, VD1028
+AENO
+DTI    VD1028, VW1032
+AENO
+MOVW   VW1032, VW214
+LPP
+AR<    VD1000, 80.0
+MOVW   +60, VW214
+Network 7 
+LDN    M15.1
+A      M3.4
+LPS
+AR>=   VD1000, VD1304
+LPS
+MOVR   VD1000, VD1008
+AENO
+-R     VD1304, VD1008
+AENO
+MOVR   VD1008, VD1016
+AENO
+*R     VD1012, VD1016
+AENO
+MOVR   VD1016, VD1024
++R     VD1320, VD1024
+LPP
+TRUNC  VD1024, VD1028
+AENO
+DTI    VD1028, VW1032
+AENO
+MOVW   VW1032, VW214
+LPP
+AR<    VD1000, VD1304
+MOVW   +45, VW214
+Network 8 
+LD     M15.1
+ITD    VW126, VD50
+AENO
+MOVD   VD50, VD54
+AENO
+*D     VD50, VD54
+AENO
+MOVD   VD54, VD56
+AENO
+/D     +11000, VD56
+AENO
+MOVW   VW58, VW214
++I     VW332, VW214
+Network 9 
+LD     SM0.0
+MOVW   VW214, VW212
+AENO
++I     +10, VW212
+AENO
+MOVW   VW252, VW700
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK SAVE_VMEM:SBR11
+TITLE=
+VAR_INPUT
+str_addr:WORD;
+length:WORD;
+END_VAR
+VAR_IN_OUT
+act_en:BOOL;
+END_VAR
+VAR_OUTPUT
+finished:BOOL;
+END_VAR
+BEGIN
+Network 1 // This POU is password-protected against editing and viewing.
+
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK ±¨¾¯:SBR12
+TITLE=
+BEGIN
+Network 1 
+LD     SM0.0
+LPS
+LD     I1.5
+O      I0.4
+O      M8.0
+O      M1.3
+O      I0.6
+AW>=   VW118, VW222
+AN     T105
+ALD
+=      M8.0
+TON    T105, +50
+LRD
+LD     M1.4
+O      M8.1
+AN     I0.2
+AN     I0.3
+AN     T106
+ALD
+=      M8.1
+TON    T106, +50
+LPP
+LD     M1.4
+O      M8.2
+AN     Q0.5
+AN     T107
+ALD
+=      M8.2
+TON    T107, +50
+Network 2 
+LD     SM0.0
+LPS
+AW>    VW126, VW250
+A      M3.3
+=      M8.3
+LPP
+AW<    VW126, VW200
+A      M3.3
+=      M8.4
+Network 3 
+LD     SM0.0
+LD     M8.0
+O      M8.1
+O      M8.2
+O      M3.6
+ALD
+=      Q2.5
+=      M10.5
+Network 4 
+LD     SM0.0
+LDW>   VW100, +1500
+OW>    VW102, +1500
+OW>    VW104, +1500
+OW>    VW106, +1500
+O      I0.7
+ALD
+=      M8.7
+Network 5 
+LD     SM0.0
+LD     M10.0
+O      M10.1
+O      M10.2
+O      M10.3
+O      M10.4
+O      M10.5
+O      M10.6
+ALD
+=      Q3.3
+Network 6 
+LD     M3.3
+LPS
+AW<    VW102, VW200
+=      M18.0
+LRD
+AW<    VW104, VW200
+=      M18.1
+LRD
+AW<    VW106, VW200
+=      M18.2
+LRD
+AW<    VW108, VW200
+=      M18.3
+LRD
+AW<    VW110, VW200
+=      M18.4
+LRD
+AW<    VW112, VW200
+=      M18.5
+LPP
+AW<    VW114, VW200
+=      M18.6
+Network 7 
+LD     M3.3
+LPS
+AW>    VW102, VW252
+=      M18.7
+LRD
+AW>    VW104, VW252
+=      M17.0
+LRD
+AW>    VW106, VW252
+=      M17.1
+LRD
+AW>    VW108, VW252
+=      M17.2
+LRD
+AW>    VW110, VW252
+=      M17.3
+LRD
+AW>    VW112, VW252
+=      M17.4
+LPP
+AW>    VW114, VW252
+=      M17.5
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK MBUS_CTRL_P1:SBR13
+TITLE=
+VAR_INPUT
+Mode:BOOL;
+Baud:DWORD;
+Parity:BYTE;
+Timeout:INT;
+END_VAR
+VAR_OUTPUT
+Done:BOOL;
+Error:BYTE;
+END_VAR
+BEGIN
+Network 1 // This POU is password-protected against editing and viewing.
+
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK MBUS_MSG_P1:SBR14
+TITLE=
+VAR_INPUT
+First:BOOL;
+Slave:BYTE;
+RW:BYTE;
+Addr:DWORD;
+Count:INT;
+DataPtr:DWORD;
+END_VAR
+VAR_OUTPUT
+Done:BOOL;
+Error:BYTE;
+END_VAR
+BEGIN
+Network 1 // This POU is password-protected against editing and viewing.
+
+END_SUBROUTINE_BLOCK
+SUBROUTINE_BLOCK MBUSM1_P1:SBR15
+TITLE=
+VAR_OUTPUT
+crc:WORD;
+END_VAR
+BEGIN
+Network 1 // This POU is password-protected against editing and viewing.
+
+END_SUBROUTINE_BLOCK
+INTERRUPT_BLOCK INT_0:INT0
+TITLE=INTERRUPT ROUTINE COMMENTS
+BEGIN
+Network 1 // Network Title
+// Network Comment
+END_INTERRUPT_BLOCK
+INTERRUPT_BLOCK MBUSM2_P1:INT1
+TITLE=
+BEGIN
+Network 1 // This POU is password-protected against editing and viewing.
+
+END_INTERRUPT_BLOCK

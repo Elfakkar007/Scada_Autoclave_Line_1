@@ -2,7 +2,7 @@
  * src/lib/plcCommandAlert.js — teks peringatan hasil perintah STOP / reset (item 10).
  *
  * Fungsi murni (tanpa React, tanpa fetch) supaya bisa dites dengan `node --test`.
- * Dipakai dashboard (`(app)/page.js`) dan halaman Prepare (`(app)/prepare/page.js`) untuk
+ * Dipakai dashboard (`(app)/page.js`) dan StartDialog (`components/StartDialog.js`) untuk
  * menampilkan hasil perintah ke PLC yang TIDAK berjalan mulus, terutama:
  *   - STOP tidak sampai ke mesin, atau
  *   - STOP / reset / START mungkin tertahan aktif di PLC (stuckRisk, lihat plcWrite.js),

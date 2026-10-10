@@ -23,6 +23,8 @@ import pool from "./db.js";
 import { readPlcSnapshot } from "./plc.js";
 import { ALARM_CATALOG, FAULT_KEYS } from "./alarmCatalog.js";
 import { createBitState, evaluateBit, onsetValues } from "./alarmEpisodes.js";
+import { START_LOCK_KEY } from "./recipeGuard.js";
+import { RECIPE_SNAPSHOT_VERSION } from "./recipeSnapshot.js";
 
 const TICK_MS = 1_000;
 const HEARTBEAT_EVERY_MS = 10_000;
@@ -37,6 +39,12 @@ let lastBeatMs = 0;
 let plcDownSince = null;
 let plcDownLogged = false;
 let lastErrLogMs = 0;
+
+// Adopsi otomatis (item 9): hitung pembacaan berturut-turut di fase proses tanpa batch DB.
+const ADOPT_PHASES = new Set([2, 3, 4, 5, 7]);   // filling, heating, steril, cooling, drain
+const ADOPT_STREAK_NEEDED = 3;                     // ±3 detik stabil sebelum adopsi
+let adoptStreak = 0;                               // pembacaan berturut-turut
+let adoptBusy = false;                             // guard anti-overlap INSERT
 
 const fmtWib = (d) => new Date(d).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 
@@ -166,13 +174,154 @@ async function onPlcUp(nowMs) {
     plcDownSince = null;
 }
 
+/**
+ * Buat batch EXT otomatis saat mesin berjalan tanpa batch di web (item 9).
+ * Dipanggil dari checkAdoption setelah streak stabil terpenuhi.
+ */
+async function adoptRunningProcess(snap) {
+    // Cek sekali lagi (race condition): mungkin ada batch yang baru saja dibuat
+    const check = await pool.query(
+        "SELECT id FROM batch_records WHERE status = 'running' LIMIT 1"
+    );
+    if (check.rows.length > 0) return; // sudah ada batch, skip
+
+    // Coba dapatkan advisory lock yang sama dengan START.
+    // Kalau START sedang berjalan, lewati — tick berikut akan coba lagi.
+    const lockRes = await pool.query(
+        "SELECT pg_try_advisory_lock($1) AS ok", [START_LOCK_KEY]
+    );
+    if (!lockRes.rows[0]?.ok) {
+        console.log("[alarmMonitor] Adopsi ditunda: START sedang berjalan (lock dipegang).");
+        adoptStreak = 0; // reset, coba lagi dari awal
+        return;
+    }
+    try {
+        // Nama batch otomatis: EXT DD.MM.YY HH.mm (WIB)
+        const now = new Date();
+        const wib = new Date(now.getTime() + 7 * 3600_000);
+        const dd = String(wib.getUTCDate()).padStart(2, "0");
+        const mm = String(wib.getUTCMonth() + 1).padStart(2, "0");
+        const yy = String(wib.getUTCFullYear()).slice(-2);
+        const hh = String(wib.getUTCHours()).padStart(2, "0");
+        const mn = String(wib.getUTCMinutes()).padStart(2, "0");
+        const baseName = `EXT ${dd}.${mm}.${yy} ${hh}.${mn}`;
+
+        // Hindari bentrok unique index (jarang, tapi bisa terjadi kalau ada 2 adopsi 1 menit)
+        let batchNo = baseName;
+        const existing = await pool.query(
+            "SELECT batch_no FROM batch_records WHERE lower(btrim(batch_no)) LIKE lower(btrim($1)) || '%'",
+            [baseName]
+        );
+        if (existing.rows.length > 0) {
+            batchNo = `${baseName}-${existing.rows.length + 1}`;
+        }
+
+        // Snapshot dari readback setpoint PLC (bukan dari tabel recipes)
+        const sp = snap.setpoints ?? {};
+        const plcPhase = snap.phase?.rawValue ?? null;
+        const recipeSnapshot = {
+            version: RECIPE_SNAPSHOT_VERSION,
+            capturedAt: now.toISOString(),
+            recipeId: null,
+            formulaNo: null,
+            source: "plc_readback",
+            adoptedAtPhase: plcPhase,
+            controlTemp: sp.ctrlTemp ?? null,
+            spaceTemp: sp.tempSpace ?? null,
+            sterilTemp: sp.sterSet ?? null,
+            sterilTimeMin: sp.sterSetTime ?? null,
+            alarmPres: sp.alrmPres ?? null,
+            coolingTemp1: sp.cool1Temp ?? null,
+            coolingTemp2: sp.cool2Temp ?? null,
+            foValSetting: null,
+            controlType: "Time",
+            sterilMaterial: null,
+        };
+
+        const insertResult = await pool.query(
+            `INSERT INTO batch_records
+                 (batch_no, loading_no, operator, machine_id, recipe_id,
+                  product_name, product_spec, ctrl_type, ster_temp, cool_temp,
+                  recipe_snapshot, status, run_begin)
+             VALUES ($1, NULL, NULL, 'SG-40', NULL,
+                     NULL, NULL, 'Time', $2, $3,
+                     $4::jsonb, 'running', now())
+             RETURNING batch_no`,
+            [
+                batchNo,
+                recipeSnapshot.sterilTemp,
+                recipeSnapshot.coolingTemp2,
+                JSON.stringify(recipeSnapshot),
+            ]
+        );
+        const created = insertResult.rows[0]?.batch_no;
+
+        // Audit
+        await pool.query(
+            `INSERT INTO audit_log
+                 (actor, actor_role, action, entity_type, entity_id, new_value, source, description)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+            [
+                "system", "system", "batch_adopted", "batch", batchNo,
+                JSON.stringify({ batchNo, plcPhase, source: "plc_readback", recipeSnapshot }),
+                "system",
+                `Batch ${batchNo} dibuat otomatis: proses ditemukan sudah berjalan di fase ${plcPhase} tanpa batch di web.`,
+            ]
+        );
+        console.log(`[alarmMonitor] ADOPSI: batch ${created} dibuat otomatis (fase PLC ${plcPhase}).`);
+    } finally {
+        // Lepas lock sesegera mungkin
+        await pool.query("SELECT pg_advisory_unlock($1)", [START_LOCK_KEY]).catch((e) => {
+            console.error("[alarmMonitor] Gagal melepas advisory lock adopsi:", e.message);
+        });
+    }
+}
+
+/**
+ * Cek apakah perlu mengadopsi proses yang berjalan dari luar web.
+ * Dipanggil setiap tick (1 detik) setelah evaluasi alarm.
+ * snap bisa null jika tick alarm gagal sebelum membaca snapshot.
+ */
+async function checkAdoption(snap) {
+    if (adoptBusy) return;
+    // Hanya lanjut kalau snap valid dan PLC online
+    if (!snap || !snap.plcOk || snap.isDummy) { adoptStreak = 0; return; }
+
+    const phaseRaw = snap.phase?.rawValue ?? null;
+    const inProcessPhase = phaseRaw !== null && ADOPT_PHASES.has(phaseRaw);
+
+    if (!inProcessPhase) { adoptStreak = 0; return; }
+
+    // Cek apakah sudah ada batch running (query ringan)
+    const batchRes = await pool.query(
+        "SELECT id FROM batch_records WHERE status = 'running' LIMIT 1"
+    );
+    if (batchRes.rows.length > 0) { adoptStreak = 0; return; } // batch sudah ada, tidak perlu adopsi
+
+    // Fase proses, tidak ada batch — hitung streak
+    adoptStreak += 1;
+    if (adoptStreak < ADOPT_STREAK_NEEDED) return; // belum cukup stabil
+
+    // Streak terpenuhi: adopsi
+    adoptStreak = 0;
+    adoptBusy = true;
+    try {
+        await adoptRunningProcess(snap);
+    } catch (err) {
+        console.error("[alarmMonitor] Adopsi gagal:", err.message ?? err);
+    } finally {
+        adoptBusy = false;
+    }
+}
+
 async function tick() {
     if (busy) return;
     busy = true;
+    let snap = null;
     try {
         const nowMs = Date.now();
         await heartbeat(nowMs);                       // bukti hidup, tidak bergantung pada PLC
-        const snap = await readPlcSnapshot();
+        snap = await readPlcSnapshot();
         if (snap.isDummy) return;                     // data simulasi (dev) tidak boleh masuk log
         if (!snap.plcOk) { await onPlcDown(nowMs); return; }
         await onPlcUp(nowMs);
@@ -196,6 +345,9 @@ async function tick() {
     } finally {
         busy = false;
     }
+
+    // Cek adopsi (di luar blok alarm, tidak diblokir oleh busy alarm)
+    await checkAdoption(snap);
 }
 
 export async function startAlarmMonitor() {
