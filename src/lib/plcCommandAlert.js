@@ -214,4 +214,4 @@ export function describeStartResponse({ networkError = false, json = null } = {}
     }
 
     return { outcome: "rejected", dismissable: false, alert: null };
-}
+}   

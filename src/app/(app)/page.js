@@ -1,290 +1,49 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { describeStopResponse, describeResetPulse } from "@/lib/plcCommandAlert";
+import { AtvDiagram, PhaseGuide } from "@/components/AtvDiagram";
+import { STEPS, PHASE_CODE_TO_STEP, STEP_COLOR } from "@/lib/atvProcess";
 
 /* ─────────────────────────────────────────────────────────────
    Product material masih belum ada tag PLC-nya (murni data resep
    kita sendiri) — default ini dipakai sampai field ini diisi dari
    data formula/batch aktif.
-   Catatan: conductivity, tekanan compressed air, level air, F0 per
-   channel, dan valve SOFT WATER sengaja TIDAK ditampilkan karena
-   belum ada tag PLC yang sesuai (sistem hanya punya 105 tag di
-   KEPServerEX).
+   Diagram P&ID + animasi ada di src/components/AtvDiagram.js, data
+   proses per fase (dari export_atv.awl) di src/lib/atvProcess.js.
+   Valve tanpa tag PLC (WATER DRAIN hijau, COMPRESSED AIR, buang PHE) tampil
+   sebagai estimasi "≈" dari fase aktif, bukan dari sinyal mesin.
    ───────────────────────────────────────────────────────────── */
 const DEFAULT_MATERIAL = "Soft Bottle";
-
-// Pemetaan data.phase.code (dari /api/status) ke label kotak timeline.
-// CATATAN: 'drain' (kode 6 dari PLC) sementara digabung ke kotak COOLING
-// karena timeline hanya punya 6 kotak dan tidak ada kotak DRAIN tersendiri.
-// Ini keputusan sementara — evaluasi ulang setelah ladder logic fase 6 dikonfirmasi.
-const PHASE_CODE_TO_TIMELINE = {
-  idle_door_open: "PREPARE",
-  idle_ready: "PREPARE",
-  filling: "FILLING",
-  heating: "HEATING",
-  steril: "STERIL.",
-  cooling: "COOLING",
-  drain: "COOLING", // sementara gabung ke COOLING (timeline tidak punya kotak DRAIN)
-  finished: "END",
-  // 'unknown': tidak memetakan ke kotak manapun
-};
-
-const PHASES = ["PREPARE", "FILLING", "HEATING", "STERIL.", "COOLING", "END"];
-
-// Warna sesuai design system
-const INK = "#1E2A2E";
-const MUTED = "#5C6B6A";
-const STEAM = "#B9762F";
-const WATER = "#1C6E74";
-const RUN = "#4F7A52";
-const STOP = "#A23B2E";
-const IDLE = "#B8C0BE";
-const RULE = "#D8DEDC";
 
 const MONO = {
   fontFamily: "var(--font-plex-mono), ui-monospace, monospace",
   fontVariantNumeric: "tabular-nums",
 };
-const SANS = { fontFamily: "var(--font-plex-sans), system-ui, sans-serif" };
 
 function fmt(v) {
   if (v === null || v === undefined || Number.isNaN(Number(v))) return "--";
   return Number(v).toFixed(1);
 }
 
-// Format bilangan bulat (untuk tekanan dalam kPa — tidak ada desimal)
-function fmtInt(v) {
-  if (v === null || v === undefined || Number.isNaN(Number(v))) return "--";
-  return String(Math.round(Number(v)));
+const SANS_STYLE = { fontFamily: "var(--font-plex-sans), system-ui, sans-serif" };
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// detik -> HH:MM:SS
+function formatHMS(totalSec) {
+  const s = Math.max(0, Math.floor(totalSec));
+  return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
 }
 
-function formatElapsed(begin) {
-  if (!begin) return "--:--:--";
-  const s = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(begin).getTime()) / 1000)
-  );
-  const p = (n) => String(n).padStart(2, "0");
-  return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
+// detik -> MM:SS (menit bisa > 99)
+function formatMS(totalSec) {
+  const s = Math.max(0, Math.floor(totalSec));
+  return `${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`;
 }
 
-/* ─────────────── Komponen SVG (P&ID) ─────────────── */
-
-// Pipa dua garis: lapisan tinta dulu, lalu lapisan dalam putih, lalu tint aksen.
-// Semua pipa digambar per-lapisan supaya persimpangan menyatu bersih.
-function Pipes({ list }) {
-  return (
-    <g fill="none">
-      {list.map((p, i) => (
-        <path key={`o${i}`} d={p.d} stroke={INK} strokeWidth="9" />
-      ))}
-      {list.map((p, i) => (
-        <path key={`w${i}`} d={p.d} stroke="#FFFFFF" strokeWidth="5" />
-      ))}
-      {list
-        .filter((p) => p.tint)
-        .map((p, i) => (
-          <path
-            key={`t${i}`}
-            d={p.d}
-            stroke={p.tint}
-            strokeOpacity="0.35"
-            strokeWidth="5"
-          />
-        ))}
-    </g>
-  );
-}
-
-// Valve bowtie: terisi saat open, outline saja saat closed.
-// unknown = status belum diketahui (tidak ada tag PLC): outline netral, tanpa fill.
-function Valve({ x, y, open, tone, unknown = false, vertical = false, label, lx, ly, anchor = "start" }) {
-  const isOpen = !unknown && open;
-  const fill = isOpen ? tone : "#FFFFFF";
-  const stroke = isOpen ? tone : IDLE;
-  return (
-    <g>
-      <g transform={`translate(${x} ${y})${vertical ? " rotate(90)" : ""}`}>
-        <path
-          d="M-11 -8 L0 0 L-11 8 Z M11 -8 L0 0 L11 8 Z"
-          fill={fill}
-          stroke={stroke}
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path d="M0 0 V-14 M-5 -14 H5" stroke={stroke} strokeWidth="1.5" fill="none" />
-      </g>
-      <text x={lx} y={ly} fontSize="11" fontWeight="600" fill={INK} textAnchor={anchor}>
-        {label}
-      </text>
-      <text
-        x={vertical ? x + 16 : x}
-        y={vertical ? y + 4 : y + 24}
-        fontSize="8"
-        fontWeight="600"
-        fill={isOpen ? tone : MUTED}
-        textAnchor={vertical ? "start" : "middle"}
-      >
-        {unknown ? "-" : open ? "OPEN" : "CLOSED"}
-      </text>
-    </g>
-  );
-}
-
-// Plakat instrumen: strip label di atas, angka mono di bawah
-function Plate({ x, y, w, h = 34, label, value, unit }) {
-  return (
-    <g>
-      <rect x={x} y={y} width={w} height={h} rx="2" fill="#FFFFFF" stroke={IDLE} />
-      <line x1={x} x2={x + w} y1={y + 13} y2={y + 13} stroke={RULE} />
-      <text x={x + 6} y={y + 9.5} fontSize="9" fill={MUTED}>
-        {label}
-      </text>
-      <text
-        x={x + w - 6}
-        y={y + 28}
-        textAnchor="end"
-        fontSize="14"
-        fontWeight="500"
-        fill={INK}
-        style={MONO}
-      >
-        {value}
-        {unit && (
-          <tspan fontSize="8" fill={MUTED} dx="3" style={SANS}>
-            {unit}
-          </tspan>
-        )}
-      </text>
-    </g>
-  );
-}
-
-function PidDiagram({ valves, doors, p1, p2, level, conductivity, noData = false }) {
-  // valves berasal dari data.valves (tag asli PLC). exhaust dipetakan ke
-  // steamExhs (tag STEAM_EXHS) — itu tag yang sama dengan label "EXHAUST"
-  // di diagram ini. "drain" bawah & "air" (compressed air) TIDAK dipetakan
-  // ke tag apapun karena belum ada tag PLC yang confirmed untuk itu —
-  // tetap unknown, sama seperti SOFT WATER, biar diagram tetap jujur.
-  // noData = PLC tidak terbaca: semua valve ditampilkan "-" (tidak diketahui), bukan CLOSED.
-  const v = {
-    steam1: valves?.steam1 ?? false,
-    steam2: valves?.steam2 ?? false,
-    waterDrain: valves?.wtrDrain ?? false,
-    cool1: valves?.cooling1 ?? false,
-    cool2: valves?.cooling2 ?? false,
-    exhaust: valves?.steamExhs ?? false,
-  };
-
-  const pipes = [
-    // Steam
-    { d: "M30 40 H190", tint: v.steam1 && STEAM },
-    { d: "M30 100 H190", tint: v.steam2 && STEAM },
-    { d: "M190 40 V100 H250 V190 H320", tint: (v.steam1 || v.steam2) && STEAM },
-    // Water drain (keluar dari chamber ke kiri)
-    { d: "M320 240 H30", tint: v.waterDrain && WATER },
-    // Cooling water
-    { d: "M30 380 H190", tint: v.cool1 && WATER },
-    { d: "M30 440 H190", tint: v.cool2 && WATER },
-    { d: "M190 380 V440 H250 V300 H320", tint: (v.cool1 || v.cool2) && WATER },
-    // Drain bawah — belum ada tag PLC yang confirmed, biarkan netral
-    { d: "M360 340 V490", tint: false },
-    // Compressed air — belum ada tag PLC
-    { d: "M870 60 H580 V150", tint: false },
-    // Exhaust
-    { d: "M640 300 H870", tint: v.exhaust && STEAM },
-    // Soft water (status belum diketahui: tanpa tint aksen)
-    { d: "M870 440 H600 V340", tint: false },
-  ];
-
-  return (
-    <div className="overflow-x-auto">
-      <svg
-        viewBox="0 0 900 510"
-        className="w-full h-auto"
-        role="img"
-        aria-label="Diagram perpipaan mesin sterilizer"
-        style={SANS}
-      >
-        <Pipes list={pipes} />
-
-        {/* ── Chamber ── */}
-        <rect x="320" y="150" width="320" height="190" fill="#FFFFFF" stroke={INK} strokeWidth="2" />
-        {/* panel pintu ganda */}
-        <rect x="330" y="160" width="140" height="170" fill="none" stroke={IDLE} />
-        <rect x="490" y="160" width="140" height="170" fill="none" stroke={IDLE} />
-        <line x1="480" x2="480" y1="150" y2="340" stroke={INK} strokeWidth="2" />
-        {/* engsel */}
-        <g fill="#FFFFFF" stroke={INK}>
-          <rect x="316" y="178" width="4" height="16" />
-          <rect x="316" y="296" width="4" height="16" />
-          <rect x="640" y="178" width="4" height="16" />
-          <rect x="640" y="296" width="4" height="16" />
-        </g>
-        {/* handle: terisi hijau jika pintu open */}
-        <rect x="462" y="230" width="6" height="30" fill={doors?.front === "open" ? RUN : "#FFFFFF"} stroke={INK} />
-        <rect x="492" y="230" width="6" height="30" fill={doors?.rear === "open" ? RUN : "#FFFFFF"} stroke={INK} />
-        <text x="400" y="180" fontSize="10" fill={MUTED} textAnchor="middle">Front door</text>
-        <text x="560" y="180" fontSize="10" fill={MUTED} textAnchor="middle">Rear door</text>
-        {/* Level (tag WATER/VW124) — satuan belum dikonfirmasi, tampilkan raw */}
-        <g>
-          <rect x="585" y="305" width="64" height="34" rx="2" fill="#FFFFFF" stroke={IDLE} />
-          <line x1="585" x2="649" y1="318" y2="318" stroke={RULE} />
-          <text x="591" y="314.5" fontSize="9" fill={MUTED}>Level</text>
-          <text x="643" y="332" textAnchor="end" fontSize="14" fontWeight="500" fill={INK} style={MONO}>
-            {level !== null && level !== undefined ? Math.round(level) : "-"}
-          </text>
-          <text x="591" y="333" fontSize="7" fill={MUTED} style={SANS}>nilai PLC</text>
-        </g>
-
-        {/* Conductivity (tag L/VW122) — satuan belum dikonfirmasi, tampilkan raw */}
-        <g>
-          <rect x="585" y="345" width="64" height="34" rx="2" fill="#FFFFFF" stroke={IDLE} />
-          <line x1="585" x2="649" y1="358" y2="358" stroke={RULE} />
-          <text x="591" y="354.5" fontSize="9" fill={MUTED}>Cond.</text>
-          <text x="643" y="372" textAnchor="end" fontSize="14" fontWeight="500" fill={INK} style={MONO}>
-            {conductivity !== null && conductivity !== undefined ? Math.round(conductivity) : "-"}
-          </text>
-          <text x="591" y="373" fontSize="7" fill={MUTED} style={SANS}>belum dikalibrasi</text>
-        </g>
-
-        {/* P1 / P2 — tekanan dalam kPa (nilai raw PLC, terkonfirmasi dari layar SCADA lama) */}
-        <line x1="375" x2="375" y1="134" y2="150" stroke={IDLE} />
-        <line x1="455" x2="455" y1="134" y2="150" stroke={IDLE} />
-        <Plate x={340} y={100} w={70} label="P1" value={fmtInt(p1)} unit="kPa" />
-        <Plate x={420} y={100} w={70} label="P2" value={fmtInt(p2)} unit="kPa" />
-
-        {/* F0: hanya 1 tag di sistem; nilai akan dihitung di backend dari data suhu */}
-        <text x="392" y="358" fontSize="9" fill={MUTED}>
-          <tspan x="392">F0 tercapai: akan dihitung dari data suhu</tspan>
-          <tspan x="392" dy="12">(belum tersedia)</tspan>
-        </text>
-
-        {/* ── Steam ── */}
-        <Valve x={100} y={40} open={v.steam1} unknown={noData} tone={STEAM} label="STEAM 1" lx={30} ly={18} />
-        <Valve x={100} y={100} open={v.steam2} unknown={noData} tone={STEAM} label="STEAM 2" lx={30} ly={78} />
-        <Valve x={100} y={240} open={v.waterDrain} unknown={noData} tone={WATER} label="WATER DRAIN" lx={30} ly={218} />
-
-        {/* ── Cooling ── */}
-        <Valve x={100} y={380} open={v.cool1} unknown={noData} tone={WATER} label="COOLING WATER 1" lx={30} ly={358} />
-        <Valve x={100} y={440} open={v.cool2} unknown={noData} tone={WATER} label="COOLING WATER 2" lx={30} ly={418} />
-
-        {/* ── Drain bawah — belum ada tag PLC confirmed, status unknown ── */}
-        <Valve x={360} y={430} vertical unknown label="DRAIN" lx={376} ly={426} />
-
-        {/* ── Compressed air — belum ada tag PLC confirmed, status unknown ── */}
-        <Valve x={740} y={60} unknown label="COMPRESSED AIR" lx={870} ly={38} anchor="end" />
-
-        {/* ── Exhaust & soft water ── */}
-        <Valve x={760} y={300} open={v.exhaust} unknown={noData} tone={INK} label="EXHAUST" lx={870} ly={278} anchor="end" />
-        {/* SOFT WATER: belum ada tag PLC, status valve tidak diketahui */}
-        <Valve x={760} y={440} unknown label="SOFT WATER" lx={870} ly={418} anchor="end" />
-      </svg>
-    </div>
-  );
-}
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 
 /* ─────────────── Komponen UI (HTML) ─────────────── */
 
@@ -330,9 +89,27 @@ function DoorRow({ label, state }) {
   );
 }
 
-function PhaseTimeline({ activePhase }) {
+// Fase yang durasinya ditampilkan di bawah label (key = properti di `durations`)
+const DUR_KEY = { HEATING: "heat", "STERIL.": "steril", COOLING: "cool" };
+
+const TL_CSS = `
+@keyframes tl-pulse{0%,100%{box-shadow:0 0 0 0 var(--c)}60%{box-shadow:0 0 0 6px transparent}}
+@keyframes tl-sweep{to{transform:translateX(100%)}}
+.tl-pill{position:relative;overflow:hidden;transition:background-color .25s,color .25s,transform .15s,box-shadow .25s}
+.tl-pill:hover{transform:translateY(-1px)}
+.tl-live{animation:tl-pulse 2s ease-out infinite}
+.tl-live::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.38) 50%,transparent 70%);
+  animation:tl-sweep 2.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.tl-live,.tl-live::after{animation:none}}
+`;
+
+// durations: { heat, steril, cool } masing-masing { sec, live, approx } atau null
+function PhaseTimeline({ activePhase, selectedPhase, learn, onSelect, durations }) {
+  const curIdx = STEPS.indexOf(learn ? selectedPhase : activePhase);
   return (
     <div className="relative">
+      <style>{TL_CSS}</style>
       {/* garis dasar + tick minor ala kertas strip-chart */}
       <div className="absolute inset-x-0 top-3 h-px bg-[#5C6B6A]" />
       <svg className="absolute inset-x-0 top-3" width="100%" height="6" aria-hidden="true">
@@ -343,26 +120,64 @@ function PhaseTimeline({ activePhase }) {
         </defs>
         <rect width="100%" height="6" fill="url(#minor-ticks)" />
       </svg>
-      <ol className="relative grid grid-cols-6">
-        {PHASES.map((p) => {
-          const active = activePhase === p;
+      <ol className="relative grid grid-cols-7">
+        {STEPS.map((p, i) => {
+          const color = STEP_COLOR[p];
+          const state = i === curIdx ? "active" : curIdx >= 0 && i < curIdx ? "done" : "todo";
+          const live = !learn && state === "active";
+          const isMachine = learn && activePhase === p;
+          // teks gelap di atas kuning, putih di atas warna lain
+          const onSolid = p === "HEATING" ? "#1E2A2E" : "#FFFFFF";
+          const pillStyle =
+            state === "active"
+              ? { backgroundColor: color, color: onSolid, "--c": `${color}99` }
+              : state === "done"
+                ? { backgroundColor: `${color}2B`, color: "#1E2A2E", boxShadow: `inset 0 0 0 1px ${color}80` }
+                : { color: "#5C6B6A" };
+          const dKey = DUR_KEY[p];
+          const d = dKey && !learn ? durations?.[dKey] : null;
           return (
             <li key={p} className="flex flex-col items-center">
               <div className="h-4 flex items-end">
                 <span
-                  className={
-                    active
-                      ? "block w-[3px] h-4 bg-[#4F7A52]"
-                      : "block w-px h-2 bg-[#5C6B6A]"
-                  }
+                  className={state === "active" ? "block w-[3px] h-4" : "block w-px h-2 bg-[#5C6B6A]"}
+                  style={state === "active" ? { backgroundColor: color } : undefined}
                 />
               </div>
-              <span
-                className={`mt-2 text-[11px] sm:text-xs ${active ? "font-bold text-[#1E2A2E]" : "text-[#5C6B6A]"
-                  }`}
+              <button
+                type="button"
+                onClick={() => onSelect(p)}
+                aria-current={state === "active" ? "step" : undefined}
+                title={learn ? `Pelajari fase ${p}` : `Pelajari fase ${p} (beralih ke mode PELAJARI)`}
+                className={`tl-pill mt-1.5 px-2.5 py-1 rounded-[3px] text-[11px] sm:text-xs ${state === "active" ? "font-bold" : state === "done" ? "font-semibold" : "hover:bg-[#EEF1F0]"
+                  } ${live ? "tl-live" : ""} focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1C6E74]`}
+                style={pillStyle}
               >
-                {p}
-              </span>
+                <span className="relative z-[1]">
+                  {state === "done" && <span aria-hidden="true">✓ </span>}
+                  {p}
+                </span>
+              </button>
+              {/* durasi per fase (HEATING / STERIL. / COOLING) */}
+              {dKey && !learn && (
+                <span
+                  className="mt-1 text-[13px] leading-none"
+                  style={{ ...MONO, color: d ? (d.live ? STEP_COLOR[p] : "#1E2A2E") : "#B8C0BE", fontWeight: d?.live ? 700 : 500 }}
+                  title={
+                    d
+                      ? d.approx
+                        ? "Perkiraan dari setpoint (halaman tidak terbuka saat fase ini berjalan)"
+                        : d.live
+                          ? "Sedang berjalan"
+                          : "Total durasi fase"
+                      : "Belum dijalankan"
+                  }
+                >
+                  {d ? `${d.approx ? "~" : ""}${formatMS(d.sec)}` : "--:--"}
+                  <span className="ml-1 text-[9px] font-normal text-[#5C6B6A]" style={SANS_STYLE}>mnt</span>
+                </span>
+              )}
+              {isMachine && <span className="text-[9px] text-[#4F7A52] font-semibold leading-none mt-1">MESIN</span>}
             </li>
           );
         })}
@@ -389,6 +204,24 @@ export default function Home() {
   // dan tombol Reset hilang. Bentuk: { level, title, lines } atau null.
   const [cmdAlert, setCmdAlert] = useState(null);
 
+  // Mode tampilan diagram: "live" (ikut PLC) atau "learn" (simulasi edukasi per fase)
+  const [mode, setMode] = useState("live");
+  const [learnStep, setLearnStep] = useState("FILLING");
+  const [autoplay, setAutoplay] = useState(false);
+
+  // Jam lokal 1 detik: membuat "Waktu berjalan" terus berdetak walau polling terlambat
+  const [now, setNow] = useState(() => Date.now());
+  // Terakhir kali PLC berhasil terbaca (updatedAt dari server), untuk keterangan saat NO DATA
+  const [lastPlcOkAt, setLastPlcOkAt] = useState(null);
+  // Detik STERIL terakhir yang teramati. Counter PLC (VW230) di-reset begitu COOLING mulai,
+  // jadi total fase steril harus "dikunci" di web selagi fasenya masih berjalan.
+  const [sterLatch, setSterLatch] = useState(null);
+  // Cadangan waktu mulai kalau mesin dijalankan dari panel (tidak ada batch di web)
+  const fallbackStart = useRef(null);
+  // Mirror state dari ref agar render bisa memakai nilai terbaru tanpa akses ref langsung.
+  // (Akses ref.current di render body dilarang oleh React Hooks lint rule.)
+  const [fallbackStartMs, setFallbackStartMs] = useState(null);
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch("/api/status");
@@ -396,6 +229,7 @@ export default function Home() {
       const json = await res.json();
       setData(json);
       setFetchFailed(false);
+      if (json.plcOk !== false && json.updatedAt) setLastPlcOkAt(json.updatedAt);
     } catch {
       setFetchFailed(true);
     }
@@ -406,6 +240,58 @@ export default function Home() {
     const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Kunci durasi steril + siapkan waktu mulai cadangan
+  useEffect(() => {
+    if (!data || data.plcOk === false) return;
+    const step = PHASE_CODE_TO_STEP[data.phase?.code];
+    const sec = data.timers?.sterSec;
+    if (step === "STERIL." && isNum(sec)) {
+      setSterLatch((prev) => (prev === null || sec > prev ? sec : prev));
+    } else if (step === "PREPARE" || step === "FILLING" || step === "HEATING") {
+      setSterLatch(null);
+    }
+    const lampOn = (data.runLamp ?? data.running) === true;
+    if (!lampOn || data.runBegin) {
+      fallbackStart.current = null;
+      setFallbackStartMs(null);
+    } else if (fallbackStart.current === null) {
+      const t = data.timers ?? {};
+      const known = (isNum(t.heatSec) ? t.heatSec : 0) + (isNum(t.sterSec) ? t.sterSec : 0) + (isNum(t.coolSec) ? t.coolSec : 0);
+      const ts = Date.now() - known * 1000;
+      fallbackStart.current = ts;
+      setFallbackStartMs(ts);
+    }
+  }, [data]);
+
+  // Putar siklus otomatis di mode PELAJARI: pindah fase tiap 8 detik
+  useEffect(() => {
+    if (mode !== "learn" || !autoplay) return;
+    const t = setInterval(() => {
+      setLearnStep((s) => STEPS[(STEPS.indexOf(s) + 1) % STEPS.length]);
+    }, 8000);
+    return () => clearInterval(t);
+  }, [mode, autoplay]);
+
+  function changeMode(m) {
+    setMode(m);
+    if (m === "live") setAutoplay(false);
+  }
+  function stepBy(delta) {
+    setAutoplay(false);
+    setLearnStep((s) => STEPS[(STEPS.indexOf(s) + delta + STEPS.length) % STEPS.length]);
+  }
+  // Klik kotak fase: langsung masuk mode PELAJARI di fase itu
+  function pickStep(p) {
+    setMode("learn");
+    setAutoplay(false);
+    setLearnStep(p);
+  }
 
   async function handleStop() {
     if (stopping) return; // cegah double-click
@@ -492,7 +378,49 @@ export default function Home() {
 
   // Tentukan kotak mana di timeline yang perlu di-highlight.
   // code 'unknown' atau null -> tidak highlight kotak manapun.
-  const activePhase = !noData && phaseObj ? (PHASE_CODE_TO_TIMELINE[phaseObj.code] ?? null) : null;
+  const activePhase = !noData && phaseObj ? (PHASE_CODE_TO_STEP[phaseObj.code] ?? null) : null;
+  // fase yang dianimasikan: mesin (LIVE) atau pilihan pengguna (PELAJARI)
+  const diagramStep = mode === "learn" ? learnStep : activePhase;
+
+  // ── Durasi per fase (dari counter PLC: HEAT_TIME, ster_time, COOL_TIME — satuan detik) ──
+  const curIdx = activePhase ? STEPS.indexOf(activePhase) : -1;
+  const tmr = data.timers ?? {};
+  let durations = null;
+  if (!noData && curIdx >= 0) {
+    const sterSetSec = isNum(data.setpoints?.sterSetTime) ? data.setpoints.sterSetTime * 60 : null;
+    durations = {
+      heat: curIdx >= 2 && isNum(tmr.heatSec) ? { sec: tmr.heatSec, live: curIdx === 2 } : null,
+      steril:
+        curIdx === 3 && isNum(tmr.sterSec)
+          ? { sec: tmr.sterSec, live: true }
+          : curIdx > 3
+            ? sterLatch !== null
+              ? { sec: sterLatch, live: false }
+              : sterSetSec !== null
+                ? { sec: sterSetSec, live: false, approx: true }
+                : null
+            : null,
+      cool: curIdx >= 4 && isNum(tmr.coolSec) ? { sec: tmr.coolSec, live: curIdx === 4 } : null,
+    };
+  }
+
+  // ── Waktu berjalan ──
+  // Utama: runBegin dari batch di web. Cadangan: perkiraan lokal saat RUN_LAMP menyala tanpa batch web.
+  // Saat server tidak merespons, waktu dibekukan di respons terakhir (bukan terus berdetak di data basi).
+  let elapsedText = "--:--:--";
+  let elapsedApprox = false;
+  {
+    const endMs = fetchFailed ? new Date(data.updatedAt ?? now).getTime() : now;
+    const startMs = data.running && data.runBegin ? new Date(data.runBegin).getTime() : null;
+    if (startMs !== null && Number.isFinite(startMs)) {
+      elapsedText = formatHMS((endMs - startMs) / 1000);
+    } else if (!noData && (data.runLamp ?? data.running) === true && fallbackStartMs !== null) {
+      elapsedText = formatHMS((endMs - fallbackStartMs) / 1000);
+      elapsedApprox = true;
+    }
+  }
+  const updatedClock = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString("id-ID") : "--:--:--";
+  const lastPlcOkClock = lastPlcOkAt ? new Date(lastPlcOkAt).toLocaleTimeString("id-ID") : null;
 
   const isRunning = noData ? null : (data.runLamp ?? data.running); // utamakan status PLC asli (RUN_LAMP), fallback ke status DB kalau field ini belum ada (mis. saat masih dummy)
   const statusLabel = noData ? "NO DATA" : (phaseObj ? phaseObj.label : (data.phase ?? "--"));
@@ -574,17 +502,27 @@ export default function Home() {
         {/* ── Diagram + panel kanan ── */}
         <div className="flex flex-col lg:flex-row gap-2">
           <section className="flex-1 min-w-0 bg-white border border-[#D8DEDC] rounded-[4px] p-2">
-            <PidDiagram
+            <AtvDiagram
+              mode={mode}
+              step={diagramStep}
               valves={data.valves}
               doors={{
                 front: data.door?.opnFrnt ? "open" : "closed",
                 rear: data.door?.opnRear ? "open" : "closed",
               }}
-              p1={noData ? null : data.p1}
-              p2={noData ? null : data.p2}
-              level={noData ? null : data.level}
-              conductivity={noData ? null : data.conductivity}
               noData={noData}
+              running={isRunning === true}
+              values={{
+                th: data.th,
+                p1: data.p1,
+                p2: data.p2,
+                tm: data.tm,
+                tl: data.tl,
+                level: data.level,
+                conductivity: data.conductivity,
+              }}
+              sterSet={data.setpoints?.sterSet}
+              controls={{ setMode: changeMode, autoplay, setAutoplay, prev: () => stepBy(-1), next: () => stepBy(1) }}
             />
           </section>
 
@@ -807,22 +745,51 @@ export default function Home() {
 
         {/* ── Timeline fase ── */}
         <section className="bg-white border border-[#D8DEDC] rounded-[4px] p-2">
-          <div className="flex items-baseline justify-between mb-1.5 text-[11px] text-[#5C6B6A]">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-1.5 text-[11px] text-[#5C6B6A]">
             <span>
               Waktu berjalan{" "}
-              <span className="text-base text-[#1E2A2E] ml-1" style={MONO}>
-                {data.running ? formatElapsed(data.runBegin) : "--:--:--"}
+              <span
+                className="text-base text-[#1E2A2E] ml-1"
+                style={MONO}
+                title={elapsedApprox ? "Perkiraan: mesin berjalan tetapi tidak ada batch yang tercatat di web" : undefined}
+              >
+                {elapsedApprox ? "~" : ""}
+                {elapsedText}
               </span>
+              {elapsedApprox && <span className="ml-1.5 text-[10px]">(perkiraan, tanpa batch web)</span>}
             </span>
             <span>
               Update terakhir{" "}
               <span className="text-[#1E2A2E] ml-1" style={MONO}>
-                {noData ? "--:--:--" : new Date(data.updatedAt).toLocaleTimeString("id-ID")}
+                {updatedClock}
               </span>
+              {fetchFailed ? (
+                <span className="ml-1.5 text-[10px] font-semibold text-[#A23B2E]">server tidak merespons</span>
+              ) : noData ? (
+                <span className="ml-1.5 text-[10px] font-semibold text-[#A23B2E]">
+                  PLC tidak terbaca{lastPlcOkClock ? ` · terakhir terbaca ${lastPlcOkClock}` : ""}
+                </span>
+              ) : null}
             </span>
           </div>
-          <PhaseTimeline activePhase={activePhase} />
+          <PhaseTimeline
+            activePhase={activePhase}
+            selectedPhase={learnStep}
+            learn={mode === "learn"}
+            onSelect={pickStep}
+            durations={durations}
+          />
         </section>
+
+        {/* ── Penjelasan fase (edukasi) ── */}
+        <PhaseGuide
+          mode={mode}
+          step={diagramStep}
+          valves={data.valves}
+          noData={noData}
+          setpoints={data.setpoints}
+          limits={data.limits}
+        />
       </div>
     </main>
   );

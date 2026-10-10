@@ -78,7 +78,7 @@ function BatchRecordsPrintContent() {
             {/* Toolbar */}
             <div className="no-print" style={{ display:"flex", gap:8, padding:"8px 12px", background:"#f3f4f6", borderBottom:"1px solid #d1d5db" }}>
                 <button onClick={() => window.print()} style={{ padding:"5px 14px", background:"#1d4ed8", color:"#fff", border:"none", borderRadius:4, cursor:"pointer", fontWeight:600, fontSize:13 }}>🖨 Cetak</button>
-                <button onClick={() => window.history.back()} style={{ padding:"5px 14px", background:"#e5e7eb", border:"1px solid #9ca3af", borderRadius:4, cursor:"pointer", fontSize:13 }}>← Kembali</button>
+                <button onClick={() => { if (window.history.length <= 1 || window.opener) { window.close(); } else { window.history.back(); } }} style={{ padding:"5px 14px", background:"#e5e7eb", border:"1px solid #9ca3af", borderRadius:4, cursor:"pointer", fontSize:13 }}>← Kembali</button>
             </div>
 
             <div style={{ padding:"8mm 10mm 4mm 10mm" }}>

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid,
-    ReferenceLine, ResponsiveContainer, Tooltip,
+    ReferenceLine, Tooltip,
 } from "recharts";
 
 // ── Helper format ─────────────────────────────────────────────────────────────
@@ -157,6 +157,15 @@ export default function PrintCurvePage() {
     const sterX = toXMin(batch.sterBegin);
     const coolX = toXMin(batch.coolBegin);
 
+    // Tutup tab jika dibuka sebagai tab baru (window.opener), atau back jika tidak
+    function handleBack() {
+        if (window.history.length <= 1 || window.opener) {
+            window.close();
+        } else {
+            window.history.back();
+        }
+    }
+
     return (
         <>
             {/* ── CSS cetak ── */}
@@ -166,6 +175,8 @@ export default function PrintCurvePage() {
                     .no-print { display: none !important; }
                     body { background: white !important; }
                     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    /* Jaga agar header + grafik tidak terpisah antar halaman */
+                    .curve-block { page-break-inside: avoid; break-inside: avoid; }
                 }
                 body { font-family: 'IBM Plex Mono','Courier New',monospace; background: #fff; color: #000; margin: 0; }
             `}</style>
@@ -179,15 +190,16 @@ export default function PrintCurvePage() {
                     🖨 Cetak
                 </button>
                 <button
-                    onClick={() => window.history.back()}
+                    onClick={handleBack}
                     style={{ padding: "5px 14px", background: "#e5e7eb", border: "1px solid #9ca3af", borderRadius: 4, cursor: "pointer", fontSize: 13 }}
                 >
                     ← Kembali
                 </button>
             </div>
 
-            {/* ── Isi laporan ── */}
+            {/* ── Isi laporan — dibungkus curve-block agar header+grafik satu halaman ── */}
             <div style={{ padding: "6mm 10mm", fontFamily: "'IBM Plex Mono','Courier New',monospace", color: "#000", maxWidth: "297mm", margin: "0 auto", boxSizing: "border-box" }}>
+            <div className="curve-block">
 
                 {/* Judul */}
                 <div style={{ textAlign: "center", marginBottom: 6 }}>
@@ -225,14 +237,14 @@ export default function PrintCurvePage() {
                     <div style={{ fontSize: 10, marginTop: 2 }}>{f0Line}</div>
                 </div>
 
-                {/* ── Grafik ── */}
-                <div style={{ position: "relative", width: 1000, height: 560 }}>
+                {/* ── Grafik: fixed width 940px pas untuk A4 landscape (297mm-20mm margin) ── */}
+                <div style={{ position: "relative", width: 940, height: 480 }}>
                     <ManualLegend />
                     <LineChart
-                        width={1000}
-                        height={560}
+                        width={940}
+                        height={480}
                         data={chartData}
-                        margin={{ top: 10, right: 60, bottom: 20, left: 50 }}
+                        margin={{ top: 10, right: 64, bottom: 20, left: 46 }}
                     >
                         <CartesianGrid stroke="#ccc" strokeWidth={0.5} />
                         <XAxis
@@ -289,6 +301,7 @@ export default function PrintCurvePage() {
                     <span>Total: {fmtMin(batch.totalTimeMin)} Min</span>
                     <span>Finish: {fmtTime(batch.runFinish)}</span>
                 </div>
+            </div>{/* end curve-block */}
             </div>
         </>
     );
