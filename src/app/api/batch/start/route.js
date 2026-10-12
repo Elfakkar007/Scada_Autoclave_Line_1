@@ -385,13 +385,14 @@ async function runStart(request, session) {
 
         // ── Guard bypass interlock ────────────────────────────────────────────
         // DOOR_LOCK (M6.0) sebenarnya bypass interlock, bukan kunci pintu.
-        // Kalau aktif, start dari web dilarang (kondisi mesin tidak dapat dipercaya).
-        if (door?.bypass) {
-            return Response.json(
-                { ok: false, error: "Mode bypass interlock (DOOR_LOCK/M6.0) aktif. Nonaktifkan dulu sebelum memulai." },
-                { status: 409 }
-            );
-        }
+        // Berdasarkan uji nyata 10 Okt 2026: mesin bisa start dari SCADA lama saat M6.0 aktif.
+        // Dianggap kondisi wajar/di-handle PLC. Guard web dicabut.
+        // if (door?.bypass) {
+        //     return Response.json(
+        //         { ok: false, error: "Mode bypass interlock (DOOR_LOCK/M6.0) aktif. Nonaktifkan dulu sebelum memulai." },
+        //         { status: 409 }
+        //     );
+        // }
 
         // ── Guard CTRL SEL (M15.0) ────────────────────────────────────────────
         // Hanya berlaku kalau plcOk true (sudah dipastikan di atas).

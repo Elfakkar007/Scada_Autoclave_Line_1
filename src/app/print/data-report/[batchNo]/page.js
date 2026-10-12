@@ -63,8 +63,8 @@ const PHASE_LABELS = {
     3: "HEATING",
     4: "STERIL",
     5: "COOLING",
-    6: "DRAIN",
-    7: "SELESAI",
+    7: "DRAIN",
+    6: "SELESAI",
 };
 
 // ── Baris header ──────────────────────────────────────────────────────────────
