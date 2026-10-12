@@ -124,6 +124,7 @@ export default function TrendPage() {
     // ── 2. Setiap selectedBatchNo berubah: fetch detail + trend ──────────
     useEffect(() => {
         if (!selectedBatchNo) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setBatchDetail(null);
             return;
         }

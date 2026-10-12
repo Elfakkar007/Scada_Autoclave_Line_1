@@ -160,6 +160,7 @@ export default function BatchDetailPage() {
 
     useEffect(() => {
         if (!batchNo) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setLoading(true);
         fetch(`/api/batch-records/${encodeURIComponent(decodedBatchNo)}`)
             .then((r) => r.json())

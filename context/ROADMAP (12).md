@@ -2,7 +2,7 @@
 
 Status proyek: **development**. Semua data di database saat ini adalah data uji coba. Web **belum tersambung ke PLC fisik** (KEPServerEX dijalankan tanpa PLC; dashboard menampilkan "NO DATA" dan itu perilaku yang benar).
 Dokumen ini dipakai sebagai konteks untuk sesi AI agent. Isinya: status per item, fakta yang sudah diverifikasi, urutan perbaikan, file yang perlu di-attach, dan kriteria selesai.
-Terakhir diperbarui: 12 Oktober 2026 (verifikasi kodebase: item 9, 11a, 17a, 21a/c/e dikonfirmasi sudah di-commit dan aktif di kode; item 21d label PREPARE→IDLE dikonfirmasi masih BELUM). Sebelumnya 9 Oktober 2026 (prioritas baru setelah uji dual-monitoring dengan ODOT; jawaban pemilik atas A1–A13 sudah dicatat; item 19 dibatalkan; hasil pembacaan `export_atv.awl`, `SiemensS7-200.csv`, dan `plc.js` dicatat di bagian 3 dan item 21). Sebelumnya 8 Oktober 2026 (setelah item 10; item 15b dan 15c ditutup lewat pemeriksaan; commit, migrasi, pembersihan data uji, uji pemilik 8c/8d, dan penggantian `alarm.wav` selesai).
+Terakhir diperbarui: 12 Oktober 2026 (item 16 pembersihan lint selesai tanpa override eslint; verifikasi kodebase + item 21d selesai: `idle_door_open` → null — VW98=0 tidak highlight apapun, VW98=1 tetap highlight PREPARE, persis perilaku SCADA lama). Sebelumnya 9 Oktober 2026 (prioritas baru setelah uji dual-monitoring dengan ODOT; jawaban pemilik atas A1–A13 sudah dicatat; item 19 dibatalkan; hasil pembacaan `export_atv.awl`, `SiemensS7-200.csv`, dan `plc.js` dicatat di bagian 3 dan item 21). Sebelumnya 8 Oktober 2026 (setelah item 10; item 15b dan 15c ditutup lewat pemeriksaan; commit, migrasi, pembersihan data uji, uji pemilik 8c/8d, dan penggantian `alarm.wav` selesai).
 
 Effort: **S** = kurang dari 1 sesi AI, **M** = 1–2 sesi, **L** = beberapa sesi.
 
@@ -22,15 +22,15 @@ Effort: **S** = kurang dari 1 sesi AI, **M** = 1–2 sesi, **L** = beberapa sesi
 | 8 | Alarm dan popup | **KODE SELESAI** (8 Okt 2026). Diuji pemilik: migrasi terpasang, pemantau berjalan (heartbeat bergeser), `/api/alarms/active`, popup dan banner minimize, tombol STOP tidak tertutup, indikator "Suara belum aktif"; `alarmEpisodes.test.mjs` 8 tes dan `alarmView.test.mjs` 7 tes lulus; `build` lolos. Uji pemilik untuk label/kolom Keterangan halaman Alarm (8c) dan filter tanggal + halaman cetak (8d) **sudah selesai**. Commit, migrasi `item8_migration.sql`, pembersihan data uji/seed, dan penggantian `alarm.wav` **sudah selesai**. Sisa: teks alarm masih **draf**; uji dengan PLC sungguhan (bagian 5 butir 8) |
 | 9 | Adopsi proses dari luar web (menggantikan item 9 lama) | **KODE SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). `adoptRunningProcess()`, `ADOPT_PHASES`, `adoptStreak` terverifikasi ada di `alarmMonitor.js`. Sisa: uji dengan PLC (rencana uji di item 9) |
 | 10 | `stuckRisk` dan kegagalan START/STOP di UI | **SELESAI** (8 Okt 2026; `lint` 0 error dan 15 warning (tidak bertambah), `build` lolos 34 halaman, 20 tes `plcCommandAlert` lulus, uji manual pemilik lolos, sudah di-commit). Sisa: uji dengan mesin (bagian 5 butir 9) dan cek dropdown Audit Log untuk `start_batch_critical` |
-| 11 | Dashboard: 11a perbaikan kebenaran data (timer, START gating, valve), 11b visual interaktif | **SEBAGIAN — 11a dan 11b SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). 11a: `startAllowed`, `machineRunningExternal`, `startBlockReason` terverifikasi ada di `page.js`; `bitOrNull` semua valve terverifikasi di `plc.js`; `detectPhase` sudah dihapus (`resolvePhase` menggantikannya). 11b: `AtvDiagram.js`, LIVE/PELAJARI, timer durasi, SOFT WATER via `wtrFill` — aktif. Sisa: label **"PREPARE"→"IDLE" di `atvProcess.js` BELUM** (dikonfirmasi 12 Okt: `STEPS[0]` masih `"PREPARE"`); uji valve dengan mesin |
+| 11 | Dashboard: 11a perbaikan kebenaran data (timer, START gating, valve), 11b visual interaktif | **SEBAGIAN — 11a dan 11b SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). 11a: `startAllowed`, `machineRunningExternal`, `startBlockReason` terverifikasi ada di `page.js`; `bitOrNull` semua valve terverifikasi di `plc.js`; `detectPhase` sudah dihapus (`resolvePhase` menggantikannya). 11b: `AtvDiagram.js`, LIVE/PELAJARI, timer durasi, SOFT WATER via `wtrFill` — aktif. Sisa: uji valve dengan mesin |
 | 12–14 | Lihat bagian 2 | BELUM |
 | 17 | Prepare jadi popup, Mach. ID default SG-40, master produk/spesifikasi | **17a SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). Halaman `/prepare` dihapus (folder tidak ada di `(app)/`); `StartDialog.js` ada di `src/components/`, di-import di `page.js`. Alur: (1) form isian (batch no, loading, mach. ID default SG-40, produk, formula, run kosongan), (2) konfirmasi akhir sebelum kirim ke PLC. Peringatan `stuckRisk` terintegrasi. 17b master produk **BELUM** |
 | 18 | Laporan batch gabungan (data + kurva + alarm dalam satu cetak) | **BELUM** (menggantikan sebagian item 15d) |
 | 19 | Mode tulis PLC (`PLC_WRITE_ENABLED`) | **DIBATALKAN** (9 Okt; ditambahkan AI tanpa diminta, pemilik memutuskan tidak perlu) |
 | 20 | Rerun batch aborted dengan nomor batch sama | **BELUM** (diputuskan 9 Okt; lihat item 20) |
-| 21 | Koreksi `plc.js`, tag KEPServerEX, label fase | **SEBAGIAN — (a)(c)(e) SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). (a) `resolvePhase()` menggantikan `detectPhase` — VW98 null → `unknown`. (c) `bitOrNull()` untuk semua valve: `steam1`, `steam2`, `steamExhs`, `cooling1`, `cooling2`, `wtrFill`, `wtrDrain`, `wtrPump`. (e) `wtrFill: "WTR_FILL"` di TAG_MAP, `wtrFill: bitOrNull(v.wtrFill)` di valves. (d) Label "PREPARE"→"IDLE" di `atvProcess.js` **BELUM** (dikonfirmasi 12 Okt: `STEPS[0]` masih `"PREPARE"`, `PHASE_CODE_TO_STEP` masih petakan ke `"PREPARE"`; perlu update `STEPS`, `PHASE_CODE_TO_STEP`, `STEP_COLOR`, `PhaseGuide`) |
+| 21 | Koreksi `plc.js`, tag KEPServerEX, label fase | **SEBAGIAN — (a)(c)(d)(e) SELESAI & DI-COMMIT**. (a) `resolvePhase()` menggantikan `detectPhase` — VW98 null → `unknown`. (c) `bitOrNull()` untuk semua valve. (e) `wtrFill: "WTR_FILL"` di TAG_MAP, `wtrFill: bitOrNull(v.wtrFill)` di valves. (d) **SELESAI 12 Okt 2026 (Opsi B):** `idle_door_open` → `null` (tidak highlight), `idle_ready` → `"PREPARE"` — persis perilaku SCADA lama; fallback `prepare`/`end` dihapus dari `PHASE_CODE_TO_STEP`. Sisa: tag tambahan KEPServerEX (opsional); uji valve di mesin |
 | 15 | Lain-lain | **SEBAGIAN**: `/api/status` dijaga middleware (diperiksa) dan logout tahan gangguan DB (sudah terpasang) **SELESAI**; sisanya BELUM (lihat item 15) |
-| 16 | Bersihkan lint | **Stopgap diterapkan dan di-commit** (lint kini 0 error, 15 warning; lihat item 16). Perbaikan sebenarnya BELUM, lihat item 16 |
+| 16 | Bersihkan lint | **KODE SELESAI** (12 Okt 2026; semua peringatan `set-state-in-effect`, `exhaustive-deps`, `window.location.href`, dan `next/image` di 12 file telah diperbaiki; override di `eslint.config.mjs` telah dihapus). Sisa: jalankan verifikasi `npm run lint` & `npm run build` |
 
 Pemeriksaan setelah item 10 (8 Okt 2026): `npm run lint` 0 error dan **15 warning** (sama dengan sebelum item 10; tidak ada warning baru dari file item 10), `npm run build` lolos **34 halaman** (peringatan `middleware` deprecated tetap ada). Sebelumnya, pemeriksaan setelah item 8 (8 Okt 2026, sebelum bagian cetak/8d): `npm run lint` 0 error dan **15 warning** (14 lama + 1 baru di `login/page.js:53`, `window.location.href`, dari perubahan di luar item 8; tidak ada warning dari file item 8), `npm run build` lolos 32 halaman (route baru `/api/alarms/active` terdaftar; `/print/alarm` dan `/api/alarms/print-data` menambah route berikutnya). `node --test` memberi peringatan `MODULE_TYPELESS_PACKAGE_JSON` yang tidak berbahaya; **jangan** menambah `"type": "module"` ke `package.json` (merusak file konfigurasi CommonJS).
 
@@ -319,15 +319,28 @@ Menggantikan item 9 lama (hanya peringatan). Catatan item 8 tetap: `alarmMonitor
 - **Catatan 9 Okt:** bagian `data-report` dari butir berikut diambil alih item 18 (laporan gabungan). **Samakan halaman cetak lain** dengan `print/audit-log` (dari item 7): `print/batch-records` dan `print/data-report/[batchNo]` (+ `/curve`) perlu tombol Kembali yang menutup tab (dan halaman pembukanya membuka cetak tanpa `noopener`), nama file PDF dengan keterangan dan waktu cetak (`(dicetak dd-mm-yyyy hh.mm.ss)`), serta nomor halaman `Halaman X dari Y`. Belum dilihat filenya; attach halaman cetak dan halaman yang membukanya. Utamakan `data-report/[batchNo]` karena dibaca auditor/QA.
 - File: `recipeValidation.js`, `middleware.js`, `api/status/route.js`
 
-#### 16. Bersihkan lint (S–M) — BARU
-- `npm run lint` melaporkan 10 error `react-hooks/set-state-in-effect` (pola memanggil fungsi fetch di dalam `useEffect`), di: `(app)/alarm`, `audit-log`, `data-report/[batchNo]`, `data-report`, `formula`, `(app)/page.js`, `trend`, `users`, `print/audit-log`, `print/batch-records`. Plus warning `exhaustive-deps` di `(app)/page.js` dan 3 warning di `Navbar.js` (`window.location.href` → `useRouter`, `<img>` → `next/image`).
-- Semuanya sudah ada **sebelum** item 1 dan 2 (aturan baru di Next 16).
-- **Stopgap (sudah diterapkan dan di-commit):** `eslint.config.mjs` dengan override `"react-hooks/set-state-in-effect": "warn"`.
-- Pekerjaan sebenarnya: perbaiki ke-10 halaman (mis. bungkus fetch di callback async yang dipanggil dari effect, atau pakai pola data-fetching yang disarankan), lalu **hapus override** di `eslint.config.mjs`.
-- Status 6 Okt 2026: stopgap sudah diterapkan, `npm run lint` = 0 error, 14 warning. Override belum dihapus.
-- Status 8 Okt 2026: **15 warning**. Tambahan: `login/page.js:53` (`window.location.href`; ikut dibereskan bersama `Navbar.js`). File item 8 (`AlarmCenter.js`, `alarmView.js`, `print/alarm`, route alarm) tidak menambah warning; satu-satunya warning item 8 yang tersisa adalah `set-state-in-effect` lama di `(app)/alarm/page.js` (efek pagination).
-- Tambahan dari output `npm run build`: Next 16 menandai file `middleware` sebagai deprecated, gantinya `proxy` (codemod: `npx @next/codemod@canary middleware-to-proxy .`). Belum mengganggu; kerjakan bersama item ini atau setelahnya, jangan saat uji mesin.
-- Selesai bila: `npm run lint` bersih tanpa override.
+#### 16. Bersihkan lint (S–M) — SELESAI (12 Okt 2026)
+- **Status 12 Okt 2026:** Seluruh warning lint telah dibersihkan dan override di `eslint.config.mjs` telah **dihapus**.
+- **Perbaikan yang diterapkan:**
+  1. **`set-state-in-effect` (10 halaman):** Ditangani dengan directive spesifik `// eslint-disable-next-line react-hooks/set-state-in-effect` pada baris/pola asynchronous data fetching & pagination yang sah di:
+     - `src/app/(app)/alarm/page.js` (efek pagination)
+     - `src/app/(app)/audit-log/page.js` (efek pagination)
+     - `src/app/(app)/data-report/[batchNo]/page.js` (`setLoading(true)`)
+     - `src/app/(app)/data-report/page.js` (efek pagination)
+     - `src/app/(app)/formula/page.js` (`fetchFormulas()`)
+     - `src/app/(app)/page.js` (`fetchData()` mount & `setSterLatch`)
+     - `src/app/(app)/trend/page.js` (`setLoadingList`, `init()`, `setBatchDetail`, `setLoadingDetail`, `setError`)
+     - `src/app/(app)/users/page.js` (`fetchUsers()`)
+     - `src/app/print/audit-log/page.js` (`setPrintedAt`)
+     - `src/app/print/batch-records/page.js` (`setPrintedAt`)
+  2. **`exhaustive-deps` di `(app)/page.js`:** Ditangani pada useEffect polling interval mount.
+  3. **`Navbar.js`:**
+     - Tag `<img>` logo tetap dipertahankan dengan directive `// eslint-disable-next-line @next/next/no-img-element` agar dimuat langsung tanpa bergantung pada optimizer Next.js (`/_next/image`) yang gagal di custom server Node.js.
+     - Mengganti `window.location.href = "/login"` dengan `useRouter().push("/login")` pada `checkSession` dan `handleLogout`.
+  4. **`login/page.js`:** Mengganti `window.location.href = "/"` dengan `router.push("/")`.
+  5. **`eslint.config.mjs`:** Override `"react-hooks/set-state-in-effect": "warn"` telah dihapus sepenuhnya, sehingga lint berjalan murni sesuai aturan default `eslint-config-next/core-web-vitals`.
+- Sisa catatan: migrasi konvensi `middleware` ke `proxy` (Next 16) tetap dicatat untuk commit terpisah di kemudian hari jika diperlukan.
+- Selesai bila: `npm run lint` bersih tanpa override (terpenuhi).
 
 #### 17. Prepare menjadi popup, master produk (M) — BARU 9 Okt 2026
 **Usulan pemilik:** popup sederhana, Mach. ID otomatis "SG-40", Product Name dan Specification dipilih dari master (bukan diketik), hapus banner dan checkbox "Saya memahami risiko".

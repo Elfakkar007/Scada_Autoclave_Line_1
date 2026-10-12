@@ -80,6 +80,7 @@ export default function DataReportPage() {
 
     // Fetch ulang saat offset berubah
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchData(search, status, fromDate, toDate, offset);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [offset]);

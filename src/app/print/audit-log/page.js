@@ -121,6 +121,7 @@ function AuditLogPrintContent() {
             .then((j) => { if (j.ok) setUser(j.user?.fullName ?? j.user?.username ?? ""); })
             .catch(() => { });
 
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPrintedAt(toWIBStr(new Date()));
 
         // Ambil data dari route export format=json

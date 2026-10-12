@@ -34,6 +34,7 @@ function BatchRecordsPrintContent() {
             .then((j) => { if (j.ok) setUser(j.user?.username ?? ""); })
             .catch(() => {});
 
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setPrintedAt(toWIBStr(new Date()));
 
         const p = new URLSearchParams({ format: "json" });

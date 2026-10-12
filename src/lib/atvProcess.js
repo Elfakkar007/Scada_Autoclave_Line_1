@@ -27,8 +27,12 @@
 export const STEPS = ["PREPARE", "FILLING", "HEATING", "STERIL.", "COOLING", "DRAIN", "END"];
 
 // data.phase.code (plc.js) → kotak timeline
+// null = tidak ada kotak yang di-highlight (seperti SCADA lama saat mesin benar-benar idle)
 export const PHASE_CODE_TO_STEP = {
-  idle_door_open: "PREPARE",
+  // VW98=0: pintu belum tertutup / seal belum aktif → tidak highlight apapun
+  // (operator belum siap; START diblokir; sesuai perilaku SCADA lama)
+  idle_door_open: null,
+  // VW98=1: pintu tertutup & terseal → siap mulai → highlight PREPARE
   idle_ready: "PREPARE",
   filling: "FILLING",
   heating: "HEATING",
@@ -36,9 +40,6 @@ export const PHASE_CODE_TO_STEP = {
   cooling: "COOLING",
   drain: "DRAIN",
   finished: "END",
-  // kode fallback detectPhase() di plc.js
-  prepare: "PREPARE",
-  end: "END",
 };
 
 // Warna tiap kotak fase di timeline (HEATING kuning, STERIL merah, COOLING biru)

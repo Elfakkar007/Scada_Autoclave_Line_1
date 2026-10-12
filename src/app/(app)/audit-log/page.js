@@ -149,6 +149,7 @@ export default function AuditLogPage() {
     // Fetch ulang saat offset berubah
     useEffect(() => {
         if (!authorized) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchData(search, action, entityType, fromDate, toDate, offset);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [offset]);

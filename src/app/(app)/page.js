@@ -239,9 +239,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
     const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
+    // fetchData stabil (useCallback dengan deps kosong); interval harus segera dimulai saat mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -255,6 +258,7 @@ export default function Home() {
     const step = PHASE_CODE_TO_STEP[data.phase?.code];
     const sec = data.timers?.sterSec;
     if (step === "STERIL." && isNum(sec)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSterLatch((prev) => (prev === null || sec > prev ? sec : prev));
     } else if (step === "PREPARE" || step === "FILLING" || step === "HEATING") {
       setSterLatch(null);

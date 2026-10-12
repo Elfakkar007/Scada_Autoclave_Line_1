@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const menu = [
     { href: "/", label: "Dashboard" },
@@ -16,6 +16,7 @@ export default function Navbar() {
     const [user, setUser] = useState(null);
     const [fetched, setFetched] = useState(false);
     const pathname = usePathname();
+    const router = useRouter();
 
     useEffect(() => {
         // Fungsi yang sama dipakai saat mount dan saat polling berkala
@@ -27,8 +28,7 @@ export default function Navbar() {
                         setUser(json.user);
                     } else {
                         // Akun nonaktif / token invalid / expired → paksa logout
-                        // Gunakan window.location agar semua client state ter-reset total
-                        window.location.href = "/login";
+                        router.push("/login");
                     }
                 })
                 .catch(() => {
@@ -45,11 +45,11 @@ export default function Navbar() {
 
         // Cleanup saat komponen unmount
         return () => clearInterval(interval);
-    }, []);
+    }, [router]);
 
     async function handleLogout() {
         await fetch("/api/auth/logout", { method: "POST" });
-        window.location.href = "/login";
+        router.push("/login");
     }
 
     const isAdmin = user?.role === "admin";
@@ -60,6 +60,7 @@ export default function Navbar() {
             <div className="px-4 flex flex-col gap-1">
                 <div className="mb-6 px-2 flex flex-col items-center">
                     {/* Satoria Pharma Logo */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src="/satoria-logo.png" alt="Satoria Pharma" className="w-20 -mb-1 object-contain" />
 
                     <h2 className="text-xl font-bold text-scada-steam tracking-tight text-center">SCADA</h2>

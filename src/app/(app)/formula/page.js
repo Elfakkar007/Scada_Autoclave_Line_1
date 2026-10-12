@@ -139,6 +139,7 @@ export default function FormulaPage() {
     }, []);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchFormulas();
         // Fetch role user untuk RBAC UI
         fetch("/api/auth/me")
