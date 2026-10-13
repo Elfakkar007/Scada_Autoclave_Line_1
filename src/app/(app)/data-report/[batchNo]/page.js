@@ -16,6 +16,21 @@ function val(v, suffix = "") {
     return `${v}${suffix}`;
 }
 
+// ── Helper: format menit (1 desimal, sama dengan laporan cetak) ───────────────
+function fmtMin(v) {
+    if (v === null || v === undefined || v === "") return "-";
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "-";
+    return `${(Math.floor(n * 10) / 10).toFixed(1)} min`;
+}
+
+// ── Helper: format suhu / float (1 desimal, sama dengan laporan cetak) ─────────
+function fmtTemp(v) {
+    if (v === null || v === undefined || v === "") return "-";
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(1) : "-";
+}
+
 // ── Pemetaan kode fase VW98 (PROCCES_TEXT) ke label tampilan ─────────────────
 // Semua kode TERKONFIRMASI dari pembacaan kode ladder PLC (.awl export).
 // Kolom phase_code di batch_trend menyimpan nilai VW98 mentah, tidak perlu migrasi.
@@ -127,7 +142,7 @@ function TrendTable({ trend }) {
                             </td>
                             {["t1","t2","t3","t4","t5","t6"].map((k) => (
                                 <td key={k} className={tdClass}>
-                                    {row[k] !== null && row[k] !== undefined ? row[k] : "-"}
+                                    {row[k] !== null && row[k] !== undefined ? fmtTemp(row[k]) : "-"}
                                 </td>
                             ))}
                             {/* tekanan dalam kPa — tampilkan bilangan bulat */}
@@ -136,7 +151,7 @@ function TrendTable({ trend }) {
                             </td>
                             {["th","tm","tl","avg"].map((k) => (
                                 <td key={k} className={tdClass}>
-                                    {row[k] !== null && row[k] !== undefined ? row[k] : "-"}
+                                    {row[k] !== null && row[k] !== undefined ? fmtTemp(row[k]) : "-"}
                                 </td>
                             ))}
                         </tr>
@@ -266,14 +281,14 @@ export default function BatchDetailPage() {
                     <InfoField label="Cool Begin" value={fmt(batch.coolBegin)} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 border-t border-scada-rule pt-4">
-                    <InfoField label="Heat Time" value={val(batch.heatTimeMin, " min")} />
-                    <InfoField label="Ster Time" value={val(batch.sterTimeMin, " min")} />
-                    <InfoField label="Cool Time" value={val(batch.coolTimeMin, " min")} />
+                    <InfoField label="Heat Time" value={fmtMin(batch.heatTimeMin)} />
+                    <InfoField label="Ster Time" value={fmtMin(batch.sterTimeMin)} />
+                    <InfoField label="Cool Time" value={fmtMin(batch.coolTimeMin)} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-scada-rule pt-4">
                     <InfoField label="Run Begin"   value={fmt(batch.runBegin)} />
                     <InfoField label="Run Finish"  value={fmt(batch.runFinish)} />
-                    <InfoField label="Total Time"  value={val(batch.totalTimeMin, " min")} />
+                    <InfoField label="Total Time"  value={fmtMin(batch.totalTimeMin)} />
                 </div>
             </SectionCard>
 
