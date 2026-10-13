@@ -206,14 +206,14 @@ function AlarmPrintContent() {
                     <table>
                         <thead>
                             <tr>
-                                {["Alarm Date", "Event Date", "Variable", "Alarm Type", "Alarm Value", "Recovery", "Limit", "Event", "Operator", "Keterangan"].map((h) => (
+                                {["Alarm Date", "Event Date", "Variable", "Alarm Type", "Alarm Value", "Recovery", "Limit", "Event", "Operator"].map((h) => (
                                     <th key={h}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {rows.length === 0 ? (
-                                <tr><td colSpan={10} style={{ textAlign: "center", padding: 8 }}>Tidak ada data</td></tr>
+                                <tr><td colSpan={9} style={{ textAlign: "center", padding: 8 }}>Tidak ada data</td></tr>
                             ) : rows.map((r, i) => (
                                 <tr key={i}>
                                     <td style={{ whiteSpace: "nowrap" }}>{r.alarmDate || "-"}</td>
@@ -225,7 +225,6 @@ function AlarmPrintContent() {
                                     <td>{r.limitValue || "-"}</td>
                                     <td style={{ fontWeight: r.eventType === "alarm_active" ? 700 : 400 }}>{eventLabel(r.eventType)}</td>
                                     <td>{r.operator || "-"}</td>
-                                    <td style={{ maxWidth: 240, wordBreak: "break-word" }}>{r.description}</td>
                                 </tr>
                             ))}
                         </tbody>

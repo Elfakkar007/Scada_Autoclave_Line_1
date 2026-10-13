@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid,
-    ReferenceLine, ResponsiveContainer,
+    ReferenceLine,
 } from "recharts";
 import { eventLabel } from "@/lib/alarmEventLabels";
 
@@ -81,28 +81,30 @@ function HRow({ cols }) {
     );
 }
 
-// ── Konfigurasi garis grafik ──────────────────────────────────────────────────
+// ── Konfigurasi garis grafik (disamakan dengan halaman Trend) ────────────────
 const LINE_CFG = [
-    { key: "th",  color: "#d4b400", label: "TH",  yAxis: "left"  },
-    { key: "tm",  color: "#8b0000", label: "TM",  yAxis: "left"  },
-    { key: "tl",  color: "#8b4513", label: "TL",  yAxis: "left"  },
-    { key: "t1",  color: "#000000", label: "T1",  yAxis: "left"  },
-    { key: "t2",  color: "#e00000", label: "T2",  yAxis: "left"  },
-    { key: "t3",  color: "#c000c0", label: "T3",  yAxis: "left"  },
-    { key: "t4",  color: "#00aadd", label: "T4",  yAxis: "left"  },
-    { key: "t5",  color: "#00aa00", label: "T5",  yAxis: "left"  },
-    { key: "t6",  color: "#ff8800", label: "T6",  yAxis: "left"  },
-    { key: "p",   color: "#003399", label: "P",   yAxis: "right" },
+    { key: "t1",  label: "T1",  color: "#f87171", yAxis: "left"  },
+    { key: "t2",  label: "T2",  color: "#fb923c", yAxis: "left"  },
+    { key: "t3",  label: "T3",  color: "#facc15", yAxis: "left"  },
+    { key: "t4",  label: "T4",  color: "#4ade80", yAxis: "left"  },
+    { key: "t5",  label: "T5",  color: "#34d399", yAxis: "left"  },
+    { key: "t6",  label: "T6",  color: "#22d3ee", yAxis: "left"  },
+    { key: "th",  label: "TH",  color: "#e879f9", yAxis: "left"  },
+    { key: "tm",  label: "TM",  color: "#c084fc", yAxis: "left"  },
+    { key: "tl",  label: "TL",  color: "#f0abfc", yAxis: "left"  },
+    { key: "p",   label: "P",   color: "#3b82f6", yAxis: "right", dash: "5 3" },
 ];
 
 const P_TICKS = [0, 30, 61, 91, 122, 152, 182, 213, 243, 274, 304];
 
 function ManualLegend() {
     return (
-        <div style={{ position: "absolute", top: 0, right: 0, fontSize: 9, lineHeight: "16px", background: "rgba(255,255,255,0.85)", padding: "4px 6px", border: "1px solid #ccc" }}>
-            {LINE_CFG.map(({ key, color, label }) => (
+        <div style={{ position: "absolute", top: 0, right: 0, fontSize: 9, lineHeight: "16px", background: "rgba(255,255,255,0.85)", padding: "4px 6px", border: "1px solid #ccc", zIndex: 10 }}>
+            {LINE_CFG.map(({ key, color, label, dash }) => (
                 <div key={key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke={color} strokeWidth="1.5" /></svg>
+                    <svg width="20" height="4">
+                        <line x1="0" y1="2" x2="20" y2="2" stroke={color} strokeWidth="1.5" strokeDasharray={dash} />
+                    </svg>
                     <span>{label}</span>
                 </div>
             ))}
@@ -152,11 +154,8 @@ export default function PrintDataReport() {
         // Berjalan kembali setiap kali batch berubah (termasuk saat null → value).
         // Saat belum ada batch, listener didaftarkan tapi cleanup tetap aman.
 
-        const PAGE_H_PX = 1047; // A4 content 277 mm @ 96 dpi
-
         function cleanup() {
             document.getElementById("js-pn-style")?.remove();
-            document.querySelectorAll(".js-pg-inj").forEach((e) => e.remove());
         }
 
         function beforePrint() {
@@ -164,10 +163,10 @@ export default function PrintDataReport() {
             if (!bn) return;
 
             // Inject SEMUA @bottom-right rules via JS sehingga tidak ada konflik
-            // dengan CSS statis. Tidak ada @bottom-right di CSS statis sama sekali.
+            // dengan CSS statis.
             // sec-data  : counter(page) — dimulai dari 1 karena section pertama
             // sec-curve : hardcode "Hal. 1" — selalu 1 halaman
-            // sec-alarm : hardcode "Hal. 1" — biasanya 1 halaman
+            // sec-alarm : hardcode "Hal. 1" — 1 halaman
             const styleEl = document.createElement("style");
             styleEl.id = "js-pn-style";
             styleEl.textContent = `
@@ -176,40 +175,6 @@ export default function PrintDataReport() {
                 @page sec-alarm  { @bottom-right { content: "Hal. 1"; font-family: 'IBM Plex Mono','Courier New',monospace; font-size: 9px; font-weight: 700; color: #000; } }
             `;
             document.head.appendChild(styleEl);
-
-            // 2. Untuk alarm yang lebih dari 1 halaman: inject baris Hal. N
-            //    di tbody tepat sebelum baris yang jatuh di halaman berikutnya.
-            const alarmEl = document.querySelector(".sec-alarm");
-            if (!alarmEl) return;
-            const alarmPages = Math.max(1, Math.ceil(alarmEl.scrollHeight / PAGE_H_PX));
-            if (alarmPages <= 1) return;
-
-            const tbody = alarmEl.querySelector("tbody");
-            if (!tbody) return;
-            const rows = Array.from(tbody.querySelectorAll("tr:not(.js-pg-inj)"));
-            if (!rows.length) return;
-
-            const rowsPerPage = Math.max(1, Math.floor(rows.length / alarmPages));
-            for (let p = 2; p <= alarmPages; p++) {
-                const idx = (p - 1) * rowsPerPage;
-                if (idx >= rows.length) break;
-                const tr = document.createElement("tr");
-                tr.className = "js-pg-inj";
-                tr.style.breakBefore = "page";
-                const td = document.createElement("td");
-                td.colSpan = 10;
-                td.style.cssText = [
-                    "padding: 3px 4px",
-                    "font-size: 8px",
-                    "color: #333",
-                    "border-bottom: 1.5px solid #000",
-                    "font-family: 'IBM Plex Mono','Courier New',monospace",
-                    "font-weight: 700",
-                ].join(";");
-                td.textContent = `Log Alarm \u0026 Event \u2022 Batch: ${bn} \u2014 Hal. ${p}`;
-                tr.appendChild(td);
-                rows[idx].before(tr);
-            }
         }
 
         window.addEventListener("beforeprint", beforePrint);
@@ -233,23 +198,32 @@ export default function PrintDataReport() {
         .map(([l,v]) => `${l}: ${fmtTemp(v)}`).join("  ");
 
     // ── Data grafik (kurva) ──────────────────────────────────────────────────
-    const runBeginMs = batch.runBegin ? new Date(batch.runBegin).getTime() : 0;
-    const chartData = trend.map((row) => {
-        const xMin = runBeginMs ? (new Date(row.ts).getTime() - runBeginMs) / 60000 : 0;
-        return { xMin, ...row };
-    });
-    const maxXRaw = chartData.length > 0 ? chartData[chartData.length - 1].xMin : 0;
-    const xDomainMax = Math.max(100, Math.ceil(maxXRaw / 20) * 20);
-    const xTicks = Array.from({ length: xDomainMax / 20 + 1 }, (_, i) => i * 20);
+    // Format data kurva disamakan dengan halaman Trend:
+    // Menggunakan _label (waktu aktual) sehingga kurva membentang 100% penuh
+    // dari awal hingga akhir batch tanpa terpotong di tengah jalan.
+    const chartData = trend.map((row) => ({
+        ...row,
+        _label: fmtTime(row.ts),
+    }));
 
-    function toXMin(dateStr) {
-        if (!dateStr || !runBeginMs) return null;
-        const ms = new Date(dateStr).getTime() - runBeginMs;
-        return ms > 0 ? ms / 60000 : null;
+    // Cari _label terdekat untuk garis bantu fase Heat/Ster/Cool Begin
+    function findClosestLabel(dateStr) {
+        if (!dateStr || !trend || trend.length === 0) return null;
+        const targetMs = new Date(dateStr).getTime();
+        let closest = trend[0];
+        let minDiff = Math.abs(new Date(closest.ts).getTime() - targetMs);
+        for (let i = 1; i < trend.length; i++) {
+            const diff = Math.abs(new Date(trend[i].ts).getTime() - targetMs);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closest = trend[i];
+            }
+        }
+        return fmtTime(closest.ts);
     }
-    const heatX = toXMin(batch.heatBegin);
-    const sterX = toXMin(batch.sterBegin);
-    const coolX = toXMin(batch.coolBegin);
+    const heatX = findClosestLabel(batch.heatBegin);
+    const sterX = findClosestLabel(batch.sterBegin);
+    const coolX = findClosestLabel(batch.coolBegin);
 
     // ── Tabel trend: deteksi pergantian fase ──────────────────────────────────
     // phaseCode dari tiap baris trend dipakai untuk menyisipkan baris separator
@@ -328,8 +302,8 @@ export default function PrintDataReport() {
                     /* @bottom-right dihandle oleh JS beforePrint */
                 }
                 @page sec-alarm {
-                    size: A4 portrait;
-                    margin: 10mm 10mm 16mm 10mm;
+                    size: A4 landscape;
+                    margin: 10mm 10mm 14mm 10mm;
                     @bottom-left {
                         content: "Log Alarm & Event \u2022 Batch: ${batch.batchNo}";
                         font-family: 'IBM Plex Mono','Courier New',monospace;
@@ -349,6 +323,10 @@ export default function PrintDataReport() {
                         padding: 14mm;
                         box-sizing: border-box;
                         box-shadow: 0 4px 20px rgba(0,0,0,0.22);
+                    }
+                    .print-sheet.sec-alarm {
+                        width: 297mm;
+                        min-height: 210mm;
                     }
                     .page-break-screen { margin-top: 28px; }
                 }
@@ -378,8 +356,8 @@ export default function PrintDataReport() {
                 .trend-th { font-weight: 700; font-size: 10px; text-align: center; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 2px 3px; }
                 .trend-td { text-align: center; font-size: 10px; padding: 1px 3px; border-bottom: 1px dotted #aaa; }
                 .phase-sep { background: #1e2a2e; color: #fff; font-weight: 700; font-size: 10px; padding: 3px 4px; text-align: left; letter-spacing: 1.5px; }
-                .alarm-th { font-weight: 700; font-size: 9px; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 2px 4px; text-align: left; }
-                .alarm-td { font-size: 9px; padding: 1px 4px; border-bottom: 1px dotted #aaa; vertical-align: top; }
+                .alarm-th { font-weight: 700; font-size: 10px; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 3px 6px; text-align: left; }
+                .alarm-td { font-size: 10px; padding: 3px 6px; border-bottom: 1px dotted #aaa; vertical-align: middle; }
             `}</style>
 
             {/* ── Toolbar sticky (hanya di layar) ── */}
@@ -551,12 +529,10 @@ export default function PrintDataReport() {
                             >
                                 <CartesianGrid stroke="#ccc" strokeWidth={0.5} />
                                 <XAxis
-                                    dataKey="xMin"
-                                    type="number"
-                                    domain={[0, xDomainMax]}
-                                    ticks={xTicks}
+                                    dataKey="_label"
                                     tick={{ fontSize: 9 }}
-                                    label={{ value: "Min", position: "insideBottomRight", offset: -4, fontSize: 9 }}
+                                    minTickGap={20}
+                                    tickLine={false}
                                 />
                                 <YAxis
                                     yAxisId="left"
@@ -573,17 +549,18 @@ export default function PrintDataReport() {
                                     tick={{ fontSize: 9 }}
                                     label={{ value: "Kpa", angle: 90, position: "insideRight", offset: -4, fontSize: 9 }}
                                 />
-                                {heatX !== null && <ReferenceLine yAxisId="left" x={heatX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
-                                {sterX !== null && <ReferenceLine yAxisId="left" x={sterX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
-                                {coolX !== null && <ReferenceLine yAxisId="left" x={coolX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
-                                {LINE_CFG.map(({ key, color, yAxis }) => (
+                                {heatX && <ReferenceLine yAxisId="left" x={heatX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
+                                {sterX && <ReferenceLine yAxisId="left" x={sterX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
+                                {coolX && <ReferenceLine yAxisId="left" x={coolX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
+                                {LINE_CFG.map(({ key, color, yAxis, dash }) => (
                                     <Line
                                         key={key}
                                         yAxisId={yAxis}
-                                        type="linear"
+                                        type="monotone"
                                         dataKey={key}
                                         stroke={color}
-                                        strokeWidth={1.3}
+                                        strokeWidth={key === "p" ? 2 : 1.4}
+                                        strokeDasharray={dash}
                                         dot={false}
                                         isAnimationActive={false}
                                         connectNulls
@@ -619,14 +596,14 @@ export default function PrintDataReport() {
                     <table>
                         <thead>
                             <tr>
-                                {["Alarm Date","Event Date","Variable","Alarm Type","Alarm Value","Recovery","Limit","Event","Operator","Keterangan"].map((h) => (
+                                {["Alarm Date","Event Date","Variable","Alarm Type","Alarm Value","Recovery","Limit","Event","Operator"].map((h) => (
                                     <th key={h} className="alarm-th">{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td colSpan={10} style={{ textAlign: "center", padding: "12px 4px", fontSize: 10, color: "#555" }}>
+                                <td colSpan={9} style={{ textAlign: "center", padding: "12px 4px", fontSize: 10, color: "#555" }}>
                                     Tidak ada alarm selama batch ini berlangsung
                                 </td>
                             </tr>
@@ -636,7 +613,7 @@ export default function PrintDataReport() {
                     <table>
                         <thead>
                             <tr>
-                                {["Alarm Date","Event Date","Variable","Alarm Type","Alarm Value","Recovery","Limit","Event","Operator","Keterangan"].map((h) => (
+                                {["Alarm Date","Event Date","Variable","Alarm Type","Alarm Value","Recovery","Limit","Event","Operator"].map((h) => (
                                     <th key={h} className="alarm-th">{h}</th>
                                 ))}
                             </tr>
@@ -659,14 +636,13 @@ export default function PrintDataReport() {
                                     <tr key={row.id ?? i}>
                                         <td className="alarm-td" style={{ whiteSpace: "nowrap" }}>{fmtDt(row.alarmDate)}</td>
                                         <td className="alarm-td" style={{ whiteSpace: "nowrap" }}>{fmtDt(row.eventDate)}</td>
-                                        <td className="alarm-td">{row.variableName || "-"}</td>
+                                        <td className="alarm-td" style={{ whiteSpace: "nowrap" }}>{row.variableName || "-"}</td>
                                         <td className="alarm-td">{row.alarmType || "-"}</td>
-                                        <td className="alarm-td" style={{ textAlign: "center" }}>{row.alarmValue !== null && row.alarmValue !== undefined ? fmtTemp(row.alarmValue) : "-"}</td>
-                                        <td className="alarm-td" style={{ textAlign: "center" }}>{row.recoveryValue !== null && row.recoveryValue !== undefined ? fmtTemp(row.recoveryValue) : "-"}</td>
-                                        <td className="alarm-td" style={{ textAlign: "center" }}>{row.limitValue !== null && row.limitValue !== undefined ? fmtTemp(row.limitValue) : "-"}</td>
-                                        <td className="alarm-td" style={{ fontWeight: isAlarm ? 700 : 400 }}>{eventLabel(row.eventType)}</td>
-                                        <td className="alarm-td">{row.operator || "-"}</td>
-                                        <td className="alarm-td" style={{ maxWidth: 200, wordBreak: "break-word" }}>{row.description || "-"}</td>
+                                        <td className="alarm-td" style={{ textAlign: "center", whiteSpace: "nowrap" }}>{row.alarmValue !== null && row.alarmValue !== undefined ? fmtTemp(row.alarmValue) : "-"}</td>
+                                        <td className="alarm-td" style={{ textAlign: "center", whiteSpace: "nowrap" }}>{row.recoveryValue !== null && row.recoveryValue !== undefined ? fmtTemp(row.recoveryValue) : "-"}</td>
+                                        <td className="alarm-td" style={{ textAlign: "center", whiteSpace: "nowrap" }}>{row.limitValue !== null && row.limitValue !== undefined ? fmtTemp(row.limitValue) : "-"}</td>
+                                        <td className="alarm-td" style={{ fontWeight: isAlarm ? 700 : 400, whiteSpace: "nowrap" }}>{eventLabel(row.eventType)}</td>
+                                        <td className="alarm-td" style={{ whiteSpace: "nowrap" }}>{row.operator || "-"}</td>
                                     </tr>
                                 );
                             })}

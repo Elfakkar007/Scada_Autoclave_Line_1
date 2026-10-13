@@ -72,3 +72,26 @@ export function onsetValues(key, snap) {
             return { alarmValue: "1", limitValue: "1" };
     }
 }
+
+/**
+ * Nilai yang disimpan saat alarm pulih (recovery_value), sebagai teks.
+ */
+export function recoveryValues(key, snap) {
+    if (!snap) {
+        return ["m8_1", "m8_2"].includes(key) ? "0" : null;
+    }
+    switch (key) {
+        case "m8_0":
+            return fix1(snap.p1);
+        case "m10_2": {
+            const v = sensorValues(snap);
+            return v.length ? fix1(Math.min(...v)) : null;
+        }
+        case "m10_3": {
+            const v = sensorValues(snap);
+            return v.length ? fix1(Math.max(...v)) : null;
+        }
+        default: // alarm bit murni (m8_1, m8_2)
+            return "0";
+    }
+}

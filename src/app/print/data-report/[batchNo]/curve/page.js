@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid,
-    ReferenceLine, Tooltip,
+    ReferenceLine,
 } from "recharts";
 
 // ── Helper format ─────────────────────────────────────────────────────────────
@@ -54,18 +54,18 @@ function fmtStr(v) {
     return String(v);
 }
 
-// ── Konfigurasi garis grafik ──────────────────────────────────────────────────
+// ── Konfigurasi garis grafik (disamakan dengan halaman Trend) ────────────────
 const LINE_CFG = [
-    { key: "th",  color: "#d4b400", label: "TH",  yAxis: "left"  },
-    { key: "tm",  color: "#8b0000", label: "TM",  yAxis: "left"  },
-    { key: "tl",  color: "#8b4513", label: "TL",  yAxis: "left"  },
-    { key: "t1",  color: "#000000", label: "T1",  yAxis: "left"  },
-    { key: "t2",  color: "#e00000", label: "T2",  yAxis: "left"  },
-    { key: "t3",  color: "#c000c0", label: "T3",  yAxis: "left"  },
-    { key: "t4",  color: "#00aadd", label: "T4",  yAxis: "left"  },
-    { key: "t5",  color: "#00aa00", label: "T5",  yAxis: "left"  },
-    { key: "t6",  color: "#ff8800", label: "T6",  yAxis: "left"  },
-    { key: "p",   color: "#003399", label: "P",   yAxis: "right" },
+    { key: "t1",  label: "T1",  color: "#f87171", yAxis: "left"  },
+    { key: "t2",  label: "T2",  color: "#fb923c", yAxis: "left"  },
+    { key: "t3",  label: "T3",  color: "#facc15", yAxis: "left"  },
+    { key: "t4",  label: "T4",  color: "#4ade80", yAxis: "left"  },
+    { key: "t5",  label: "T5",  color: "#34d399", yAxis: "left"  },
+    { key: "t6",  label: "T6",  color: "#22d3ee", yAxis: "left"  },
+    { key: "th",  label: "TH",  color: "#e879f9", yAxis: "left"  },
+    { key: "tm",  label: "TM",  color: "#c084fc", yAxis: "left"  },
+    { key: "tl",  label: "TL",  color: "#f0abfc", yAxis: "left"  },
+    { key: "p",   label: "P",   color: "#3b82f6", yAxis: "right", dash: "5 3" },
 ];
 
 // Tick sumbu Y kanan (P, kPa) — persis seperti printout lama
@@ -88,10 +88,12 @@ function HRow({ cols }) {
 // ── Legend manual ─────────────────────────────────────────────────────────────
 function ManualLegend() {
     return (
-        <div style={{ position: "absolute", top: 0, right: 0, fontSize: 9, lineHeight: "16px", background: "rgba(255,255,255,0.85)", padding: "4px 6px", border: "1px solid #ccc" }}>
-            {LINE_CFG.map(({ key, color, label }) => (
+        <div style={{ position: "absolute", top: 0, right: 0, fontSize: 9, lineHeight: "16px", background: "rgba(255,255,255,0.85)", padding: "4px 6px", border: "1px solid #ccc", zIndex: 10 }}>
+            {LINE_CFG.map(({ key, color, label, dash }) => (
                 <div key={key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke={color} strokeWidth="1.5" /></svg>
+                    <svg width="20" height="4">
+                        <line x1="0" y1="2" x2="20" y2="2" stroke={color} strokeWidth="1.5" strokeDasharray={dash} />
+                    </svg>
                     <span>{label}</span>
                 </div>
             ))}
@@ -135,27 +137,32 @@ export default function PrintCurvePage() {
         `FOL:${fmtTemp(batch.fol)}`,
     ].join("  ");
 
-    // Konversi trend ke menit sejak runBegin untuk sumbu X
-    const runBeginMs = batch.runBegin ? new Date(batch.runBegin).getTime() : 0;
-    const chartData = trend.map((row) => {
-        const xMin = runBeginMs ? (new Date(row.ts).getTime() - runBeginMs) / 60000 : 0;
-        return { xMin, ...row };
-    });
+    // Data kurva disamakan dengan halaman Trend:
+    // Menggunakan _label (waktu aktual) sehingga kurva membentang 100% penuh
+    // dari awal hingga akhir batch tanpa terpotong di tengah jalan.
+    const chartData = trend.map((row) => ({
+        ...row,
+        _label: fmtTime(row.ts),
+    }));
 
-    // Domain X: kelipatan 20, minimum 100 atau lebih dari durasi data
-    const maxXRaw = chartData.length > 0 ? chartData[chartData.length - 1].xMin : 0;
-    const xDomainMax = Math.max(100, Math.ceil(maxXRaw / 20) * 20);
-    const xTicks = Array.from({ length: xDomainMax / 20 + 1 }, (_, i) => i * 20);
-
-    // Garis bantu vertikal: menit sejak runBegin untuk heat/ster/cool begin
-    function toXMin(dateStr) {
-        if (!dateStr || !runBeginMs) return null;
-        const ms = new Date(dateStr).getTime() - runBeginMs;
-        return ms > 0 ? ms / 60000 : null;
+    // Cari _label terdekat untuk garis bantu fase Heat/Ster/Cool Begin
+    function findClosestLabel(dateStr) {
+        if (!dateStr || !trend || trend.length === 0) return null;
+        const targetMs = new Date(dateStr).getTime();
+        let closest = trend[0];
+        let minDiff = Math.abs(new Date(closest.ts).getTime() - targetMs);
+        for (let i = 1; i < trend.length; i++) {
+            const diff = Math.abs(new Date(trend[i].ts).getTime() - targetMs);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closest = trend[i];
+            }
+        }
+        return fmtTime(closest.ts);
     }
-    const heatX = toXMin(batch.heatBegin);
-    const sterX = toXMin(batch.sterBegin);
-    const coolX = toXMin(batch.coolBegin);
+    const heatX = findClosestLabel(batch.heatBegin);
+    const sterX = findClosestLabel(batch.sterBegin);
+    const coolX = findClosestLabel(batch.coolBegin);
 
     // Tutup tab jika dibuka sebagai tab baru (window.opener), atau back jika tidak
     function handleBack() {
@@ -248,12 +255,10 @@ export default function PrintCurvePage() {
                     >
                         <CartesianGrid stroke="#ccc" strokeWidth={0.5} />
                         <XAxis
-                            dataKey="xMin"
-                            type="number"
-                            domain={[0, xDomainMax]}
-                            ticks={xTicks}
+                            dataKey="_label"
                             tick={{ fontSize: 9 }}
-                            label={{ value: "Min", position: "insideBottomRight", offset: -4, fontSize: 9 }}
+                            minTickGap={20}
+                            tickLine={false}
                         />
                         {/* Sumbu Y kiri — suhu */}
                         <YAxis
@@ -274,19 +279,20 @@ export default function PrintCurvePage() {
                         />
 
                         {/* Garis bantu vertikal fase */}
-                        {heatX !== null && <ReferenceLine yAxisId="left" x={heatX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
-                        {sterX !== null && <ReferenceLine yAxisId="left" x={sterX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
-                        {coolX !== null && <ReferenceLine yAxisId="left" x={coolX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
+                        {heatX && <ReferenceLine yAxisId="left" x={heatX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
+                        {sterX && <ReferenceLine yAxisId="left" x={sterX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
+                        {coolX && <ReferenceLine yAxisId="left" x={coolX} stroke="#888" strokeDasharray="4 2" strokeWidth={0.8} />}
 
                         {/* Garis data */}
-                        {LINE_CFG.map(({ key, color, yAxis }) => (
+                        {LINE_CFG.map(({ key, color, yAxis, dash }) => (
                             <Line
                                 key={key}
                                 yAxisId={yAxis}
-                                type="linear"
+                                type="monotone"
                                 dataKey={key}
                                 stroke={color}
-                                strokeWidth={1.3}
+                                strokeWidth={key === "p" ? 2 : 1.4}
+                                strokeDasharray={dash}
                                 dot={false}
                                 isAnimationActive={false}
                                 connectNulls

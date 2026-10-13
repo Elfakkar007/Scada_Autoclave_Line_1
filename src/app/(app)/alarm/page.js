@@ -194,7 +194,7 @@ export default function AlarmPage() {
             <div className="flex flex-col sm:flex-row gap-3 mb-5">
                 <input
                     type="text"
-                    placeholder="Cari Variable Name / Operator / Alarm Type / Keterangan…"
+                    placeholder="Cari Variable Name / Operator / Alarm Type…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="flex-1 bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink placeholder-scada-muted focus:outline-none focus:border-scada-water transition-colors"
@@ -246,7 +246,6 @@ export default function AlarmPage() {
                                     <th className={thClass}>Limit Value</th>
                                     <th className={thClass}>Event Type</th>
                                     <th className={thClass}>Operator</th>
-                                    <th className={thClass}>Keterangan</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-scada-rule">
@@ -276,9 +275,6 @@ export default function AlarmPage() {
                                             <EventTypeBadge value={row.eventType} />
                                         </td>
                                         <td className={tdClass}>{row.operator ?? "-"}</td>
-                                        <td className={tdClass + " text-xs text-scada-muted max-w-sm"}>
-                                            {row.description ?? "-"}
-                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

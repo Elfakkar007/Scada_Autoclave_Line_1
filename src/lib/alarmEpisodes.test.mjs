@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createBitState, evaluateBit, onsetValues, RECOVERY_DEBOUNCE_MS } from "./alarmEpisodes.js";
+import { createBitState, evaluateBit, onsetValues, recoveryValues, RECOVERY_DEBOUNCE_MS } from "./alarmEpisodes.js";
 
 // Simulasi tick 1 detik. Mengembalikan daftar aksi {t, action}.
 function run(bitsPerSecond) {
@@ -57,4 +57,14 @@ test("onsetValues: sensor null tidak dianggap 0 °C", () => {
 test("onsetValues: semua sensor null -> alarmValue null", () => {
     const snap = { t1: null, t2: null, t3: null, t4: null, t5: null, t6: null, tm: null, setpoints: {}, limits: {} };
     assert.equal(onsetValues("m10_2", snap).alarmValue, null);
+});
+
+test("recoveryValues: nilai ukur saat pulih", () => {
+    const snap = { t1: 121.5, t2: 121.2, t3: 121.8, t4: 121.0, t5: 121.4, t6: 121.1, tm: 121.3, p1: 15.2 };
+    assert.equal(recoveryValues("m10_2", snap), "121.0"); // suhu terendah
+    assert.equal(recoveryValues("m10_3", snap), "121.8"); // suhu tertinggi
+    assert.equal(recoveryValues("m8_0", snap), "15.2");   // tekanan
+    assert.equal(recoveryValues("m8_1", snap), "0");      // bit alarm
+    assert.equal(recoveryValues("m8_1", null), "0");
+    assert.equal(recoveryValues("m10_2", null), null);
 });

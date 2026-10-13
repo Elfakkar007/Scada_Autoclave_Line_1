@@ -22,7 +22,7 @@ import { randomUUID } from "node:crypto";
 import pool from "./db.js";
 import { readPlcSnapshot } from "./plc.js";
 import { ALARM_CATALOG, FAULT_KEYS } from "./alarmCatalog.js";
-import { createBitState, evaluateBit, onsetValues } from "./alarmEpisodes.js";
+import { createBitState, evaluateBit, onsetValues, recoveryValues } from "./alarmEpisodes.js";
 import { START_LOCK_KEY } from "./recipeGuard.js";
 import { RECIPE_SNAPSHOT_VERSION } from "./recipeSnapshot.js";
 
@@ -48,15 +48,35 @@ let adoptBusy = false;                             // guard anti-overlap INSERT
 
 const fmtWib = (d) => new Date(d).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 
+async function getActiveOperator(batchNo = null) {
+    if (batchNo) {
+        const batchRes = await pool.query(
+            "SELECT operator FROM batch_records WHERE batch_no = $1 LIMIT 1",
+            [batchNo]
+        );
+        if (batchRes.rows[0]?.operator) return batchRes.rows[0].operator;
+    } else {
+        const runningBatch = await pool.query(
+            "SELECT operator FROM batch_records WHERE status = 'running' LIMIT 1"
+        );
+        if (runningBatch.rows[0]?.operator) return runningBatch.rows[0].operator;
+    }
+    const userRes = await pool.query(
+        "SELECT full_name, username FROM users WHERE is_active = true ORDER BY last_login_at DESC NULLS LAST LIMIT 1"
+    );
+    return userRes.rows[0]?.full_name ?? userRes.rows[0]?.username ?? null;
+}
+
 async function insertEvent(e) {
     await pool.query(
         `INSERT INTO alarm_log
             (alarm_date, event_date, variable_name, alarm_type, alarm_value, recovery_value,
              limit_value, event_type, operator, episode_id, alarm_key, batch_no, phase_code, description)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,$10,$11,$12,$13)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
             e.alarmDate ?? null, e.eventDate ?? null, e.variableName ?? null, e.alarmType ?? null,
             e.alarmValue ?? null, e.recoveryValue ?? null, e.limitValue ?? null, e.eventType,
+            e.operator ?? null,
             e.episodeId ?? null, e.alarmKey ?? null, e.batchNo ?? null, e.phaseCode ?? null,
             e.description ?? null,
         ]
@@ -76,41 +96,51 @@ async function openEpisode(key, st, snap, nowMs) {
     const cat = ALARM_CATALOG[key];
     const { alarmValue, limitValue } = onsetValues(key, snap);
     const batchRes = await pool.query(
-        "SELECT batch_no FROM batch_records WHERE status = 'running' LIMIT 1"
+        "SELECT batch_no, operator FROM batch_records WHERE status = 'running' LIMIT 1"
     );
     const batchNo = batchRes.rows[0]?.batch_no ?? null;   // boleh NULL: alarm tanpa batch tetap dicatat
+    let operator = batchRes.rows[0]?.operator ?? null;
+    if (!operator) {
+        operator = await getActiveOperator(null);
+    }
     const phaseCode = snap.phase?.rawValue ?? null;
     const episodeId = randomUUID();
     const alarmDate = new Date(nowMs);
 
     await insertEvent({
         alarmDate, variableName: cat.tag, alarmType: cat.alarmType, alarmValue, limitValue,
-        eventType: "alarm_active", episodeId, alarmKey: key, batchNo, phaseCode,
+        eventType: "alarm_active", episodeId, alarmKey: key, batchNo, phaseCode, operator,
     });
     // State baru diubah SETELAH INSERT berhasil; bila gagal, tick berikut mencoba lagi.
     st.active = true;
     st.episodeId = episodeId;
     st.offSince = null;
-    st.onset = { alarmDate, alarmValue, limitValue, batchNo, phaseCode };
-    console.log(`[alarmMonitor] ALARM ${cat.tag} (${cat.alarmType}) batch=${batchNo ?? "-"} fase=${phaseCode ?? "-"}`);
+    st.onset = { alarmDate, alarmValue, limitValue, batchNo, phaseCode, operator };
+    console.log(`[alarmMonitor] ALARM ${cat.tag} (${cat.alarmType}) batch=${batchNo ?? "-"} fase=${phaseCode ?? "-"} operator=${operator ?? "-"}`);
 }
 
-async function writeRecovery(key, ep, eventAtMs, description = null) {
+async function writeRecovery(key, ep, eventAtMs, description = null, snap = null) {
     const cat = ALARM_CATALOG[key];
     const o = ep.onset ?? {};
+    const recVal = recoveryValues(key, snap);
+    let operator = o.operator ?? null;
+    if (!operator) {
+        operator = await getActiveOperator(o.batchNo ?? null);
+    }
     await insertEvent({
         alarmDate: o.alarmDate ?? null, eventDate: new Date(eventAtMs),
         variableName: cat.tag, alarmType: cat.alarmType,
         alarmValue: o.alarmValue ?? null,
-        recoveryValue: cat.kind === "bit" ? "0" : null,
+        recoveryValue: recVal,
         limitValue: o.limitValue ?? null,
         eventType: "alarm_recovery", episodeId: ep.episodeId, alarmKey: key,
         batchNo: o.batchNo ?? null, phaseCode: o.phaseCode ?? null, description,
+        operator,
     });
 }
 
-async function closeEpisode(key, st, eventAtMs) {
-    await writeRecovery(key, st, eventAtMs);
+async function closeEpisode(key, st, eventAtMs, snap = null) {
+    await writeRecovery(key, st, eventAtMs, null, snap);
     Object.assign(st, createBitState());
     console.log(`[alarmMonitor] PULIH ${ALARM_CATALOG[key].tag}`);
 }
@@ -122,7 +152,7 @@ async function closeEpisode(key, st, eventAtMs) {
  */
 async function reconcile(snap, nowMs) {
     const res = await pool.query(
-        `SELECT a.episode_id, a.alarm_key, a.alarm_date, a.alarm_value, a.limit_value, a.batch_no, a.phase_code
+        `SELECT a.episode_id, a.alarm_key, a.alarm_date, a.alarm_value, a.limit_value, a.batch_no, a.phase_code, a.operator
          FROM alarm_log a
          WHERE a.event_type = 'alarm_active' AND a.episode_id IS NOT NULL
            AND NOT EXISTS (SELECT 1 FROM alarm_log r
@@ -136,13 +166,14 @@ async function reconcile(snap, nowMs) {
             episodeId: row.episode_id,
             onset: {
                 alarmDate: row.alarm_date, alarmValue: row.alarm_value, limitValue: row.limit_value,
-                batchNo: row.batch_no, phaseCode: row.phase_code,
+                batchNo: row.batch_no, phaseCode: row.phase_code, operator: row.operator,
             },
         };
         const bit = snap.alarms?.bits?.[row.alarm_key];
         if (bit === false || st.active) {
             await writeRecovery(row.alarm_key, ep, nowMs,
-                "Pemulihan tidak teramati: pemantauan sempat terhenti (server mati) sebelum alarm ini pulih.");
+                "Pemulihan tidak teramati: pemantauan sempat terhenti (server mati) sebelum alarm ini pulih.",
+                snap);
         } else {
             Object.assign(st, createBitState(), { active: true, episodeId: ep.episodeId, onset: ep.onset });
         }
@@ -334,7 +365,7 @@ async function tick() {
             const st = bitStates.get(key);
             const r = evaluateBit(st, snap.alarms?.bits?.[key], nowMs);
             if (r.action === "open") await openEpisode(key, st, snap, nowMs);
-            else if (r.action === "close") await closeEpisode(key, st, r.eventAt);
+            else if (r.action === "close") await closeEpisode(key, st, r.eventAt, snap);
         }
     } catch (err) {
         // Jangan crash server; log dibatasi sekali per menit.
