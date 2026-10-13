@@ -1,7 +1,7 @@
 /**
  * GET /api/alarms/print-data — seluruh baris yang cocok dengan filter, untuk halaman cetak.
  * Lokasi file: src/app/api/alarms/print-data/route.js
- * Perlindungan login: lewat middleware (sama seperti /api/alarms).
+ * Perlindungan login: lewat proxy (sama seperti /api/alarms).
  */
 import pool from "@/lib/db";
 import { ALARM_FROM, ALARM_ORDER, buildAlarmFilter } from "@/lib/alarmQuery";

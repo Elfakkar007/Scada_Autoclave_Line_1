@@ -1,6 +1,6 @@
 // ==============================================================================
 // PERHATIAN: File ini adalah SERVER-ONLY (Node.js runtime).
-// JANGAN meng-import file ini dari komponen "use client" atau middleware.js
+// JANGAN meng-import file ini dari komponen "use client" atau proxy.js
 // (Edge Runtime) — akan error karena menggunakan "pg" untuk query database.
 // ==============================================================================
 

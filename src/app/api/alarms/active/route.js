@@ -4,7 +4,7 @@
  * karena route handler Next.js dan alarmMonitor (dimuat server.js) adalah instance modul berbeda.
  *
  * Lokasi file: src/app/api/alarms/active/route.js
- * Perlindungan login: sama seperti route alarms lain (lewat middleware).
+ * Perlindungan login: sama seperti route alarms lain (lewat proxy).
  */
 import pool from "@/lib/db";
 import { ALARM_CATALOG } from "@/lib/alarmCatalog";

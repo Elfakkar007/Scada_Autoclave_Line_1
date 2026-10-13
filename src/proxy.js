@@ -21,7 +21,7 @@ const PUBLIC_API_PATHS = [
     "/api/auth/users", // daftar username + nama lengkap untuk dropdown halaman login
 ];
 
-export async function middleware(request) {
+export async function proxy(request) {
     const { pathname } = request.nextUrl;
     const token = request.cookies.get("session_token")?.value ?? null;
 
