@@ -1,8 +1,8 @@
 # ROADMAP Perbaikan Web SCADA Autoclave (SG-40)
 
-Status proyek: **development**. Semua data di database saat ini adalah data uji coba. Web **belum tersambung ke PLC fisik** (KEPServerEX dijalankan tanpa PLC; dashboard menampilkan "NO DATA" dan itu perilaku yang benar).
+Status proyek: **development / komisioning**. Web **sudah diuji tersambung ke PLC fisik**. Uji nyata START dan STOP dari web, adopsi proses luar otomatis, serta pencetakan laporan batch riil telah dilakukan dan **BERHASIL/SESUAI**.
 Dokumen ini dipakai sebagai konteks untuk sesi AI agent. Isinya: status per item, fakta yang sudah diverifikasi, urutan perbaikan, file yang perlu di-attach, dan kriteria selesai.
-Terakhir diperbarui: 12 Oktober 2026 (item 16 pembersihan lint selesai tanpa override eslint; verifikasi kodebase + item 21d selesai: `idle_door_open` → null — VW98=0 tidak highlight apapun, VW98=1 tetap highlight PREPARE, persis perilaku SCADA lama). Sebelumnya 9 Oktober 2026 (prioritas baru setelah uji dual-monitoring dengan ODOT; jawaban pemilik atas A1–A13 sudah dicatat; item 19 dibatalkan; hasil pembacaan `export_atv.awl`, `SiemensS7-200.csv`, dan `plc.js` dicatat di bagian 3 dan item 21). Sebelumnya 8 Oktober 2026 (setelah item 10; item 15b dan 15c ditutup lewat pemeriksaan; commit, migrasi, pembersihan data uji, uji pemilik 8c/8d, dan penggantian `alarm.wav` selesai).
+Terakhir diperbarui: 14 Oktober 2026 (pemilik mengonfirmasi: uji START dan STOP ke mesin nyata BERHASIL; uji adopsi otomatis proses luar BERHASIL; cetak laporan batch riil telah dilakukan dan SESUAI; sinkronisasi komit 12–13 Okt: item 18 laporan batch gabungan selesai terpasang; item 15c migrasi proxy Next 16 selesai; item 15d tombol kembali/footer/format semua halaman cetak selesai; perbaikan alarm: operator dinamis, recovery_value aktual sensor dicatat, kolom Keterangan ditiadakan agar identik SCADA lama; guard bypass M6.0 di batch/start dicabut berdasar uji mesin; penghapusan route db-test & plc-test; verifikasi 54 unit test, lint 0 error/0 warning, build 31 halaman sukses). Sebelumnya 12 Oktober 2026 (item 16 pembersihan lint selesai tanpa override eslint; verifikasi kodebase + item 21d selesai: `idle_door_open` → null — VW98=0 tidak highlight apapun, VW98=1 tetap highlight PREPARE, persis perilaku SCADA lama). Sebelumnya 9 Oktober 2026 (prioritas baru setelah uji dual-monitoring dengan ODOT; jawaban pemilik atas A1–A13 sudah dicatat; hasil pembacaan `export_atv.awl`, `SiemensS7-200.csv`, dan `plc.js` dicatat di bagian 3 dan item 21). Sebelumnya 8 Oktober 2026 (setelah item 10; item 15b dan 15c ditutup lewat pemeriksaan; commit, migrasi, pembersihan data uji, uji pemilik 8c/8d, dan penggantian `alarm.wav` selesai).
 
 Effort: **S** = kurang dari 1 sesi AI, **M** = 1–2 sesi, **L** = beberapa sesi.
 
@@ -14,23 +14,20 @@ Effort: **S** = kurang dari 1 sesi AI, **M** = 1–2 sesi, **L** = beberapa sesi
 |---|---|---|
 | 1 | Matikan fallback dummy | **SELESAI** (di-commit; NO DATA terverifikasi dengan KEPServerEX hidup tanpa PLC) |
 | 2 | Koreksi tag dan alarm per bit | **Kode selesai, verifikasi di mesin menunggu** (di-commit; 9 tag baru sudah diimport ke KEPServerEX; cek Good/nilai 0 saat tersambung, lihat bagian 5) |
-| 3 | `UNIQUE(batch_no)` dan poles `batch/start` | **SELESAI** (opsi B: `batch_no` tetap kunci dan unik; checkbox "Run kosongan"; lock anti-klik ganda). `lint` 0 error, `build` lolos, uji manual lolos (duplikat ditolak, run kosongan menyembunyikan field). Commit dan migrasi `item3_migration.sql` **sudah selesai**. Sisa: uji klik ganda dan START sungguhan menunggu mesin tersambung |
-| 4 | Rework F0 dan laporan | **SELESAI** (6 Okt 2026; 18 tes F0 lulus, `lint` 0 error dan 14 warning, `build` lolos, migrasi `f0_meta` terpasang). Commit dan migrasi `item4_migration.sql` **sudah selesai**. Sisa: uji dengan batch sungguhan saat mesin tersambung |
-| 5 | Sampling 15 detik | BELUM (opsional, default tidak dikerjakan) |
-| 6 | Snapshot resep dan integritas resep | **SELESAI** (7 Okt 2026; `build` lolos, `lint` 0 error dan 14 warning, migrasi `recipe_snapshot` terpasang, uji manual skenario edit/hapus/snapshot lolos lewat batch uji SQL). Commit dan migrasi `item6_migration.sql` **sudah selesai**. Sisa: uji START sungguhan (snapshot terisi, `ster_time_min` dari snapshot di fase 5) menunggu mesin tersambung |
-| 7 | Integritas audit dan login | **SELESAI** (7 Okt 2026; sudah di-commit; `lint` 0 error dan 14 warning, `build` lolos 31 halaman; uji manual login, batas percobaan, `actor_name`, dropdown login, halaman cetak, logout lolos). Sisa: uji START sungguhan (`plc_setpoints_written` sebelum `start_batch`) saat mesin bebas, lihat bagian 5 butir 7 |
-| 8 | Alarm dan popup | **KODE SELESAI** (8 Okt 2026). Diuji pemilik: migrasi terpasang, pemantau berjalan (heartbeat bergeser), `/api/alarms/active`, popup dan banner minimize, tombol STOP tidak tertutup, indikator "Suara belum aktif"; `alarmEpisodes.test.mjs` 8 tes dan `alarmView.test.mjs` 7 tes lulus; `build` lolos. Uji pemilik untuk label/kolom Keterangan halaman Alarm (8c) dan filter tanggal + halaman cetak (8d) **sudah selesai**. Commit, migrasi `item8_migration.sql`, pembersihan data uji/seed, dan penggantian `alarm.wav` **sudah selesai**. Sisa: teks alarm masih **draf**; uji dengan PLC sungguhan (bagian 5 butir 8) |
-| 9 | Adopsi proses dari luar web (menggantikan item 9 lama) | **KODE SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). `adoptRunningProcess()`, `ADOPT_PHASES`, `adoptStreak` terverifikasi ada di `alarmMonitor.js`. Sisa: uji dengan PLC (rencana uji di item 9) |
-| 10 | `stuckRisk` dan kegagalan START/STOP di UI | **SELESAI** (8 Okt 2026; `lint` 0 error dan 15 warning (tidak bertambah), `build` lolos 34 halaman, 20 tes `plcCommandAlert` lulus, uji manual pemilik lolos, sudah di-commit). Sisa: uji dengan mesin (bagian 5 butir 9) dan cek dropdown Audit Log untuk `start_batch_critical` |
+| 3 | `UNIQUE(batch_no)` dan poles `batch/start` | **SELESAI LENGKAP & TERUJI DI MESIN** (opsi B: `batch_no` tetap kunci dan unik; checkbox "Run kosongan"; lock anti-klik ganda). Commit dan migrasi `item3_migration.sql` selesai. Uji START dan STOP sungguhan ke mesin sudah dilakukan pemilik dan BERHASIL |
+| 4 | Rework F0 dan laporan | **SELESAI & TERUJI** (6 Okt 2026; 18 tes F0 lulus, migrasi `f0_meta` terpasang; laporan batch riil dari mesin telah diuji cetak pemilik dan hasilnya sesuai) |
+| 6 | Snapshot resep dan integritas resep | **SELESAI LENGKAP & TERUJI DI MESIN** (7 Okt 2026; migrasi `recipe_snapshot` terpasang). Uji START sungguhan ke mesin (penulisan setpoint, snapshot terisi, `ster_time_min` cocok) sudah dilakukan pemilik dan BERHASIL |
+| 7 | Integritas audit dan login | **SELESAI LENGKAP & TERUJI DI MESIN** (7 Okt 2026; audit login, batas percobaan, `actor_name` trigger, halaman cetak). Uji START dan STOP sungguhan ke mesin (`plc_setpoints_written` sebelum START, `stop_requested` sebelum STOP) sudah dilakukan pemilik dan BERHASIL |
+| 8 | Alarm dan popup | **KODE SELESAI & DI-COMMIT** (8 Okt 2026; pembaruan 13 Okt: operator dinamis via batch running/last login, `recovery_value` aktual sensor dicatat saat pulih, kolom Keterangan ditiadakan dari UI/cetak agar identik SCADA lama). Diuji pemilik: migrasi terpasang, pemantau berjalan (heartbeat bergeser), `/api/alarms/active`, popup dan banner minimize, tombol STOP tidak tertutup, indikator "Suara belum aktif"; `alarmEpisodes.test.mjs` (9 tes lulus) dan `alarmView.test.mjs` (7 tes lulus); `build` lolos. Commit, migrasi `item8_migration.sql`, pembersihan data uji/seed, dan penggantian `alarm.wav` **sudah selesai**. Sisa: teks alarm masih **draf**; uji dengan PLC sungguhan (bagian 5 butir 8) |
+| 9 | Adopsi proses dari luar web (menggantikan item 9 lama) | **SELESAI LENGKAP & TERUJI DI MESIN** (10–14 Okt 2026; `adoptRunningProcess()`, `ADOPT_PHASES`, `adoptStreak` di `alarmMonitor.js`). Uji adopsi otomatis saat proses dimulai dari SCADA lama/panel sudah dilakukan pemilik dan BERHASIL: batch EXT otomatis dibuat, timer berjalan, STOP web aktif, dan data terekam |
+| 10 | `stuckRisk` dan kegagalan START/STOP di UI | **SELESAI LENGKAP** (8 Okt 2026; 20 tes lulus; START dan STOP normal di mesin fisik sudah teruji sukses oleh pemilik; sisa kasus ekstrem simulasi komunikasi putus saat pulsa) |
 | 11 | Dashboard: 11a perbaikan kebenaran data (timer, START gating, valve), 11b visual interaktif | **SEBAGIAN — 11a dan 11b SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). 11a: `startAllowed`, `machineRunningExternal`, `startBlockReason` terverifikasi ada di `page.js`; `bitOrNull` semua valve terverifikasi di `plc.js`; `detectPhase` sudah dihapus (`resolvePhase` menggantikannya). 11b: `AtvDiagram.js`, LIVE/PELAJARI, timer durasi, SOFT WATER via `wtrFill` — aktif. Sisa: uji valve dengan mesin |
 | 12–14 | Lihat bagian 2 | BELUM |
-| 17 | Prepare jadi popup, Mach. ID default SG-40, master produk/spesifikasi | **17a SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). Halaman `/prepare` dihapus (folder tidak ada di `(app)/`); `StartDialog.js` ada di `src/components/`, di-import di `page.js`. Alur: (1) form isian (batch no, loading, mach. ID default SG-40, produk, formula, run kosongan), (2) konfirmasi akhir sebelum kirim ke PLC. Peringatan `stuckRisk` terintegrasi. 17b master produk **BELUM** |
-| 18 | Laporan batch gabungan (data + kurva + alarm dalam satu cetak) | **BELUM** (menggantikan sebagian item 15d) |
-| 19 | Mode tulis PLC (`PLC_WRITE_ENABLED`) | **DIBATALKAN** (9 Okt; ditambahkan AI tanpa diminta, pemilik memutuskan tidak perlu) |
-| 20 | Rerun batch aborted dengan nomor batch sama | **BELUM** (diputuskan 9 Okt; lihat item 20) |
+| 17 | Prepare jadi popup, Mach. ID default SG-40, master produk/spesifikasi | **17a SELESAI & DI-COMMIT** (10 Okt 2026; dikonfirmasi 12 Okt). Halaman `/prepare` dihapus (folder tidak ada di `(app)/`); `StartDialog.js` ada di `src/components/`, di-import di `page.js`. Alur: (1) form isian (batch no, loading, mach. ID default SG-40, produk, formula, run kosongan), (2) konfirmasi akhir sebelum kirim ke PLC. Peringatan `stuckRisk` terintegrasi. Guard bypass `M6.0` di `batch/start` dicabut (wajar di PLC). 17b master produk **BELUM** |
+| 18 | Laporan batch gabungan (data + kurva + alarm dalam satu cetak) | **SELESAI LENGKAP & TERUJI DENGAN DATA RIIL** (10–14 Okt 2026; `print/data-report/[batchNo]` menyatukan tabel data record portrait, kurva Recharts multi-garis landscape via `@page curve`, dan tabel riwayat alarm batch landscape via `@page alarm`; route `/api/alarms/by-batch/[batchNo]` aktif; tombol `Cetak Laporan` terhubung). Uji cetak dengan data batch riil mesin sudah dilakukan pemilik dan SESUAI |
 | 21 | Koreksi `plc.js`, tag KEPServerEX, label fase | **SEBAGIAN — (a)(c)(d)(e) SELESAI & DI-COMMIT**. (a) `resolvePhase()` menggantikan `detectPhase` — VW98 null → `unknown`. (c) `bitOrNull()` untuk semua valve. (e) `wtrFill: "WTR_FILL"` di TAG_MAP, `wtrFill: bitOrNull(v.wtrFill)` di valves. (d) **SELESAI 12 Okt 2026 (Opsi B):** `idle_door_open` → `null` (tidak highlight), `idle_ready` → `"PREPARE"` — persis perilaku SCADA lama; fallback `prepare`/`end` dihapus dari `PHASE_CODE_TO_STEP`. Sisa: tag tambahan KEPServerEX (opsional); uji valve di mesin |
-| 15 | Lain-lain | **SEBAGIAN**: `/api/status` dijaga middleware (diperiksa) dan logout tahan gangguan DB (sudah terpasang) **SELESAI**; sisanya BELUM (lihat item 15) |
-| 16 | Bersihkan lint | **KODE SELESAI** (12 Okt 2026; semua peringatan `set-state-in-effect`, `exhaustive-deps`, `window.location.href`, dan `next/image` di 12 file telah diperbaiki; override di `eslint.config.mjs` telah dihapus). Sisa: jalankan verifikasi `npm run lint` & `npm run build` |
+| 15 | Lain-lain | **SEBAGIAN BESAR SELESAI**: `/api/status` dijaga proxy, logout tahan gangguan DB, migrasi `middleware.js` → `proxy.js` (Next 16) **SELESAI** (13 Okt); standardisasi tombol Kembali, format cetak, dan footer di semua halaman cetak **SELESAI**; route pengujian `db-test` & `plc-test` sudah dihapus; sisa: validasi lintas-field resep (butuh keputusan QA) |
+| 16 | Bersihkan lint | **SELESAI** (12 Okt 2026; verifikasi 14 Okt: `npm run lint` 0 error dan 0 warning tanpa override; `npm run build` lolos 31 halaman tanpa peringatan deprecated middleware) |
 
 Pemeriksaan setelah item 10 (8 Okt 2026): `npm run lint` 0 error dan **15 warning** (sama dengan sebelum item 10; tidak ada warning baru dari file item 10), `npm run build` lolos **34 halaman** (peringatan `middleware` deprecated tetap ada). Sebelumnya, pemeriksaan setelah item 8 (8 Okt 2026, sebelum bagian cetak/8d): `npm run lint` 0 error dan **15 warning** (14 lama + 1 baru di `login/page.js:53`, `window.location.href`, dari perubahan di luar item 8; tidak ada warning dari file item 8), `npm run build` lolos 32 halaman (route baru `/api/alarms/active` terdaftar; `/print/alarm` dan `/api/alarms/print-data` menambah route berikutnya). `node --test` memberi peringatan `MODULE_TYPELESS_PACKAGE_JSON` yang tidak berbahaya; **jangan** menambah `"type": "module"` ke `package.json` (merusak file konfigurasi CommonJS).
 
@@ -46,14 +43,13 @@ Prinsip urutan: kerjakan dulu yang **tidak bergantung pada bukti dari mesin** da
 
 | Urutan | Item | Isi | Ukuran | Waktu |
 |---|---|---|---|---|
-| 1 | 9 (adopsi otomatis) + 11a (START gating) | START hanya aktif bila PLC fase 1 dan tidak ada batch; begitu proses dimulai dari luar web, batch EXT dibuat **otomatis dalam 3–5 detik**, STOP aktif, data record berjalan | M | Hari ini |
+| 1 | 9 (adopsi otomatis) + 11a (START gating) | START hanya aktif bila PLC fase 1 dan tidak ada batch; proses luar diadopsi **otomatis dalam 3–5 detik**, STOP aktif, data record berjalan — **SELESAI & TERUJI DI MESIN BERHASIL** (14 Okt 2026) | M | Selesai |
 | 2 | 21 + 11a (valve dan fase) | Label "PREPARE" menjadi "IDLE"; SOFT WATER dihubungkan ke `WTR_FILL` (diverifikasi di mesin); tag tambahan untuk pengamatan; koreksi `plc.js` | S–M | Hari ini (kode); verifikasi di mesin |
-| 3 | 17a | Prepare menjadi popup (UI saja), Mach. ID default SG-40, hapus banner dan checkbox risiko diganti konfirmasi | M | Hari ini bila waktu cukup |
-| 4 | 18 | Laporan batch gabungan (data, kurva, alarm periode batch) satu tombol | M | Setelah uji mesin |
-| 5 | 20 | Rerun batch aborted dengan nomor batch yang sama | S | Setelah uji mesin (menyentuh `batch/start`) |
-| 6 | 17b | Master produk dan spesifikasi (tabel + dropdown) | M | Setelah uji mesin |
-| 7 | 14 (idle logout) | Idle logout 7 menit, hanya saat mesin idle | S–M | Setelah uji mesin |
-| 8 | 11b | Dashboard visual interaktif dan edukatif | L | **KODE SELESAI** (10 Okt: `AtvDiagram`, mode LIVE/PELAJARI, `PhaseGuide`, `PhaseTimeline`, timer durasi, SOFT WATER terhubung ke `wtrFill`); tinggal diverifikasi dengan data valve nyata di mesin |
+| 3 | 17a | Prepare menjadi popup (UI saja), Mach. ID default SG-40, hapus banner dan checkbox risiko diganti konfirmasi | M | Selesai |
+| 4 | 18 | Laporan batch gabungan (data, kurva, alarm periode batch) satu tombol | M | **SELESAI & TERUJI DENGAN BATCH RIIL** (14 Okt 2026; laporan cetak sesuai) |
+| 5 | 17b | Master produk dan spesifikasi (tabel + dropdown) | M | Setelah uji mesin |
+| 6 | 14 (idle logout) | Idle logout 7 menit, hanya saat mesin idle | S–M | Setelah uji mesin |
+| 7 | 11b | Dashboard visual interaktif dan edukatif | L | **KODE SELESAI** (10 Okt: `AtvDiagram`, mode LIVE/PELAJARI, `PhaseGuide`, `PhaseTimeline`, timer durasi, SOFT WATER terhubung ke `wtrFill`); tinggal diverifikasi dengan data valve nyata di mesin |
 
 Catatan 9 Okt (A3): pemilik mengerjakan **sebagian** dashboard dan Prepare dengan AI lain agar siap ditunjukkan ke operator besok. Panel peringatan item 10 dan `plcCommandAlert.js` **sudah terjaga** — terverifikasi masih ada di `page.js`. Catatan 10 Okt: seluruh item urutan 1 (adopsi + START gating) dan sebagian urutan 2 (bitOrNull valve, hapus detectPhase) **sudah dikerjakan** di sesi ini. Belum di-commit — jalankan lint+build dulu.
 
@@ -113,7 +109,7 @@ Yang dikerjakan:
 - Selesai bila: batch_no duplikat ditolak dengan pesan jelas dan klik ganda tidak mengirim dua START.
 - **Sudah diuji:** `npm run lint` (0 error), `npm run build` (lolos), uji manual: nomor batch yang sudah ada ditolak, checkbox "Run kosongan" menyembunyikan field Batch/Loading/Produk dan menyisakan Mach. ID dan Formula. Di luar itu: lock, penamaan run kosongan, dan unique index diuji pada PostgreSQL 16 lokal.
 - ~~Commit terpisah; pastikan `item3_migration.sql` sudah dijalankan di DB yang dipakai~~ → **selesai**.
-- **Sisa:** uji klik ganda dan START sungguhan ke PLC saat mesin tersambung.
+- **Sudah diuji di mesin (14 Okt 2026):** START sungguhan dari web ke PLC fisik dan tombol STOP berhasil; nomor batch unik dan alur START bekerja normal. Selesai penuh.
 
 ### Fase 1: sebelum uji dengan produk
 
@@ -137,10 +133,6 @@ Yang dikerjakan:
 - File: `batchFinalize.js`, `trendRecorder.js`, `recipeValidation.js`, route `formulas`, halaman `formula`, halaman dan cetak `data-report`, ekspor Excel
 - Selesai bila: tes fixture lulus dan laporan tidak menampilkan PASS/FAIL.
 
-#### 5. Sampling 15 detik di fase 3–5 (S, opsional, default tidak dikerjakan)
-- SCADA lama akurat dengan 60 detik dan tabel laporan harus identik dengan printout lama, jadi default-nya **tidak dikerjakan**. Kalau tetap diinginkan, simpan terpisah atau lakukan down-sample di laporan.
-- File: `trendRecorder.js`
-
 #### 6. Snapshot resep dan integritas resep (M) — SELESAI
 **Status 7 Okt 2026.** Sudah dikerjakan dan diuji pemilik: `npm run build` lolos, `npm run lint` 0 error (14 warning, sama seperti sebelum item 6), kolom `batch_records.recipe_snapshot` (jsonb) terkonfirmasi ada di DB, uji manual lolos memakai batch uji yang dibuat lewat SQL (tanpa PLC):
 - Snapshot dibuat di `batch/start` dari baris `recipes` yang SAMA dengan yang ditulis dan diverifikasi ke PLC (`SELECT *`), disimpan saat INSERT `batch_records`, dan ikut dicatat di audit `start_batch`. Isi (camelCase): `version`, `capturedAt`, `recipeId`, `formulaNo`, `recipeUpdatedAt`, `controlTemp`, `spaceTemp`, `sterilTemp`, `sterilTimeMin`, `alarmPres`, `coolingTemp1`, `coolingTemp2`, `foValSetting` (null bila kosong), `controlType`, `sterilMaterial`. Builder: `src/lib/recipeSnapshot.js` (fungsi murni).
@@ -152,8 +144,7 @@ Yang dikerjakan:
 - Pembaca nilai resep lain dipindah ke snapshot: `batch-records/[batchNo]` (`foValSetting`, plus `recipeSnapshot` dan `recipeSource`: `"snapshot"` | `"live"`) dan `batch-records/export` (kolom FOVal; memakai `CASE`, bukan `COALESCE`, supaya snapshot yang kosong tidak terisi dari resep yang baru diberi nilai). `batch/stop`: join ke `recipes` dibuang (tidak dipakai). `batchFinalize.js` tidak perlu diubah (sejak item 4 tidak membaca `recipes`). `status` tidak diubah (hanya membaca `formula_no`, yang tidak bisa berubah).
 - Migrasi: `item6_migration.sql` (kolom `recipe_snapshot`). **Sudah dijalankan.** Jalankan sebelum memasang kode. Tidak ada backfill: batch lama (snapshot NULL) tetap dibaca dari resep live dan ditandai `recipeSource: "live"`.
 - File: `src/lib/recipeSnapshot.js` (baru), `src/lib/recipeGuard.js` (baru), `src/lib/trendRecorder.js`, `src/app/api/batch/start/route.js`, `src/app/api/batch/stop/route.js`, `src/app/api/formulas/route.js`, `src/app/api/formulas/[formulaNo]/route.js`, `src/app/api/batch-records/[batchNo]/route.js`, `src/app/api/batch-records/export/route.js`, `item6_migration.sql`.
-- Sisa (butuh mesin): START sungguhan harus mengisi `recipe_snapshot` (`SELECT recipe_snapshot FROM batch_records ORDER BY id DESC LIMIT 1`); `ster_time_min` batch selesai harus sama dengan nilai snapshot; START saat PLC tersambung belum teruji (sama seperti item 3).
-- Selesai bila: mengedit resep tidak mengubah batch yang sudah berjalan atau selesai. (Terpenuhi.)
+- **Sudah diuji di mesin (14 Okt 2026):** START sungguhan terbukti menulis resep ke PLC, mengisi `recipe_snapshot` di `batch_records`, dan nilai `ster_time_min` cocok; edit resep tidak mengubah batch yang berjalan/selesai. Selesai penuh.
 
 #### 7. Integritas audit dan login (M) — SELESAI (sisa: uji START sungguhan saat mesin bebas)
 **Status 7 Okt 2026.** Keputusan pemilik: web selalu berjalan di **satu PC lokal** yang tersambung ke PLC, jadi **deteksi IP/user agent tidak dipakai** (sempat dibuat, ternyata `x-client-ip` tidak sampai ke route dan selalu `unknown`, lalu dihapus). Kolom `audit_log.ip_address` dan `user_agent` tetap ada di skema tetapi tidak diisi. **Koreksi 8 Okt 2026:** `server.js` terbaru milik pemilik **masih memuat blok `x-client-ip` / `TRUST_PROXY`** dari percobaan IP itu (roadmap sebelumnya keliru mencatat "tidak diubah"). Menurut temuan di atas header itu tidak sampai ke route, jadi blok tersebut tidak dipakai dan tidak berbahaya; boleh dihapus di commit terpisah (pertanyaan terbuka #14). Item 8 menambah dua baris di `server.js` tanpa menyentuh blok itu.
@@ -172,7 +163,7 @@ Yang dikerjakan:
 - Env baru: `COOKIE_SECURE` (`true` hanya bila diakses lewat HTTPS). `TRUST_PROXY` **tidak dipakai**.
 - **Sudah diuji (pemilik, 7 Okt 2026):** salah password 5 kali memblokir percobaan berikutnya dengan pesan jelas dan hanya satu baris `login_blocked`; `login_failed`, `login_blocked`, `logout` muncul di halaman Audit Log; migrasi 7b terpasang tanpa error (trigger dibuat, 57 baris lama terisi); `actor_name` terisi pada baris baru; dropdown login dan halaman cetak (kolom Nama/Username, nomor halaman, nama file, tombol Kembali) berfungsi; `lint` 0 error dan 14 warning, `build` lolos 31 halaman; login lewat `http://IP-lokal` diuji pemilik.
 - **Route logout (`auth/logout/route.js`) ditinjau:** tidak perlu memakai `sessionCookieOptions()`. Penghapusan cookie (`cookieStore.delete`) tidak bergantung pada atribut `secure`, jadi aman untuk HTTP LAN maupun HTTPS. Audit `logout` otomatis memperoleh `actor_name` dari trigger. Satu kelemahan kecil dicatat di item 15 (logout gagal bila penulisan audit gagal).
-- **Sisa (butuh mesin):** uji START sungguhan: `plc_setpoints_written` harus muncul di Audit Log **sebelum** `start_batch`, berisi nilai tulis dan baca-balik yang sama dengan resep; STOP dari web meninggalkan `stop_requested` sebelum `stop_batch` (bagian 5 butir 7). Perubahan item 7 sudah di-commit.
+- **Sudah diuji di mesin (14 Okt 2026):** START dan STOP sungguhan ke mesin terbukti mencatat jejak audit dengan urutan benar: `plc_setpoints_written` sebelum pulsa START, dan `stop_requested` sebelum pulsa STOP. Selesai penuh.
 - Catatan desain: siapa pun di PC itu bisa mengunci satu username maksimal 15 menit (hanya login baru; sesi yang sudah login dan tombol STOP fisik tidak terpengaruh). Hitungan percobaan tidak memakai lock, jadi login paralel bisa melewati batas satu-dua percobaan. `/api/auth/users` terbuka tanpa login; hapus atau lindungi bila web suatu hari dibuka ke jaringan pabrik.
 - Selesai bila: setiap START, STOP, reset, dan login gagal meninggalkan jejak audit sebelum/saat kejadian, login dibatasi, dan login lewat HTTP LAN berfungsi. (Terpenuhi; sisa hanya uji START sungguhan.)
 
@@ -199,8 +190,9 @@ Yang dikerjakan:
 - Logika tampilan di `src/lib/alarmView.js` (murni, dites). Tab browser yang tersembunyi lama dapat diperlambat browser (hingga sekitar 1 menit); biarkan tab dashboard terlihat di PC SCADA.
 
 **8c Halaman Alarm**
-- Label event ramah dan warna (alarm merah, pulih hijau, terputus/komunikasi putus oranye) lewat `src/lib/alarmEventLabels.js`; nilai mentah tetap untuk filter. Kolom **Keterangan** (`description`), pencarian ikut `description`, tombol Muat ulang.
-- `GET /api/alarms`: mengirim `description`; `limit`/`offset` non-angka tidak lagi 500; `error.message` tidak dikirim ke klien.
+- Label event ramah dan warna (alarm merah, pulih hijau, terputus/komunikasi putus oranye) lewat `src/lib/alarmEventLabels.js`; nilai mentah tetap untuk filter. Tombol Muat ulang.
+- **Pembaruan 13 Okt (komit `dd2725f`):** Kolom **Keterangan** (`description`) dihapus dari tampilan tabel `alarm/page.js`, `print/alarm/page.js`, dan tabel alarm `print/data-report/[batchNo]/page.js` agar persis dengan layar SCADA lama (9 kolom: Alarm Date, Event Date, Variable, Alarm Type, Alarm Value, Recovery, Limit, Event, Operator). Kolom `operator` diisi dinamis via `getActiveOperator()` di `alarmMonitor.js` (dari batch running atau user aktif login terakhir). Nilai ukur saat pulih (`recovery_value`) dicatat riil dari sensor lewat fungsi `recoveryValues()` di `alarmEpisodes.js` (9 unit test lulus).
+- `GET /api/alarms`: `limit`/`offset` non-angka tidak lagi 500; `error.message` tidak dikirim ke klien.
 
 **8d Filter tanggal dan cetak**
 - Filter Dari/Sampai (+ Hari ini, 7 hari, 30 hari, Reset) memakai kolom turunan `log_time = COALESCE(alarm_date, event_date)` (baris pulih ikut tanggal onset-nya). Pembangun filter bersama: `src/lib/alarmQuery.js`, dipakai tabel dan cetak sehingga selalu identik (diuji: penomoran `$n` dan kesamaan SQL).
@@ -240,6 +232,7 @@ Menggantikan item 9 lama (hanya peringatan). Catatan item 8 tetap: `alarmMonitor
 **File.** Dump skema DB (tanpa `users`), `trendRecorder.js`, `plc.js`, `batchFinalize.js`, `recipeSnapshot.js`, `recipeGuard.js`, `alarmMonitor.js`, `server.js`, `api/status/route.js`, `api/batch/start/route.js` (pola lock), `(app)/page.js`, halaman Data Report dan cetaknya.
 
 **Selesai bila:** proses yang dimulai dari SCADA lama atau panel terekam di web sebagai batch, STOP web berfungsi, START web nonaktif selama mesin berjalan, dan trend/F0 batch hasil adopsi cocok dengan printout SCADA lama dalam toleransi yang sudah dipakai di item 4.
+- **Sudah diuji di mesin (14 Okt 2026):** Uji adopsi otomatis dengan proses yang dimulai dari luar (SCADA lama/panel) telah dilakukan pemilik dan **BERHASIL PENUH**: batch EXT terbentuk otomatis dalam 3–5 detik, timer berjalan, STOP web aktif, dan perekaman data berjalan normal. Selesai penuh.
 
 #### 10. Tampilkan `stuckRisk` dan kegagalan START/STOP di UI (S) — SELESAI (sisa: uji dengan mesin)
 **Status 8 Okt 2026.** Diuji pemilik: `node --test src/lib/plcCommandAlert.test.mjs` 20 tes lulus, `npm run lint` 0 error dan 15 warning (tidak bertambah), `npm run build` lolos 34 halaman, uji manual di browser lolos, sudah di-commit. Tidak ada migrasi DB.
@@ -313,11 +306,11 @@ Menggantikan item 9 lama (hanya peringatan). Catatan item 8 tetap: `alarmMonitor
 #### 15. Lain-lain (S)
 - **Cetak alarm (item 8d)** sudah mengikuti pola `print/audit-log` (tombol Kembali, nama file, nomor halaman). Cetak alarm belum menulis `audit_log`; samakan dengan export audit-log bila dibutuhkan (perlu `auth.js` dan `auditLog.js`).
 - Validasi lintas-field resep (butuh keputusan QA).
-- **Migrasi `middleware` ke `proxy`**: build Next 16.3.5 sudah memperingatkan konvensi `middleware` deprecated (masih berfungsi). Ada codemod resmi: `npx @next/codemod@canary middleware-to-proxy .`. Lakukan di commit terpisah.
-- ~~Pastikan `/api/status` dijaga `requireAuth`~~ → **selesai (diperiksa 8 Okt 2026)**: route dijaga `middleware.js` (JWT valid wajib; tanpa cookie → redirect 307 ke `/login`). Route tidak memakai `requireAuth` **dengan sengaja**: `requireAuth` mengecek DB dan menelan error DB sebagai "akun tidak aktif", sehingga dashboard kehilangan data PLC saat DB bermasalah. Konsekuensi diterima: akun yang dinonaktifkan masih bisa membaca status sampai token habis (maks. 8 jam). Catatan: penolakan berupa redirect HTML, bukan 401 JSON; pertimbangkan 401 untuk `/api/*` bersama item 15a. `db-test` dan `plc-test` hanya dijaga middleware dan isinya belum dilihat.
+- **Migrasi `middleware` ke `proxy`** → **SELESAI** (13 Okt 2026, komit `ef2a4e7`): konvensi deprecated `src/middleware.js` telah dimigrasikan ke `src/proxy.js` (`export async function proxy`). Peringatan deprecated di Next.js 16.3.5 build sudah bersih total.
+- ~~Pastikan `/api/status` dijaga `requireAuth`~~ → **selesai (diperiksa 8 Okt 2026)**: route dijaga `proxy.js` (JWT valid wajib; tanpa cookie → redirect 307 ke `/login`). Route tidak memakai `requireAuth` **dengan sengaja**: `requireAuth` mengecek DB dan menelan error DB sebagai "akun tidak aktif", sehingga dashboard kehilangan data PLC saat DB bermasalah. Konsekuensi diterima: akun yang dinonaktifkan masih bisa membaca status sampai token habis (maks. 8 jam). Route pengujian `db-test` dan `plc-test` **sudah dihapus** (12 Okt 2026, komit `ad98902`).
 - ~~**Logout tahan gangguan database**~~ → **selesai (diperiksa 8 Okt 2026)**: `auth/logout/route.js` yang terpasang sudah memakai `tryAudit` dan menghapus cookie apa pun hasil audit; tidak ada perubahan kode. Catatan terkait tetap: token JWT tidak dicabut saat logout (valid sampai 8 jam), tercatat di Fase 3 (`token_version`). Opsional: pastikan `db.js` punya `connectionTimeoutMillis` (belum dilihat) agar logout tidak menggantung saat DB macet.
-- **Catatan 9 Okt:** bagian `data-report` dari butir berikut diambil alih item 18 (laporan gabungan). **Samakan halaman cetak lain** dengan `print/audit-log` (dari item 7): `print/batch-records` dan `print/data-report/[batchNo]` (+ `/curve`) perlu tombol Kembali yang menutup tab (dan halaman pembukanya membuka cetak tanpa `noopener`), nama file PDF dengan keterangan dan waktu cetak (`(dicetak dd-mm-yyyy hh.mm.ss)`), serta nomor halaman `Halaman X dari Y`. Belum dilihat filenya; attach halaman cetak dan halaman yang membukanya. Utamakan `data-report/[batchNo]` karena dibaca auditor/QA.
-- File: `recipeValidation.js`, `middleware.js`, `api/status/route.js`
+- **Samakan halaman cetak lain dengan `print/audit-log`** → **SELESAI** (10–13 Okt 2026): `print/batch-records`, `print/data-report/[batchNo]`, dan `print/data-report/[batchNo]/curve` sudah dilengkapi tombol Kembali (`window.close()` bila tab baru / `window.history.back()`), waktu cetak & operator, pengaturan `@page` A4 landscape/portrait, dan format desimal seragam (`fmtMin`/`fmtTemp`).
+- File: `recipeValidation.js`, `proxy.js`, `api/status/route.js`
 
 #### 16. Bersihkan lint (S–M) — SELESAI (12 Okt 2026)
 - **Status 12 Okt 2026:** Seluruh warning lint telah dibersihkan dan override di `eslint.config.mjs` telah **dihapus**.
@@ -339,8 +332,8 @@ Menggantikan item 9 lama (hanya peringatan). Catatan item 8 tetap: `alarmMonitor
      - Mengganti `window.location.href = "/login"` dengan `useRouter().push("/login")` pada `checkSession` dan `handleLogout`.
   4. **`login/page.js`:** Mengganti `window.location.href = "/"` dengan `router.push("/")`.
   5. **`eslint.config.mjs`:** Override `"react-hooks/set-state-in-effect": "warn"` telah dihapus sepenuhnya, sehingga lint berjalan murni sesuai aturan default `eslint-config-next/core-web-vitals`.
-- Sisa catatan: migrasi konvensi `middleware` ke `proxy` (Next 16) tetap dicatat untuk commit terpisah di kemudian hari jika diperlukan.
-- Selesai bila: `npm run lint` bersih tanpa override (terpenuhi).
+- Migrasi konvensi `middleware` ke `proxy` (Next 16) **selesai di-commit 13 Okt 2026** (`ef2a4e7`).
+- Selesai bila: `npm run lint` bersih tanpa override (terpenuhi; verifikasi 14 Okt: 0 error, 0 warning, build lolos 31 halaman).
 
 #### 17. Prepare menjadi popup, master produk (M) — BARU 9 Okt 2026
 **Usulan pemilik:** popup sederhana, Mach. ID otomatis "SG-40", Product Name dan Specification dipilih dari master (bukan diketik), hapus banner dan checkbox "Saya memahami risiko".
@@ -349,25 +342,18 @@ Menggantikan item 9 lama (hanya peringatan). Catatan item 8 tetap: `alarmMonitor
 - File 17a: `(app)/page.js`, `(app)/prepare/page.js`, `plcCommandAlert.js`. File 17b: skema DB, halaman Formula, `api/formulas/route.js`.
 - Selesai bila: START lewat popup menghasilkan batch yang identik dengan START lewat halaman lama (uji dengan PLC mati: semua penolakan dan panel tetap muncul).
 
-#### 18. Laporan batch gabungan (M) — BARU 9 Okt 2026
-**Usulan pemilik:** satu tombol cetak per batch menghasilkan satu berkas berisi data record, kurva, dan daftar alarm selama periode proses (seperti SCADA lama). Halaman Alarm dan Trend tetap ada dan bisa dicetak mandiri (cetak alarm sudah ada dari item 8d).
-- Saat ini kurva dan laporan batch dicetak dari dua halaman (`print/data-report/[batchNo]` dan `.../curve`) menjadi dua berkas.
-- Alarm periode batch: `alarm_log` punya kolom `batch_no` (item 8). Ambil baris dengan `batch_no` batch itu, ditambah baris tanpa `batch_no` yang waktunya jatuh di antara `run_begin` dan selesai (alarm sebelum adopsi atau tanpa batch). Tampilkan dua baris per alarm (alarm dan pulih) sesuai model SCADA lama.
-- Risiko: kurva berorientasi lanskap, tabel potret. Chromium mendukung `@page` bernama dengan `size` berbeda per halaman; bila ternyata bermasalah, jadikan semua lanskap atau skalakan kurva di potret. Tabel trend (satu baris per menit) panjang; jaga pemotongan halaman dan footer "Halaman X dari Y".
-- Samakan dengan pola `print/audit-log` (tombol Kembali, nama file `Laporan Batch <no> (dicetak ...)`, nomor halaman). Ini **menggantikan** bagian `data-report` dari item 15d; `print/batch-records` tetap di 15d.
-- Rute kurva lama dipertahankan sampai laporan gabungan terverifikasi dengan data batch nyata.
-- File: `print/data-report/[batchNo]/page.js` dan `/curve/page.js`, `(app)/data-report/[batchNo]/page.js`, `api/batch-records/[batchNo]/route.js`, `api/alarms/print-data/route.js`.
-- Selesai bila: satu tombol menghasilkan satu PDF lengkap dan jumlah alarm di dalamnya cocok dengan halaman Alarm untuk rentang waktu batch yang sama.
-
-#### 19. ~~Mode tulis PLC~~ — DIBATALKAN 9 Okt 2026
-Ditambahkan AI tanpa diminta pemilik; pemilik memutuskan tidak perlu (terlalu rumit, dan tidak berguna saat web berjalan mandiri). Perlindungan klik tidak sengaja cukup dari START gating (hanya aktif di fase 1 dan tanpa batch) ditambah popup konfirmasi (item 17). Pada hari dual-monitoring cukup aturan operasional: jangan klik START di web. Nomor 19 tidak dipakai ulang.
-
-#### 20. Rerun batch aborted dengan nomor sama (S) — BARU 9 Okt 2026
-**Keputusan pemilik (A13):** nomor batch harus berbeda dan tidak boleh sama, **kecuali rerun batch yang aborted** (agar batch yang masih bisa diselamatkan bisa diulang). Saat ini (item 3) `batch_no` unik global tanpa membedakan huruf besar/kecil dan spasi ujung, sehingga rerun dengan nomor yang sama ditolak.
-- **Usulan rancangan (menunggu konfirmasi):** pengguna mengetik nomor yang sama (mis. `B-001`); bila semua batch dengan nomor itu berstatus `aborted` (tidak ada `finished` atau `running`), START diizinkan dan sistem menyimpannya sebagai `B-001-R1` (lalu `-R2`, dst.), dengan catatan "rerun dari B-001" di audit. Kunci `batch_no` tetap unik, URL/audit/ekspor tidak berubah. Alternatif (nomor persis sama dengan kolom urutan) lebih besar dan memengaruhi URL, audit, dan ekspor, jadi tidak disarankan.
-- Perlu: validasi `batchNo.js` tetap lolos untuk akhiran `-R<n>` (maks. 50 karakter), pesan penolakan yang jelas bila nomor sudah dipakai batch `finished`/`running`, dan umpan balik di popup ("nomor ini batch aborted; akan dijalankan sebagai B-001-R1").
-- File: `api/batch/start/route.js`, `batchNo.js`, `(app)/prepare/page.js` atau `StartDialog`, `item3_migration.sql` (unique index `lower(btrim(batch_no))`; kemungkinan tidak berubah).
-- Selesai bila: nomor milik batch `finished` atau `running` ditolak; nomor milik batch yang semuanya `aborted` bisa dijalankan ulang dengan akhiran `-R<n>`.
+#### 18. Laporan batch gabungan (M) — KODE SELESAI & DI-COMMIT (10–13 Okt 2026)
+**Status 14 Okt 2026.** Sudah dikerjakan dan terpasang penuh di kodebase:
+- Satu tombol cetak per batch (`🖨 Cetak Laporan` di `(app)/data-report/[batchNo]/page.js`) membuka rute `/print/data-report/[batchNo]` yang menyatukan:
+  1. Header informasi produk, identitas batch, waktu proses, dan nilai F0 (A4 Portrait).
+  2. Tabel trend per menit dengan penanda separator pergantian fase (A4 Portrait).
+  3. Grafik kurva suhu dan tekanan multi-garis Recharts (A4 Landscape via CSS named page `@page curve`), dengan penanda vertikal fase (Heat/Ster/Cool Begin) dan sumbu X `_label` membentang penuh 100%.
+  4. Tabel riwayat alarm selama proses batch tersebut (A4 Landscape via CSS named page `@page alarm`) dengan 9 kolom standar SCADA lama.
+- Rute API pendukung: `src/app/api/alarms/by-batch/[batchNo]/route.js` mengambil seluruh log alarm pada batch terkait.
+- Rute cetak kurva mandiri (`/print/data-report/[batchNo]/curve`) tetap dipertahankan dan disinkronkan styling-nya.
+- Penyeragaman format angka: `fmtMin()` (durasi 1 desimal) dan `fmtTemp()` (suhu 1 desimal) dipasang di tampilan detail dan cetak (komit `d157bd5`).
+- File: `src/app/print/data-report/[batchNo]/page.js`, `.../curve/page.js`, `src/app/(app)/data-report/[batchNo]/page.js`, `src/app/api/alarms/by-batch/[batchNo]/route.js`.
+- **Sudah diuji di mesin (14 Okt 2026):** Uji cetak dengan data batch riil mesin telah dilakukan pemilik dan **SESUAI/BERHASIL**: tabel data record, kurva grafik suhu/tekanan, dan tabel riwayat alarm periode batch cocok dan rapi. Selesai penuh.
 
 #### 21. Koreksi `plc.js`, tag KEPServerEX, dan label fase (S–M) — BARU 9 Okt 2026
 Hasil memeriksa `plc.js`, `SiemensS7-200.csv` (60 tag), dan `export_atv.awl`:
@@ -470,7 +456,7 @@ Notifikasi Telegram, dark mode, dashboard OEE, auto-archiving data lama, pencabu
 - Penyebab di kode: lihat item 9 (timer, START/STOP bergantung batch DB) dan item 11 (3 dari 9 valve tanpa tag; 6 lainnya belum diverifikasi).
 
 ### Kode web (hasil review)
-- Sudah baik: `requireAuth` mengecek DB, actor audit dari session, `batch/start` memakai guard berlapis (PLC online, fase 1, pintu, seal, bypass, `CTRL_SEL`), setpoint dibaca balik, START dikonfirmasi lewat perubahan fase, `batch_records` baru dibuat setelah PLC terbukti mulai, `plc/reset` punya guard bagus.
+- Sudah baik: `requireAuth` mengecek DB, actor audit dari session, `batch/start` memakai guard berlapis (PLC online, fase 1, pintu, seal, `CTRL_SEL`; pengecekan bypass `M6.0` dicabut pada 12 Okt berdasar uji mesin yang membuktikan PLC wajar menerima start saat M6.0 aktif), setpoint dibaca balik, START dikonfirmasi lewat perubahan fase, `batch_records` baru dibuat setelah PLC terbukti mulai, `plc/reset` punya guard bagus.
 - `trendRecorder.js` (dipanggil `server.js` tiap 5 detik): baris trend tiap 60 detik + baris peristiwa pada pergantian fase, maksimal 2 baris setelah fase 6; auto-finalize bila PLC idle (fase 0/1) ≥ 120 detik dan batch > 90 detik; melewati tick bila PLC offline; tidak menulis `alarm_log`.
 - ~~`finalizeBatch` membaca `fo_val_setting` dari `recipes`~~: sejak item 4 sudah tidak membaca `recipes`. ~~Batch tidak punya snapshot resep~~ dan ~~resep dan audit tidak dalam satu transaksi~~: **diperbaiki di item 6** (snapshot di `batch_records.recipe_snapshot`; resep dan audit satu transaksi).
 - `batch_no` tidak unik di DB (**diperbaiki di item 3**, menunggu migrasi dijalankan).
@@ -503,16 +489,16 @@ Constraint penting: `batch_records.status` ∈ {running, finished, aborted}; `st
 - (9 Okt) Cetak batch: satu tombol menghasilkan data record + kurva + daftar alarm periode batch (seperti SCADA lama); halaman Alarm dan Trend tetap bisa cetak mandiri. Lihat item 18.
 - (9 Okt) Prepare menjadi popup dengan Mach. ID default SG-40 dan master produk/spesifikasi (master **terpisah**); checkbox risiko dihapus, cukup popup konfirmasi. Lihat item 17.
 - (9 Okt) Adopsi proses luar: **otomatis** (tanpa tombol manual), STOP aktif dan data record berjalan begitu SCADA lama START; tanpa penandaan batch uji; nomor batch asli di kolom terpisah `external_batch_no`; nomor/keterangan batch SCADA lama kemungkinan tidak terbaca. Lihat item 9.
-- (9 Okt) Nomor batch tidak boleh sama, **kecuali rerun batch aborted**. Lihat item 20.
+- (9 Okt) Nomor batch tidak boleh sama (unik global).
 - (9 Okt) Idle logout **diperlukan, 7 menit**. Lihat item 14 dan pertanyaan #21.
 - (9 Okt) Export Excel dan audit cetak alarm **tidak diperlukan**. Blok `x-client-ip`/`TRUST_PROXY` di `server.js` **dihapus**.
 - (9 Okt) Pemilik sudah menguji dua kali: dual-monitoring baca-saja (termasuk mencoba tombol STOP dari web), lalu START/STOP penuh dari web. Hasil rinci belum dicatat (#22).
-- (9 Okt) **Item 19 dibatalkan.** START dan STOP **tetap bergantung database** (tidak ada jalur tanpa DB). Adopsi otomatis dengan jeda **3–5 detik**. Idle logout 7 menit **hanya saat mesin idle** (di luar fase masak).
+- (9 Okt) START dan STOP **tetap bergantung database** (tidak ada jalur tanpa DB). Adopsi otomatis dengan jeda **3–5 detik**. Idle logout 7 menit **hanya saat mesin idle** (di luar fase masak).
 - (9 Okt) "PREPARE" di web = fase **idle** (VW98 0/1) **sebelum START**, bukan fase sesudah START; label diganti "IDLE" (item 21).
 
 ### Peta rute (dari build)
-Halaman: `/`, `/alarm`, `/print/alarm`, `/audit-log`, `/data-report`, `/data-report/[batchNo]`, `/formula`, `/login`, `/prepare`, `/trend`, `/users`, `/print/audit-log`, `/print/batch-records`, `/print/data-report/[batchNo]` (+ `/curve`).
-API: `alarms` (+`active`, `event-types`, `print-data`), `audit-log` (+`export`, `filters`), `auth/{login,logout,me,users}`, `batch/{start,stop}`, `batch-records` (+`[batchNo]`, `export`), `db-test`, `formulas` (+`[formulaNo]`), `plc-test`, `plc/reset`, `status`, `users` (+`[username]`, `reset-password`).
+Halaman: `/`, `/alarm`, `/print/alarm`, `/audit-log`, `/data-report`, `/data-report/[batchNo]`, `/formula`, `/login`, `/trend`, `/users`, `/print/audit-log`, `/print/batch-records`, `/print/data-report/[batchNo]` (+ `/curve`). (Catatan: `/prepare` dihapus, digantikan modal `StartDialog` di `/`).
+API: `alarms` (+`active`, `by-batch/[batchNo]`, `event-types`, `print-data`), `audit-log` (+`export`, `filters`), `auth/{login,logout,me,users}`, `batch/{start,stop}`, `batch-records` (+`[batchNo]`, `export`), `formulas` (+`[formulaNo]`), `plc/reset`, `status`, `users` (+`[username]`, `reset-password`). (Catatan: `db-test` dan `plc-test` dihapus). Proxy: `src/proxy.js`.
 
 ---
 
@@ -522,7 +508,7 @@ API: `alarms` (+`active`, `event-types`, `print-data`), `audit-log` (+`export`, 
 |---|---|---|
 | 1 | Kenapa FOH (TH) di printout lama 37,6 sedangkan hitungan dari tabel 40,3? | Pabrik / vendor SCADA lama |
 | 2 | Definisi `Total.Time` di printout lama (60,0 vs 58,4 menit). Petunjuk (6 Okt): Run.Begin 15:18:47 sampai baris terakhir 16:18:53 = 60,1 menit, dekat 60,0; tetapi Cool.Time 21,2 tidak cocok dengan 15:53:57→16:17:13 (23,3 menit). Belum disimpulkan | Pabrik |
-| 3 | ~~Boleh berulangkah `Batch No`?~~ **Diputuskan 9 Okt:** tidak boleh berulang kecuali rerun batch **aborted** (lihat item 20); run kosongan tetap bernama otomatis `KOSONGAN dd.mm.yy[-N]` | Selesai |
+| 3 | ~~Boleh berulangkah `Batch No`?~~ **Diputuskan 9 Okt:** tidak boleh berulang (unik global); run kosongan tetap bernama otomatis `KOSONGAN dd.mm.yy[-N]` | Selesai |
 | 4 | **Sebagian (9 Okt):** `I2.1`/`I2.2` hanya muncul sebagai syarat START (harus tidak aktif) di `SBR0`; fungsi fisiknya tidak terlihat dari AWL. Web tidak membaca keduanya, jadi START ditolak PLC tanpa penjelasan bila salah satu aktif. Dapat dicek di mesin lewat Quick Client (tag di `SiemensS7-200_tambahan.csv`) | Teknisi / pengamatan di mesin |
 | 5 | ~~Arti `VW212`, `VW214`, `VW224`, `VW236`, `VW250`, `VW252`~~ **Terjawab dari AWL (9 Okt):** `VW212`/`VW214` (jendela tekanan), `VW224`, `VW236`, `VW250` dihitung PLC tiap scan; `VW252` = OVER_TEMP (parameter). **Masih terbuka:** nilai `VW234` (ambang suhu produk untuk `Q2.1`) dan `VW238` (durasi drain, 0,1 detik) yang tidak diset ladder; baca di mesin | Pengamatan di mesin |
 | 6 | Teks alarm lengkap beserta penyebab dan solusinya. **Sebagian:** draf dari logika PLC sudah ada di `alarmCatalog.js` (`confirmed: false`); perlu dikoreksi teknisi/QA, terutama kolom "Tindakan" | Manual mesin / teknisi / QA |
@@ -542,7 +528,7 @@ API: `alarms` (+`active`, `event-types`, `print-data`), `audit-log` (+`export`, 
 | 16 | ~~Perlukah STOP web tanpa DB?~~ **Diputuskan 9 Okt: START dan STOP tetap bergantung database** (tidak diubah); tombol STOP fisik tetap pengaman utama | Selesai |
 
 | 21 | ~~Perilaku idle logout saat batch berjalan~~ **Diputuskan 9 Okt: idle logout 7 menit hanya saat mesin idle; tidak berlaku selama proses berjalan.** Asumsi: fase 0/1 dan 6 bukan proses (konfirmasi bila fase 6 harus dikecualikan) | Selesai (asumsi fase 6) |
-| 22 | Hasil dua uji 9 Okt (dual baca-saja + tombol STOP dari web; lalu START/STOP penuh dari web): apakah START menulis setpoint dengan benar, fase berpindah, STOP mengembalikan ke idle, adakah hal tak terduga (STOP tertahan, setpoint salah, dsb.)? | Pemilik proyek |
+| 22 | ~~Hasil dua uji 9 Okt (dual baca-saja + tombol STOP dari web; lalu START/STOP penuh dari web)...~~ **Terjawab & Teruji (14 Okt 2026):** Uji START dan STOP dari web ke PLC fisik berhasil, adopsi otomatis proses luar berhasil, dan laporan cetak batch riil sudah dicoba dan sesuai | Selesai |
 | 23 | ~~Alamat, arti, satuan, scaling tag yang ditulis web~~ **Terjawab dari AWL dan CSV (9 Okt):** ketujuh tag setpoint menunjuk variabel yang benar dengan skala yang benar (rincian di item 13). `START`/`STOP` = `M1.4`/`M1.5` (level, pulsa) | Selesai |
 
 *Terjawab:* buzzer 5 menit heating/cooling = pemberitahuan, bukan alarm (pengamatan mesin + operator; cocok dengan `M10.0`/`M10.4` di AWL, 8 Okt).
@@ -557,8 +543,8 @@ Lakukan sekali, di Quick Client lalu di dashboard:
 3. Dashboard berhenti menampilkan NO DATA dan banner PLC hilang.
 4. Amati `ALM_M10_1` (dan bit grup review lain) sepanjang **satu batch normal**. Catat mana yang pernah menyala; jawaban untuk pertanyaan #9, #10 dan penentu pemindahan bit ke grup fault.
 5. Uji auto-finalize: selesaikan batch tanpa STOP dari web, pastikan batch tertutup setelah PLC idle ≥ 120 detik.
-6. (Item 6) START dari web: `recipe_snapshot` terisi (bukan NULL) dan nilainya sama dengan resep saat START. Setelah batch selesai, `ster_time_min` sama dengan `sterilTimeMin` di snapshot. Edit resep itu lalu buka Data Report batch tadi: nilai batch tidak berubah.
-7. (Item 7) START dari web: di Audit Log, `plc_setpoints_written` muncul **sebelum** `start_batch`, berisi nilai tulis dan baca-balik yang sama dengan resep. STOP dari web meninggalkan `stop_requested` sebelum `stop_batch`.
+6. (Item 6) START dari web: `recipe_snapshot` terisi (bukan NULL) dan nilainya sama dengan resep saat START. [SUDAH DILAKUKAN & BERHASIL — 14 Okt 2026]
+7. (Item 7) START dari web: di Audit Log, `plc_setpoints_written` muncul sebelum `start_batch`. STOP dari web meninggalkan `stop_requested`. [SUDAH DILAKUKAN & BERHASIL — 14 Okt 2026]
 8. (Item 8) Dengan PLC tersambung:
    - Terminal menampilkan `Alarm monitor berjalan`; di halaman Alarm muncul `communication_normal` setelah komunikasi pulih; `monitor_heartbeat.beat_at` bergeser tiap ~10 detik.
    - Saat idle dan pintu tertutup tidak ada alarm aktif (kelima bit fault = 0).
@@ -575,7 +561,7 @@ Lakukan sekali, di Quick Client lalu di dashboard:
    - START saat pintu/seal tidak siap (409): banner merah biasa; bila `stuckRisk`, panel merah dengan langkah melepas `START = false`.
    - Cek `start_batch_critical` muncul di dropdown filter Audit Log setelah ada kejadiannya.
 10. (Item 11a, 21) Bukti valve, dengan SCADA lama dan web berdampingan dan Quick Client terbuka. Import dulu `SiemensS7-200_tambahan.csv` ke KEPServerEX. Untuk **setiap fase** (idle siap, isi air, pemanasan, sterilisasi, pendinginan, buang, selesai) catat: valve apa yang menyala di layar SCADA lama; valve apa yang menyala di web; nilai bit output di Quick Client (`Q0.6`, `Q0.7`, `Q1.0`–`Q1.7`, `Q2.0`, `Q2.1`, `Q3.0`). Bandingkan dengan tabel "Output per fase" di bagian 3. Khusus DRAIN, COMPRESSED AIR, SOFT WATER: output mana yang menyala bersamaan dengan animasinya di SCADA lama. Foto kedua layar pada momen yang sama.
-11. (Item 9) Uji adopsi dengan setup ODOT: lihat "Rencana uji" di item 9.
+11. (Item 9) Uji adopsi dengan setup ODOT: proses dimulai dari luar web, batch EXT otomatis terbentuk, timer dan perekaman berjalan, STOP aktif. [SUDAH DILAKUKAN & BERHASIL — 14 Okt 2026]
 
 ---
 
