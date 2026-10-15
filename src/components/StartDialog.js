@@ -3,7 +3,7 @@
  *
  * Menggantikan halaman /prepare. Muncul sebagai modal overlay saat
  * tombol START di dashboard diklik. Alur:
- *   1. Form isian (batch no, loading, machine, produk, formula, run kosongan)
+ *   1. Form isian (batch no, loading, machine, produk, formula)
  *   2. Konfirmasi akhir ("Yakin memulai?") sebelum request dikirim ke PLC
  *
  * Props:
@@ -47,9 +47,10 @@ const inputCls =
 export default function StartDialog({ open, onClose, onStarted }) {
     const [step, setStep] = useState("form");   // "form" | "confirm"
     const [form, setForm] = useState(EMPTY_FORM);
-    const [emptyRun, setEmptyRun] = useState(false);
     const [formulas, setFormulas] = useState([]);
     const [loadingFormulas, setLoadingFormulas] = useState(true);
+    const [productNames, setProductNames] = useState([]);
+    const [productSpecs, setProductSpecs] = useState([]);
     const [userFullName, setUserFullName] = useState("");
     const [error, setError] = useState(null);
     const [errorFields, setErrorFields] = useState([]);
@@ -63,7 +64,6 @@ export default function StartDialog({ open, onClose, onStarted }) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setStep("form");
         setForm(EMPTY_FORM);
-        setEmptyRun(false);
         setError(null);
         setErrorFields([]);
         setSubmitting(false);
@@ -81,6 +81,16 @@ export default function StartDialog({ open, onClose, onStarted }) {
             .then((data) => setFormulas(Array.isArray(data) ? data : []))
             .catch(() => setFormulas([]))
             .finally(() => setLoadingFormulas(false));
+
+        fetch("/api/products?active=true")
+            .then((r) => r.json())
+            .then((data) => setProductNames(Array.isArray(data) ? data : []))
+            .catch(() => setProductNames([]));
+
+        fetch("/api/product-specs?active=true")
+            .then((r) => r.json())
+            .then((data) => setProductSpecs(Array.isArray(data) ? data : []))
+            .catch(() => setProductSpecs([]));
 
         fetch("/api/auth/me")
             .then((r) => r.json())
@@ -109,9 +119,8 @@ export default function StartDialog({ open, onClose, onStarted }) {
     const formulaInvalid = selectedFormula !== null && selectedFormula?.validation?.ok === false;
     const formulaHasWarn = formulaWarnings.length > 0 && !formulaInvalid;
 
-    const requiredKeys = emptyRun ? ["machineId", "formulaNo"] : Object.keys(EMPTY_FORM);
-    const allFilled = requiredKeys.every((k) => String(form[k]).trim() !== "");
-    const batchNoCheck = !emptyRun && form.batchNo.trim() !== "" ? validateBatchNo(form.batchNo) : null;
+    const allFilled = Object.keys(EMPTY_FORM).every((k) => String(form[k]).trim() !== "");
+    const batchNoCheck = form.batchNo.trim() !== "" ? validateBatchNo(form.batchNo) : null;
     const batchNoInvalid = batchNoCheck !== null && !batchNoCheck.ok;
     const canProceed = allFilled && !formulaInvalid && !batchNoInvalid && startNotice === null;
 
@@ -126,9 +135,7 @@ export default function StartDialog({ open, onClose, onStarted }) {
         let started = false;
         let keepLocked = false;
         try {
-            const payload = emptyRun
-                ? { emptyRun: true, machineId: form.machineId, formulaNo: form.formulaNo }
-                : { ...form, emptyRun: false };
+            const payload = { ...form };
 
             let json = null;
             let networkError = false;
@@ -189,16 +196,10 @@ export default function StartDialog({ open, onClose, onStarted }) {
                     <h2 className="text-base font-bold text-[#1E2A2E]">Konfirmasi Mulai Sterilisasi</h2>
 
                     <div className="rounded-[3px] border border-[#D8DEDC] bg-[#F5F7F6] px-3 py-3 space-y-1.5 text-sm">
-                        {emptyRun ? (
-                            <Row label="Mode" value="Run kosongan (tes mesin tanpa produk)" />
-                        ) : (
-                            <>
-                                <Row label="Batch No." value={form.batchNo} />
-                                <Row label="Loading No." value={form.loadingNo} />
-                                <Row label="Produk" value={form.productName} />
-                                <Row label="Spesifikasi" value={form.productSpec} />
-                            </>
-                        )}
+                        <Row label="Batch No." value={form.batchNo} />
+                        <Row label="Loading No." value={form.loadingNo} />
+                        <Row label="Produk" value={form.productName} />
+                        <Row label="Spesifikasi" value={form.productSpec} />
                         <Row label="Mach. ID" value={form.machineId} />
                         <Row label="Operator" value={userFullName || "—"} />
                         <Row label="Formula" value={fLabel} />
@@ -304,70 +305,82 @@ export default function StartDialog({ open, onClose, onStarted }) {
                     </div>
                 )}
 
-                {/* ── Run kosongan ── */}
-                <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                    <input
-                        id="start-dialog-empty-run"
-                        type="checkbox"
-                        checked={emptyRun}
-                        onChange={(e) => { setEmptyRun(e.target.checked); setError(null); setErrorFields([]); }}
-                        className="w-4 h-4 rounded cursor-pointer"
-                    />
-                    <span className="text-sm text-[#1E2A2E]">
-                        <strong>Run kosongan</strong> — tes mesin tanpa produk
-                    </span>
-                </label>
+                <div className="grid grid-cols-2 gap-3">
+                    <Field
+                        label="Batch No."
+                        hint={`${BATCH_NO_RULE_TEXT} Harus unik.`}
+                        error={batchNoInvalid ? batchNoCheck.error : null}
+                    >
+                        <input
+                            type="text"
+                            className={inputCls}
+                            placeholder="contoh: B-2024-001"
+                            maxLength={BATCH_NO_MAX_LEN}
+                            value={form.batchNo}
+                            onChange={(e) => handleChange("batchNo", e.target.value)}
+                        />
+                    </Field>
+                    <Field label="Loading No.">
+                        <input
+                            type="text"
+                            className={inputCls}
+                            placeholder="contoh: L-001"
+                            value={form.loadingNo}
+                            onChange={(e) => handleChange("loadingNo", e.target.value)}
+                        />
+                    </Field>
+                    <Field label="Nama Produk">
+                        {productNames.length > 0 && (
+                            <select
+                                className={inputCls + " mb-1.5 cursor-pointer bg-[#F8FAFC] text-xs font-semibold"}
+                                onChange={(e) => {
+                                    if (e.target.value) handleChange("productName", e.target.value);
+                                }}
+                                value=""
+                            >
+                                <option value="">-- Pilih dari Master Produk --</option>
+                                {productNames.map((p) => (
+                                    <option key={p.id} value={p.name}>
+                                        {p.name}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        <input
+                            type="text"
+                            className={inputCls}
+                            placeholder="Nama produk (atau ketik manual)"
+                            value={form.productName}
+                            onChange={(e) => handleChange("productName", e.target.value)}
+                        />
+                    </Field>
 
-                {emptyRun ? (
-                    <div className="rounded-[3px] border border-[#D8DEDC] bg-[#F5F7F6] px-3 py-2.5 text-[11px] text-[#5C6B6A] space-y-1">
-                        <p>Batch No. diisi otomatis: <span className="font-mono font-semibold text-[#1E2A2E]">KOSONGAN dd.mm.yy</span> (akhiran -2, -3 jika ada pada hari yang sama).</p>
-                        <p>Loading No. = N/A; Produk dan Spesifikasi = {'"-"'}.</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                        <Field
-                            label="Batch No."
-                            hint={`${BATCH_NO_RULE_TEXT} Harus unik.`}
-                            error={batchNoInvalid ? batchNoCheck.error : null}
-                        >
-                            <input
-                                type="text"
-                                className={inputCls}
-                                placeholder="contoh: B-2024-001"
-                                maxLength={BATCH_NO_MAX_LEN}
-                                value={form.batchNo}
-                                onChange={(e) => handleChange("batchNo", e.target.value)}
-                            />
-                        </Field>
-                        <Field label="Loading No.">
-                            <input
-                                type="text"
-                                className={inputCls}
-                                placeholder="contoh: L-001"
-                                value={form.loadingNo}
-                                onChange={(e) => handleChange("loadingNo", e.target.value)}
-                            />
-                        </Field>
-                        <Field label="Nama Produk">
-                            <input
-                                type="text"
-                                className={inputCls}
-                                placeholder="Nama produk"
-                                value={form.productName}
-                                onChange={(e) => handleChange("productName", e.target.value)}
-                            />
-                        </Field>
-                        <Field label="Spesifikasi">
-                            <input
-                                type="text"
-                                className={inputCls}
-                                placeholder="Spesifikasi produk"
-                                value={form.productSpec}
-                                onChange={(e) => handleChange("productSpec", e.target.value)}
-                            />
-                        </Field>
-                    </div>
-                )}
+                    <Field label="Spesifikasi Kemasan">
+                        {productSpecs.length > 0 && (
+                            <select
+                                className={inputCls + " mb-1.5 cursor-pointer bg-[#F8FAFC] text-xs font-semibold"}
+                                onChange={(e) => {
+                                    if (e.target.value) handleChange("productSpec", e.target.value);
+                                }}
+                                value=""
+                            >
+                                <option value="">-- Pilih dari Master Spesifikasi --</option>
+                                {productSpecs.map((s) => (
+                                    <option key={s.id} value={s.spec}>
+                                        {s.spec}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        <input
+                            type="text"
+                            className={inputCls}
+                            placeholder="Spesifikasi (atau ketik manual)"
+                            value={form.productSpec}
+                            onChange={(e) => handleChange("productSpec", e.target.value)}
+                        />
+                    </Field>
+                </div>
 
                 {/* Baris Operator & Mach. ID */}
                 <div className="grid grid-cols-2 gap-3">

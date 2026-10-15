@@ -248,7 +248,11 @@ export default function DataReportPage() {
                                         <td className={tdClass}>{row.sterTemp !== null ? `${row.sterTemp} °C` : "-"}</td>
                                         <td className={tdClass + " whitespace-nowrap"}>{fmt(row.runBegin)}</td>
                                         <td className={tdClass + " whitespace-nowrap"}>{fmt(row.runFinish)}</td>
-                                        <td className={tdClass}>{row.totalTimeMin !== null ? row.totalTimeMin : "-"}</td>
+                                        <td className={tdClass}>
+                                            {row.totalTimeMin !== null && row.totalTimeMin !== undefined && Number.isFinite(Number(row.totalTimeMin))
+                                                ? Number(row.totalTimeMin).toFixed(1)
+                                                : "-"}
+                                        </td>
                                         <td className={tdClass}><StatusBadge status={row.status} /></td>
                                         <td className={tdClass}>
                                             {row.foMin !== null && row.foMin !== undefined && Number.isFinite(Number(row.foMin))

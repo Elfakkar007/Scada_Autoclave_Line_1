@@ -10,6 +10,7 @@ const menu = [
     { href: "/trend", label: "Trend" },
     { href: "/alarm", label: "Alarm" },
     { href: "/formula", label: "Formula" },
+    { href: "/products", label: "Master Produk" },
 ];
 
 export default function Navbar() {

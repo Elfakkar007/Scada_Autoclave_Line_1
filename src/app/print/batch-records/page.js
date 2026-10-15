@@ -8,10 +8,17 @@ function toWIBStr(date) {
     return new Date(date).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 }
 
-function fmtN(v) {
+function fmtDec1(v) {
     if (v === null || v === undefined || v === "") return "-";
     const n = Number(v);
-    return Number.isFinite(n) ? n : v;
+    return Number.isFinite(n) ? n.toFixed(1) : "-";
+}
+
+function fmtTemp(v) {
+    if (v === null || v === undefined || v === "") return "-";
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "-";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 function BatchRecordsPrintContent() {
@@ -61,19 +68,37 @@ function BatchRecordsPrintContent() {
     return (
         <>
             <style>{`
-                @page { size: A4 landscape; margin: 10mm; }
+                @page { size: A4 landscape; margin: 8mm 8mm 10mm 8mm; }
                 @media print {
                     .no-print { display: none !important; }
                     body { background: white !important; }
                     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    th { border: 1px solid #000 !important; background: #e2e8f0 !important; }
+                    td { border: 0.5pt solid #475569 !important; }
                 }
-                body { font-family: 'IBM Plex Mono','Courier New',monospace; background:#fff; color:#000; margin:0; font-size:10px; }
-                table { border-collapse: collapse; width: 100%; }
+                body { font-family: 'IBM Plex Mono','Courier New',monospace; background:#fff; color:#000; margin:0; font-size:9px; }
+                table { border-collapse: collapse; width: 100%; border: 1.5px solid #000; }
                 thead { display: table-header-group; }
                 tr { break-inside: avoid; }
-                th { font-weight:700; font-size:9px; border-top:1.5px solid #000; border-bottom:1.5px solid #000; padding:2px 3px; text-align:center; }
-                td { font-size:9px; padding:1px 3px; border-bottom:1px dotted #aaa; text-align:center; }
-                td:first-child { text-align:left; }
+                th {
+                    font-weight: 700;
+                    font-size: 8px;
+                    border: 1px solid #334155;
+                    padding: 3px 2px;
+                    text-align: center;
+                    background: #f1f5f9;
+                    white-space: nowrap;
+                    letter-spacing: 0.2px;
+                }
+                td {
+                    font-size: 8px;
+                    padding: 2.5px 2px;
+                    border: 1px solid #94a3b8;
+                    text-align: center;
+                    white-space: nowrap;
+                }
+                td:first-child { text-align: left; }
+                td.col-prod { text-align: left; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             `}</style>
 
             {/* Toolbar */}
@@ -82,14 +107,14 @@ function BatchRecordsPrintContent() {
                 <button onClick={() => { if (window.history.length <= 1 || window.opener) { window.close(); } else { window.history.back(); } }} style={{ padding:"5px 14px", background:"#e5e7eb", border:"1px solid #9ca3af", borderRadius:4, cursor:"pointer", fontSize:13 }}>← Kembali</button>
             </div>
 
-            <div style={{ padding:"8mm 10mm 4mm 10mm" }}>
+            <div style={{ padding:"6mm 8mm 4mm 8mm" }}>
                 {/* Judul */}
                 <div style={{ textAlign:"center", marginBottom:6 }}>
-                    <div style={{ fontWeight:900, fontSize:14, letterSpacing:2 }}>DATA REPORT — DAFTAR BATCH</div>
-                    <div style={{ fontSize:10 }}>Periode: {periode}</div>
-                    <div style={{ fontSize:9, marginTop:2 }}>Dicetak oleh {user || "?"} pada {printedAt} | {total} baris</div>
+                    <div style={{ fontWeight:900, fontSize:13, letterSpacing:2 }}>DATA REPORT — DAFTAR BATCH</div>
+                    <div style={{ fontSize:9.5 }}>Periode: {periode}</div>
+                    <div style={{ fontSize:8.5, marginTop:2, color:"#333" }}>Dicetak oleh {user || "?"} pada {printedAt} | {total} baris</div>
                     {(search || status) && (
-                        <div style={{ fontSize:9, color:"#555" }}>
+                        <div style={{ fontSize:8.5, color:"#555" }}>
                             Filter: {[search && `cari="${search}"`, status && `status="${status}"`].filter(Boolean).join(", ")}
                         </div>
                     )}
@@ -115,28 +140,28 @@ function BatchRecordsPrintContent() {
                             ) : rows.map((r, i) => (
                                 <tr key={i}>
                                     <td style={{ textAlign:"left", whiteSpace:"nowrap", fontWeight:600 }}>{r.batchNo}</td>
-                                    <td>{r.loadingNo}</td>
-                                    <td style={{ maxWidth:100, wordBreak:"break-word", textAlign:"left" }}>{r.productName}</td>
-                                    <td>{r.operator}</td>
-                                    <td>{r.machineId}</td>
-                                    <td>{fmtN(r.sterTemp)}</td>
-                                    <td style={{ whiteSpace:"nowrap" }}>{r.runBegin}</td>
-                                    <td style={{ whiteSpace:"nowrap" }}>{r.runFinish}</td>
-                                    <td>{fmtN(r.totalTimeMin)}</td>
-                                    <td>{fmtN(r.heatTimeMin)}</td>
-                                    <td>{fmtN(r.sterTimeMin)}</td>
-                                    <td>{fmtN(r.coolTimeMin)}</td>
-                                    <td>{fmtN(r.foMin)}</td>
-                                    <td>{fmtN(r.fo1)}</td>
-                                    <td>{fmtN(r.fo2)}</td>
-                                    <td>{fmtN(r.fo3)}</td>
-                                    <td>{fmtN(r.fo4)}</td>
-                                    <td>{fmtN(r.fo5)}</td>
-                                    <td>{fmtN(r.fo6)}</td>
-                                    <td>{fmtN(r.foh)}</td>
-                                    <td>{fmtN(r.fom)}</td>
-                                    <td>{fmtN(r.fol)}</td>
-                                    <td>{r.status}</td>
+                                    <td>{r.loadingNo || "-"}</td>
+                                    <td className="col-prod">{r.productName || "-"}</td>
+                                    <td>{r.operator || "-"}</td>
+                                    <td>{r.machineId || "-"}</td>
+                                    <td>{fmtTemp(r.sterTemp)}</td>
+                                    <td style={{ whiteSpace:"nowrap" }}>{r.runBegin || "-"}</td>
+                                    <td style={{ whiteSpace:"nowrap" }}>{r.runFinish || "-"}</td>
+                                    <td>{fmtDec1(r.totalTimeMin)}</td>
+                                    <td>{fmtDec1(r.heatTimeMin)}</td>
+                                    <td>{fmtDec1(r.sterTimeMin)}</td>
+                                    <td>{fmtDec1(r.coolTimeMin)}</td>
+                                    <td style={{ fontWeight:600 }}>{fmtDec1(r.foMin)}</td>
+                                    <td>{fmtDec1(r.fo1)}</td>
+                                    <td>{fmtDec1(r.fo2)}</td>
+                                    <td>{fmtDec1(r.fo3)}</td>
+                                    <td>{fmtDec1(r.fo4)}</td>
+                                    <td>{fmtDec1(r.fo5)}</td>
+                                    <td>{fmtDec1(r.fo6)}</td>
+                                    <td>{fmtDec1(r.foh)}</td>
+                                    <td>{fmtDec1(r.fom)}</td>
+                                    <td>{fmtDec1(r.fol)}</td>
+                                    <td>{r.status || "-"}</td>
                                 </tr>
                             ))}
                         </tbody>

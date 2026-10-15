@@ -11,9 +11,9 @@ function toWIB(dateVal) {
 }
 
 function fmtNum(v) {
-    if (v === null || v === undefined) return "";
+    if (v === null || v === undefined || v === "") return "";
     const n = Number(v);
-    return Number.isFinite(n) ? n : "";
+    return Number.isFinite(n) ? Number(n.toFixed(1)) : "";
 }
 
 function buildQuery(searchParams) {

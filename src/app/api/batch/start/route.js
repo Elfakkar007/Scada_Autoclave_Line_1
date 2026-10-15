@@ -7,7 +7,6 @@ import { validateRecipe } from "@/lib/recipeValidation";
 import { validateBatchNo } from "@/lib/batchNo";
 import { buildRecipeSnapshot } from "@/lib/recipeSnapshot";
 import { START_LOCK_KEY } from "@/lib/recipeGuard";
-import { insertAudit, tryAudit } from "@/lib/auditLog";
 
 // Rentang nilai resep dikelola di src/lib/recipeValidation.js.
 // Aturan format nomor batch ada di src/lib/batchNo.js (dipakai juga oleh klien).
@@ -58,34 +57,7 @@ async function acquireStartLock() {
     };
 }
 
-// ── Nama otomatis untuk "Run kosongan" ────────────────────────────────────────
-// Format: "KOSONGAN dd.mm.yy" (WIB). Kalau sudah ada hari itu: "-2", "-3", dst.
-function wibDateStamp(date = new Date()) {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Asia/Jakarta", day: "2-digit", month: "2-digit", year: "2-digit",
-    }).formatToParts(date);
-    const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
-    return `${get("day")}.${get("month")}.${get("year")}`;
-}
 
-async function nextEmptyRunName() {
-    const base = `KOSONGAN ${wibDateStamp()}`;
-    const res = await pool.query(
-        `SELECT lower(btrim(batch_no)) AS k
-         FROM batch_records
-         WHERE lower(btrim(batch_no)) = lower($1)
-            OR lower(btrim(batch_no)) LIKE lower($2)`,
-        [base, `${base}-%`]
-    );
-    const taken = new Set(res.rows.map((r) => r.k));
-    let candidate = base;
-    let n = 2;
-    while (taken.has(candidate.toLowerCase())) {
-        candidate = `${base}-${n}`;
-        n += 1;
-    }
-    return candidate;
-}
 
 const STATUS_LABEL = { running: "sedang berjalan", finished: "selesai", aborted: "dibatalkan" };
 
@@ -157,22 +129,11 @@ async function runStart(request, session) {
         const { machineId, formulaNo } = body;
         let { batchNo, loadingNo, productName, productSpec } = body;
 
-        // Run kosongan (tes tanpa produk): nomor batch dibuat server, sisanya baku.
-        const emptyRun = body.emptyRun === true;
-        if (emptyRun) {
-            batchNo = null;   // diisi nextEmptyRunName() setelah cek running
-            loadingNo = "N/A";
-            productName = "-";
-            productSpec = "-";
-        }
-
         // Operator diambil dari session (tidak bisa dipalsukan)
         const operator = session.fullName ?? session.username;
 
         // Validasi: semua field identitas wajib tidak boleh kosong
-        const required = emptyRun
-            ? { machineId, formulaNo }
-            : { batchNo, loadingNo, machineId, productName, productSpec, formulaNo };
+        const required = { batchNo, loadingNo, machineId, productName, productSpec, formulaNo };
         for (const [key, val] of Object.entries(required)) {
             if (!val || String(val).trim() === "") {
                 return Response.json({ ok: false, error: `Field ${key} tidak boleh kosong` }, { status: 400 });
@@ -180,13 +141,11 @@ async function runStart(request, session) {
         }
 
         // Validasi format Batch No (karakter aman untuk URL dan nama file)
-        if (!emptyRun) {
-            const bn = validateBatchNo(batchNo);
-            if (!bn.ok) {
-                return Response.json({ ok: false, error: bn.error }, { status: 400 });
-            }
-            batchNo = bn.value; // sudah di-trim
+        const bn = validateBatchNo(batchNo);
+        if (!bn.ok) {
+            return Response.json({ ok: false, error: bn.error }, { status: 400 });
         }
+        batchNo = bn.value; // sudah di-trim
 
         // Validasi: formulaNo harus ada di tabel recipes
         // SELECT * : dipakai untuk validateRecipe DAN untuk snapshot resep (item 6).
@@ -256,37 +215,30 @@ async function runStart(request, session) {
         // baru ketahuan saat INSERT, mesin sudah jalan tanpa catatan. Karena itu cek
         // di sini. Unique index (lower(btrim(batch_no))) di DB hanya jaring pengaman.
         // Lock START sedang dipegang, jadi tidak ada request START lain yang menyela.
-        if (emptyRun) {
-            batchNo = await nextEmptyRunName();
-        } else {
-            const dup = await pool.query(
-                `SELECT status, run_begin
-                 FROM batch_records
-                 WHERE lower(btrim(batch_no)) = lower($1)
-                 LIMIT 1`,
-                [batchNo]
+        const dup = await pool.query(
+            `SELECT status, run_begin
+             FROM batch_records
+             WHERE lower(btrim(batch_no)) = lower($1)
+             LIMIT 1`,
+            [batchNo]
+        );
+        if (dup.rows.length > 0) {
+            const d = dup.rows[0];
+            const statusLabel = STATUS_LABEL[d.status] ?? d.status;
+            const when = d.run_begin
+                ? ` pada ${new Date(d.run_begin).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`
+                : "";
+            const hint = d.status === "aborted"
+                ? ` Batch yang dibatalkan tetap memakai nomornya; tambahkan akhiran, mis. "${batchNo}-R1".`
+                : " Gunakan nomor batch lain.";
+            return Response.json(
+                {
+                    ok: false,
+                    code: "batch_no_duplicate",
+                    error: `Batch No "${batchNo}" sudah pernah dipakai (status: ${statusLabel}${when}).${hint}`,
+                },
+                { status: 409 }
             );
-            if (dup.rows.length > 0) {
-                const d = dup.rows[0];
-                const statusLabel = STATUS_LABEL[d.status] ?? d.status;
-                const when = d.run_begin
-                    ? ` pada ${new Date(d.run_begin).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB`
-                    : "";
-                let hint = d.status === "aborted"
-                    ? ` Batch yang dibatalkan tetap memakai nomornya; tambahkan akhiran, mis. "${batchNo}-R1".`
-                    : " Gunakan nomor batch lain.";
-                if (/^kosongan/i.test(batchNo)) {
-                    hint += ' Untuk tes tanpa produk, centang "Run kosongan".';
-                }
-                return Response.json(
-                    {
-                        ok: false,
-                        code: "batch_no_duplicate",
-                        error: `Batch No "${batchNo}" sudah pernah dipakai (status: ${statusLabel}${when}).${hint}`,
-                    },
-                    { status: 409 }
-                );
-            }
         }
 
         // ── Baca snapshot PLC ──────────────────────────────────────────────────
@@ -711,9 +663,9 @@ async function runStart(request, session) {
                     "start_batch",
                     "batch",
                     newBatch.batch_no,
-                    JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName, emptyRun, recipeSnapshot }),
+                    JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName, recipeSnapshot }),
                     "web",
-                    `Batch ${newBatch.batch_no}${emptyRun ? " (run kosongan)" : ""} dimulai oleh ${session.username} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
+                    `Batch ${newBatch.batch_no} dimulai oleh ${session.username} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
                 ]
             );
         } catch (auditErr) {
@@ -729,7 +681,7 @@ async function runStart(request, session) {
                 machineId: newBatch.machine_id,
                 productName: newBatch.product_name,
                 runBegin: newBatch.run_begin,
-                emptyRun,
+
                 // Peringatan kalau pulsa START tidak sempurna meski fase sudah tercapai
                 ...(pulse.ok ? {} : {
                     warning: "START mungkin tertahan aktif di PLC (pulsa tidak sempurna). " +
