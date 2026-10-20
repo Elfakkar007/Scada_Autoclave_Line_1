@@ -54,8 +54,6 @@
  * polling <= 1 detik DAN memberi debounce supaya satu episode tidak tercatat berkali-kali.
  */
 
-import { getDummyStatus } from "./dummyData.js";
-
 // Tag map: logical key -> nama tag PERSIS di KEPServerEX
 // (sumber: tag_address_clean.xlsx, kolom "Nama Tag (KepServerEX)")
 const TAG_MAP = {
@@ -201,13 +199,6 @@ function resolvePhase(v) {
     };
 }
 
-// Dummy hanya boleh aktif lewat env eksplisit dan tidak pernah di production.
-function dummyAllowed() {
-    return (
-        process.env.ENABLE_DUMMY_PLC === "true" &&
-        process.env.NODE_ENV !== "production"
-    );
-}
 
 // Snapshot kosong saat PLC tidak terbaca: semua nilai null, tidak ada angka palsu.
 // Bentuk field sengaja sama dengan snapshot normal supaya konsumen tidak crash,
@@ -364,9 +355,7 @@ async function readPlcTags() {
  * }
  *
  * Kalau PLC gagal dibaca, plcOk=false dan SEMUA field data bernilai null
- * (UI menampilkan "NO DATA"). Data dummy hanya dipakai bila env
- * ENABLE_DUMMY_PLC=true DAN NODE_ENV bukan "production"; snapshot dummy
- * ditandai isDummy=true supaya UI menampilkan banner simulasi.
+ * (UI menampilkan "NO DATA") via getEmptySnapshot().
  */
 export async function readPlcSnapshot() {
     let plcOk = true;
@@ -440,7 +429,7 @@ export async function readPlcSnapshot() {
         console.error("[plc] readPlcSnapshot gagal:", error.message);
         plcOk = false;
         plcError = error.message;
-        snapshot = dummyAllowed() ? getDummyStatus() : getEmptySnapshot();
+        snapshot = getEmptySnapshot();
     }
 
     return { plcOk, plcError, ...snapshot };
