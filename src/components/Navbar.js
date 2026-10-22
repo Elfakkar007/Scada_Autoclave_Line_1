@@ -3,15 +3,41 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { hasLevel } from "@/lib/permissionCatalog";
 
-const menu = [
-    { href: "/", label: "Dashboard" },
-    { href: "/data-report", label: "Data Report" },
-    { href: "/trend", label: "Trend" },
-    { href: "/alarm", label: "Alarm" },
-    { href: "/formula", label: "Formula" },
-    { href: "/products", label: "Master Produk" },
+// Tiap menu terikat ke satu resource izin. Menu tampil bila levelnya >= "view";
+// level "none" (atau resource tanpa baris izin) = menu tersembunyi.
+// Ini hanya merapikan tampilan. Data tetap dijaga di API (requirePermission).
+const mainMenu = [
+    { href: "/", label: "Dashboard", resource: "dashboard" },
+    { href: "/data-report", label: "Data Report", resource: "data_report" },
+    { href: "/trend", label: "Trend", resource: "trend" },
+    { href: "/alarm", label: "Alarm", resource: "alarm" },
+    { href: "/formula", label: "Formula", resource: "formula" },
+    { href: "/products", label: "Master Produk", resource: "products" },
 ];
+
+const adminMenu = [
+    { href: "/audit-log", label: "Audit Log", resource: "audit_log" },
+    { href: "/users", label: "Kelola User", resource: "users" },
+    { href: "/roles", label: "Role Management", resource: "roles" },
+];
+
+// Komponen di luar Navbar supaya tidak dibuat ulang tiap render.
+function NavLink({ item, pathname }) {
+    const isActive = pathname === item.href;
+    return (
+        <Link
+            href={item.href}
+            className={`px-3 py-2 rounded text-sm transition-colors flex items-center gap-2 ${isActive
+                ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
+                : "text-scada-idle hover:bg-white/10 hover:text-white"
+                }`}
+        >
+            {item.label}
+        </Link>
+    );
+}
 
 export default function Navbar() {
     const [user, setUser] = useState(null);
@@ -41,7 +67,7 @@ export default function Navbar() {
         // Jalankan sekali saat mount
         checkSession();
 
-        // Polling berkala setiap 60 detik untuk deteksi akun yang dinonaktifkan
+        // Polling berkala setiap 60 detik: deteksi akun nonaktif DAN perubahan role/izin
         const interval = setInterval(checkSession, 60_000);
 
         // Cleanup saat komponen unmount
@@ -53,7 +79,9 @@ export default function Navbar() {
         router.push("/login");
     }
 
-    const isAdmin = user?.role === "admin";
+    const canSee = (item) => hasLevel(user?.permissions, item.resource, "view");
+    const visibleMain = user ? mainMenu.filter(canSee) : [];
+    const visibleAdmin = user ? adminMenu.filter(canSee) : [];
 
     return (
         <nav className="w-48 shrink-0 h-full bg-scada-ink text-white flex flex-col justify-between py-6 z-10 shadow-lg border-r border-scada-ink">
@@ -68,44 +96,24 @@ export default function Navbar() {
                     <p className="text-[10px] text-scada-idle uppercase tracking-wider mt-0.5 text-center">Control System</p>
                 </div>
 
-                {menu.map((item) => {
-                    const isActive = pathname === item.href;
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={`px-3 py-2 rounded text-sm transition-colors flex items-center gap-2 ${isActive
-                                ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
-                                : "text-scada-idle hover:bg-white/10 hover:text-white"
-                                }`}
-                        >
-                            {item.label}
-                        </Link>
-                    );
-                })}
+                {/* Menu muncul setelah izin user terbaca dari /api/auth/me */}
+                {fetched && !user && (
+                    <p className="px-3 text-xs text-scada-idle">
+                        Menu tidak tersedia. Muat ulang halaman.
+                    </p>
+                )}
 
-                {/* Menu khusus admin */}
-                {isAdmin && (
+                {visibleMain.map((item) => (
+                    <NavLink key={item.href} item={item} pathname={pathname} />
+                ))}
+
+                {/* Menu administrasi: hanya yang izinnya >= view */}
+                {visibleAdmin.length > 0 && (
                     <>
                         <div className="my-2 border-t border-white/10 mx-2" />
-                        <Link
-                            href="/audit-log"
-                            className={`px-3 py-2 rounded text-sm transition-colors ${pathname === "/audit-log"
-                                ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
-                                : "text-scada-idle hover:bg-white/10 hover:text-white"
-                                }`}
-                        >
-                            Audit Log
-                        </Link>
-                        <Link
-                            href="/users"
-                            className={`px-3 py-2 rounded text-sm transition-colors ${pathname === "/users"
-                                ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
-                                : "text-scada-idle hover:bg-white/10 hover:text-white"
-                                }`}
-                        >
-                            Kelola User
-                        </Link>
+                        {visibleAdmin.map((item) => (
+                            <NavLink key={item.href} item={item} pathname={pathname} />
+                        ))}
                     </>
                 )}
             </div>
@@ -117,8 +125,8 @@ export default function Navbar() {
                 ) : user ? (
                     <div className="bg-white/5 border border-white/10 rounded p-3 flex flex-col gap-1">
                         <span className="text-sm font-semibold truncate text-white">{user.fullName}</span>
-                        <span className="text-[10px] text-scada-idle font-mono uppercase">
-                            Role: {user.role}
+                        <span className="text-[10px] text-scada-idle font-mono uppercase truncate">
+                            Role: {user.roleName ?? user.role}
                         </span>
                         <button
                             onClick={handleLogout}

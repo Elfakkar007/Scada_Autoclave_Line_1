@@ -14,17 +14,19 @@
 
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { readPlcSnapshot } from "@/lib/plc";
 import { pulsePlcTag } from "@/lib/plcWrite";
 import { tryAudit } from "@/lib/auditLog";
 
 export async function POST() {
     try {
-        // Proteksi server-side: wajib login (admin atau operator boleh)
+        // Proteksi server-side: wajib login, izin dashboard ≥ edit, DAN action.batch_control = edit
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAuth(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "dashboard", "edit");
         if (errorResponse) return errorResponse;
+        const { errorResponse: errBatchCtrl } = await requirePermission(cookieStore, "action.batch_control", "edit");
+        if (errBatchCtrl) return errBatchCtrl;
 
         // ── Guard: jangan reset kalau ada batch running di database ───────────
         // Kalau ada batch running, gunakan tombol Stop batch yang biasa (/api/batch/stop).

@@ -2,16 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { hasLevel } from "@/lib/permissionCatalog";
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ toast }) {
     if (!toast) return null;
     return (
-        <div className={`mb-4 px-4 py-2 rounded text-sm font-medium transition-all ${
-            toast.type === "error"
+        <div className={`mb-4 px-4 py-2 rounded text-sm font-medium transition-all ${toast.type === "error"
                 ? "bg-red-900 border border-red-700 text-red-200"
                 : "bg-green-900 border border-green-700 text-green-200"
-        }`}>
+            }`}>
             {toast.msg}
         </div>
     );
@@ -31,28 +31,60 @@ function fmt(dateStr) {
     return new Date(dateStr).toLocaleString("id-ID");
 }
 
+// Warna badge per key role. Role buatan sendiri memakai warna netral.
+function roleBadgeClass(key) {
+    switch (key) {
+        case "admin": return "bg-scada-water text-white";
+        case "qa": return "bg-scada-steam text-white";
+        case "maintainer": return "bg-scada-ink text-white";
+        default: return "bg-scada-idle text-scada-ink";
+    }
+}
+
+// GET /api/roles/options → daftar {id, key, name}. Dibuat tahan terhadap bentuk
+// pembungkus respons (array langsung atau di dalam objek).
+function unwrapRoles(json) {
+    const list = Array.isArray(json) ? json : (json?.roles ?? json?.options ?? json?.data ?? []);
+    return list
+        .filter((r) => r && r.id != null)
+        .map((r) => ({ id: r.id, key: r.key, name: r.name ?? r.key }));
+}
+
 // ── Form Tambah User ──────────────────────────────────────────────────────────
-function AddUserForm({ onSave, onCancel }) {
-    const [form, setForm] = useState({ username: "", fullName: "", role: "operator", password: "" });
+function AddUserForm({ roles, onSave, onCancel }) {
+    const [form, setForm] = useState({ username: "", fullName: "", roleId: "", password: "" });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
 
+    // Default role: "operator" bila ada (hak terkecil), kalau tidak role pertama.
+    const defaultRoleId = (roles.find((r) => r.key === "operator") ?? roles[0])?.id;
+    const roleId = form.roleId !== "" ? form.roleId : String(defaultRoleId ?? "");
+
     async function handleSubmit(e) {
         e.preventDefault();
+        if (roleId === "") {
+            setError("Pilih role terlebih dahulu");
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
             const res = await fetch("/api/users", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(form),
+                body: JSON.stringify({
+                    username: form.username,
+                    fullName: form.fullName,
+                    roleId: Number(roleId),
+                    password: form.password,
+                }),
             });
             const json = await res.json();
             if (!res.ok || json.ok === false) {
                 setError(json.error ?? "Gagal membuat user");
                 return;
             }
-            onSave(json);
+            onSave({ username: json.username ?? json.user?.username ?? form.username });
         } catch {
             setError("Gagal terhubung ke server");
         } finally {
@@ -86,9 +118,11 @@ function AddUserForm({ onSave, onCancel }) {
                     <div>
                         <label className={labelClass}>Role</label>
                         <select className={inputClass + " cursor-pointer"}
-                            value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                            <option value="operator">operator</option>
-                            <option value="admin">admin</option>
+                            value={roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })}>
+                            {roles.length === 0 && <option value="">(daftar role belum termuat)</option>}
+                            {roles.map((r) => (
+                                <option key={r.id} value={String(r.id)}>{r.name}</option>
+                            ))}
                         </select>
                     </div>
                     <div>
@@ -113,18 +147,18 @@ function AddUserForm({ onSave, onCancel }) {
 }
 
 // ── Baris tabel satu user ─────────────────────────────────────────────────────
-function UserRow({ user, currentUsername, onUpdated, onToast }) {
+function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) {
     const isSelf = user.username === currentUsername;
 
     // State untuk form edit inline
-    const [editOpen, setEditOpen]           = useState(false);
-    const [editForm, setEditForm]           = useState({ fullName: user.fullName, role: user.role });
-    const [saving, setSaving]               = useState(false);
+    const [editOpen, setEditOpen] = useState(false);
+    const [editForm, setEditForm] = useState({ fullName: user.fullName, roleId: user.roleId });
+    const [saving, setSaving] = useState(false);
 
     // State untuk reset password
-    const [resetOpen, setResetOpen]         = useState(false);
-    const [newPassword, setNewPassword]     = useState("");
-    const [resetting, setResetting]         = useState(false);
+    const [resetOpen, setResetOpen] = useState(false);
+    const [newPassword, setNewPassword] = useState("");
+    const [resetting, setResetting] = useState(false);
 
     // ── Save edit ──────────────────────────────────────────────────────────
     async function handleSaveEdit() {
@@ -133,7 +167,11 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
             const res = await fetch(`/api/users/${encodeURIComponent(user.username)}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ fullName: editForm.fullName, role: editForm.role, isActive: user.isActive }),
+                body: JSON.stringify({
+                    fullName: editForm.fullName,
+                    ...(isSelf ? {} : { roleId: Number(editForm.roleId) }),
+                    isActive: user.isActive,
+                }),
             });
             const json = await res.json();
             if (!res.ok || json.ok === false) {
@@ -179,7 +217,7 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                 const res = await fetch(`/api/users/${encodeURIComponent(user.username)}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fullName: user.fullName, role: user.role, isActive: true }),
+                    body: JSON.stringify({ fullName: user.fullName, roleId: user.roleId, isActive: true }),
                 });
                 const json = await res.json();
                 if (!res.ok || json.ok === false) {
@@ -235,8 +273,8 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                 </td>
                 <td className="px-4 py-3 text-sm">{user.fullName}</td>
                 <td className="px-4 py-3">
-                    <Badge colorClass={user.role === "admin" ? "bg-scada-water text-white" : "bg-scada-idle text-scada-ink"}>
-                        {user.role}
+                    <Badge colorClass={roleBadgeClass(user.role)}>
+                        {user.roleName ?? user.role}
                     </Badge>
                 </td>
                 <td className="px-4 py-3">
@@ -246,31 +284,34 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                 </td>
                 <td className="px-4 py-3 text-xs font-mono text-scada-muted">{fmt(user.lastLoginAt)}</td>
                 <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1.5">
-                        <button
-                            className={`${btnSm} bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink`}
-                            onClick={() => { setEditOpen((v) => !v); setResetOpen(false); }}
-                            disabled={saving}
-                        >
-                            Edit
-                        </button>
-                        <button
-                            className={`${btnSm} ${user.isActive ? "bg-scada-stop hover:bg-scada-stop-hover text-white" : "bg-scada-run hover:bg-scada-run-hover text-white"}`}
-                            onClick={handleToggleActive}
-                            disabled={isSelf || saving}
-                            title={isSelf ? "Ini akun Anda sendiri" : ""}
-                        >
-                            {user.isActive ? "Nonaktifkan" : "Aktifkan"}
-                        </button>
-                        <button
-                            className={`${btnSm} bg-scada-steam hover:bg-scada-steam-hover text-white`}
-                            onClick={() => { setResetOpen((v) => !v); setEditOpen(false); }}
-                            disabled={saving}
-                        >
-                            Reset PW
-                        </button>
-                    </div>
-                    {isSelf && (
+                    {!canEdit && <span className="text-xs text-scada-muted">Hanya lihat</span>}
+                    {canEdit && (
+                        <div className="flex flex-wrap gap-1.5">
+                            <button
+                                className={`${btnSm} bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink`}
+                                onClick={() => { setEditOpen((v) => !v); setResetOpen(false); }}
+                                disabled={saving}
+                            >
+                                Edit
+                            </button>
+                            <button
+                                className={`${btnSm} ${user.isActive ? "bg-scada-stop hover:bg-scada-stop-hover text-white" : "bg-scada-run hover:bg-scada-run-hover text-white"}`}
+                                onClick={handleToggleActive}
+                                disabled={isSelf || saving}
+                                title={isSelf ? "Ini akun Anda sendiri" : ""}
+                            >
+                                {user.isActive ? "Nonaktifkan" : "Aktifkan"}
+                            </button>
+                            <button
+                                className={`${btnSm} bg-scada-steam hover:bg-scada-steam-hover text-white`}
+                                onClick={() => { setResetOpen((v) => !v); setEditOpen(false); }}
+                                disabled={saving}
+                            >
+                                Reset PW
+                            </button>
+                        </div>
+                    )}
+                    {canEdit && isSelf && (
                         <p className="text-xs text-scada-muted mt-1 italic">Ini akun Anda sendiri</p>
                     )}
                 </td>
@@ -294,12 +335,16 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
                                 <label className="block text-xs text-scada-muted uppercase mb-1">Role</label>
                                 <select
                                     className="bg-white border border-scada-idle rounded px-3 py-1.5 text-sm text-scada-ink focus:outline-none focus:border-scada-water cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                    value={editForm.role}
+                                    value={String(editForm.roleId ?? "")}
                                     disabled={isSelf}
-                                    onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                                    onChange={(e) => setEditForm({ ...editForm, roleId: e.target.value })}
                                 >
-                                    <option value="operator">operator</option>
-                                    <option value="admin">admin</option>
+                                    {roles.length === 0 && (
+                                        <option value={String(user.roleId ?? "")}>{user.roleName ?? user.role}</option>
+                                    )}
+                                    {roles.map((r) => (
+                                        <option key={r.id} value={String(r.id)}>{r.name}</option>
+                                    ))}
                                 </select>
                                 {isSelf && <p className="text-xs text-scada-muted mt-0.5">Tidak bisa ubah role sendiri</p>}
                             </div>
@@ -364,20 +409,26 @@ function UserRow({ user, currentUsername, onUpdated, onToast }) {
 // ── Halaman utama ─────────────────────────────────────────────────────────────
 export default function UsersPage() {
     const router = useRouter();
-    const [authorized, setAuthorized]   = useState(false);
+    const [authorized, setAuthorized] = useState(false);
+    const [canEdit, setCanEdit] = useState(false);
     const [currentUsername, setCurrentUsername] = useState("");
-    const [users, setUsers]             = useState([]);
-    const [loading, setLoading]         = useState(true);
+    const [users, setUsers] = useState([]);
+    const [roles, setRoles] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(null);
+    const [rolesError, setRolesError] = useState(null);
     const [showAddForm, setShowAddForm] = useState(false);
-    const [toast, setToast]             = useState(null);
+    const [toast, setToast] = useState(null);
 
-    // Proteksi level halaman
+    // Proteksi level halaman: izin "users" minimal view (ubah = boleh tambah/edit/reset)
     useEffect(() => {
         fetch("/api/auth/me")
             .then((r) => r.json())
             .then((json) => {
-                if (json.ok && json.user?.role === "admin") {
+                const perms = json.user?.permissions;
+                if (json.ok && hasLevel(perms, "users", "view")) {
                     setAuthorized(true);
+                    setCanEdit(hasLevel(perms, "users", "edit"));
                     setCurrentUsername(json.user.username);
                 } else {
                     router.replace("/");
@@ -391,23 +442,49 @@ export default function UsersPage() {
         setTimeout(() => setToast(null), 3000);
     }
 
+    // Error API (401/403/500) ditampilkan, bukan disamarkan sebagai "Belum ada user".
     const fetchUsers = useCallback(async () => {
         setLoading(true);
         try {
-            const res  = await fetch("/api/users");
-            const json = await res.json();
-            setUsers(Array.isArray(json) ? json : []);
+            const res = await fetch("/api/users");
+            const json = await res.json().catch(() => null);
+            if (!res.ok || !json || json.ok === false) {
+                setUsers([]);
+                setLoadError(json?.error ?? `Gagal memuat daftar user (HTTP ${res.status})`);
+                return;
+            }
+            setLoadError(null);
+            setUsers(Array.isArray(json) ? json : (json.users ?? []));
         } catch {
-            showToast("Gagal memuat daftar user", "error");
+            setUsers([]);
+            setLoadError("Gagal terhubung ke server");
         } finally {
             setLoading(false);
         }
     }, []);
 
+    // Daftar role untuk dropdown (izin: users view ATAU roles view)
+    const fetchRoles = useCallback(async () => {
+        try {
+            const res = await fetch("/api/roles/options");
+            const json = await res.json().catch(() => null);
+            if (!res.ok || !json || json.ok === false) {
+                setRolesError(json?.error ?? `Gagal memuat daftar role (HTTP ${res.status})`);
+                return;
+            }
+            setRolesError(null);
+            setRoles(unwrapRoles(json));
+        } catch {
+            setRolesError("Gagal terhubung ke server");
+        }
+    }, []);
+
     useEffect(() => {
+        if (!authorized) return;
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (authorized) fetchUsers();
-    }, [authorized, fetchUsers]);
+        fetchUsers();
+        fetchRoles();
+    }, [authorized, fetchUsers, fetchRoles]);
 
     if (!authorized) return <div className="min-h-screen bg-scada-bg" />;
 
@@ -418,24 +495,33 @@ export default function UsersPage() {
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Kelola User</h1>
                     <p className="text-sm text-scada-muted mt-1">
-                        Manajemen akun operator &amp; admin (khusus admin)
+                        Manajemen akun pengguna dan role-nya
                     </p>
                 </div>
-                <button
-                    onClick={() => setShowAddForm((v) => !v)}
-                    className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-scada-water hover:bg-scada-water-hover rounded text-white text-sm font-semibold transition-colors"
-                >
-                    <span className="text-lg leading-none">+</span>
-                    Tambah User
-                </button>
+                {canEdit && (
+                    <button
+                        onClick={() => setShowAddForm((v) => !v)}
+                        className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-scada-water hover:bg-scada-water-hover rounded text-white text-sm font-semibold transition-colors"
+                    >
+                        <span className="text-lg leading-none">+</span>
+                        Tambah User
+                    </button>
+                )}
             </div>
 
             {/* ── Toast ── */}
             <Toast toast={toast} />
 
+            {rolesError && (
+                <div className="mb-4 px-4 py-2 rounded text-sm bg-red-900 border border-red-700 text-red-200">
+                    {rolesError}
+                </div>
+            )}
+
             {/* ── Form tambah user ── */}
-            {showAddForm && (
+            {canEdit && showAddForm && (
                 <AddUserForm
+                    roles={roles}
                     onSave={(newUser) => {
                         setShowAddForm(false);
                         showToast(`User ${newUser.username} berhasil dibuat`);
@@ -449,6 +535,8 @@ export default function UsersPage() {
             <div className="bg-scada-card border border-scada-rule rounded shadow-sm overflow-hidden">
                 {loading ? (
                     <div className="py-16 text-center text-scada-muted text-sm">Memuat data…</div>
+                ) : loadError ? (
+                    <div className="py-16 px-4 text-center text-red-700 text-sm">{loadError}</div>
                 ) : users.length === 0 ? (
                     <div className="py-16 text-center text-scada-muted text-sm">Belum ada user.</div>
                 ) : (
@@ -468,6 +556,8 @@ export default function UsersPage() {
                                     <UserRow
                                         key={u.username}
                                         user={u}
+                                        roles={roles}
+                                        canEdit={canEdit}
                                         currentUsername={currentUsername}
                                         onUpdated={fetchUsers}
                                         onToast={showToast}

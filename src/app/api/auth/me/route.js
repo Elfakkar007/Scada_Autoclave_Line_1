@@ -2,6 +2,11 @@ import { cookies } from "next/headers";
 import { getSessionFromCookies } from "@/lib/auth";
 import pool from "@/lib/db";
 
+// GET /api/auth/me — data sesi terkini untuk klien (Navbar, gating halaman).
+// Semua dibaca dari DB tiap request (bukan dari token): perubahan role/izin oleh
+// admin langsung berlaku. `permissions` = { resource: "none" | "view" | "edit" }.
+// Catatan: ini hanya untuk menampilkan/menyembunyikan UI. Penjagaan data tetap di API
+// (requirePermission) — jangan jadikan respons ini satu-satunya pagar.
 export async function GET() {
     try {
         const cookieStore = await cookies();
@@ -11,10 +16,12 @@ export async function GET() {
             return Response.json({ ok: false }, { status: 401 });
         }
 
-        // Query DB untuk cek is_active dan ambil data terkini
-        // (full_name/role mungkin sudah diubah admin sejak token dibuat)
         const result = await pool.query(
-            "SELECT full_name, role, is_active FROM users WHERE username = $1",
+            `SELECT u.full_name, u.is_active, u.role_id,
+                    r.key AS role_key, r.name AS role_name
+               FROM users u
+               LEFT JOIN roles r ON r.id = u.role_id
+              WHERE u.username = $1`,
             [jwtPayload.username]
         );
 
@@ -29,13 +36,28 @@ export async function GET() {
 
         const dbUser = result.rows[0];
 
-        // Kembalikan data dari DB (bukan dari token lama)
+        // Izin role. Tidak ada baris = tolak (klien memperlakukan resource yang
+        // tidak muncul sebagai "none"). User tanpa role => objek kosong.
+        const permissions = {};
+        if (dbUser.role_id != null) {
+            const perm = await pool.query(
+                "SELECT resource, level FROM role_permissions WHERE role_id = $1",
+                [dbUser.role_id]
+            );
+            for (const row of perm.rows) permissions[row.resource] = row.level;
+        }
+
+        const roleKey = dbUser.role_key ?? "none";
+
         return Response.json({
             ok: true,
             user: {
                 username: jwtPayload.username,
-                fullName: dbUser.full_name,   // dari DB, bukan token
-                role:     dbUser.role,         // dari DB, bukan token
+                fullName: dbUser.full_name,
+                role: roleKey,                          // key role (kompatibel kode lama)
+                roleId: dbUser.role_id,
+                roleName: dbUser.role_name ?? roleKey,  // untuk ditampilkan di UI
+                permissions,
             },
         });
     } catch (error) {

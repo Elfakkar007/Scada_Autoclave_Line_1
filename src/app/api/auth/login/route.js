@@ -99,9 +99,14 @@ export async function POST(request) {
             );
         }
 
-        // ── Ambil user (hanya yang aktif) ──────────────────────────────────────
+        // ── Ambil user (hanya yang aktif) + role dari tabel roles ─────────────
+        // Kolom lama users.role TIDAK dipakai lagi (hanya disinkronkan trigger untuk rollback).
         const result = await pool.query(
-            "SELECT * FROM users WHERE username = $1 AND is_active = true",
+            `SELECT u.id, u.username, u.full_name, u.password_hash, u.role_id,
+                    r.key AS role_key, r.name AS role_name
+               FROM users u
+               LEFT JOIN roles r ON r.id = u.role_id
+              WHERE u.username = $1 AND u.is_active = true`,
             [username]
         );
         const user = result.rows[0] ?? null;
@@ -126,9 +131,13 @@ export async function POST(request) {
         // ── Login berhasil ─────────────────────────────────────────────────────
         await pool.query("UPDATE users SET last_login_at = now() WHERE id = $1", [user.id]);
 
+        // Key role dari DB. "none" = user tanpa role (izin kosong = semua ditolak, lihat auth.js).
+        const roleKey = user.role_key ?? "none";
+        const roleName = user.role_name ?? roleKey;
+
         await insertAudit(pool, {
             actor: user.username,
-            actorRole: user.role,
+            actorRole: roleKey,
             action: "login",
             entityType: "user",
             entityId: user.username,
@@ -139,7 +148,9 @@ export async function POST(request) {
             userId: user.id,
             username: user.username,
             fullName: user.full_name,
-            role: user.role,
+            // Hanya untuk kompatibilitas kode lama. Hak akses sebenarnya selalu dibaca
+            // dari DB per request oleh requireAuth, bukan dari isi token ini.
+            role: roleKey,
         });
 
         const cookieStore = await cookies();
@@ -150,7 +161,9 @@ export async function POST(request) {
             user: {
                 username: user.username,
                 fullName: user.full_name,
-                role: user.role,
+                role: roleKey,
+                roleId: user.role_id,
+                roleName,
             },
         });
     } catch (error) {

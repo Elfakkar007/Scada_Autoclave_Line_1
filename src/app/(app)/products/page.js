@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { hasLevel } from "@/lib/permissionCatalog";
 
 function Toast({ toast }) {
     if (!toast) return null;
     return (
         <div
-            className={`mb-4 px-4 py-3 rounded border text-sm font-semibold transition-all shadow-sm ${
-                toast.type === "error"
+            className={`mb-4 px-4 py-3 rounded border text-sm font-semibold transition-all shadow-sm ${toast.type === "error"
                     ? "bg-red-50 border-red-300 text-red-800"
                     : "bg-emerald-50 border-emerald-300 text-emerald-900"
-            }`}
+                }`}
         >
             {toast.msg}
         </div>
@@ -20,16 +20,14 @@ function Toast({ toast }) {
 function StatusBadge({ active }) {
     return (
         <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
-                active
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${active
                     ? "bg-emerald-100 border-emerald-300 text-emerald-800"
                     : "bg-gray-100 border-gray-300 text-gray-700"
-            }`}
+                }`}
         >
             <span
-                className={`w-2 h-2 rounded-full ${
-                    active ? "bg-emerald-600" : "bg-gray-400"
-                }`}
+                className={`w-2 h-2 rounded-full ${active ? "bg-emerald-600" : "bg-gray-400"
+                    }`}
             />
             {active ? "Aktif" : "Nonaktif"}
         </span>
@@ -56,7 +54,7 @@ export default function MasterProductsPage() {
     // Tab: "products" (Nama Produk) | "specs" (Spesifikasi Kemasan)
     const [activeTab, setActiveTab] = useState("products");
 
-    const [userRole, setUserRole] = useState(null);
+    const [perms, setPerms] = useState(null); // { resource: level } dari /api/auth/me
     const [toast, setToast] = useState(null);
 
     // Data lists
@@ -110,14 +108,15 @@ export default function MasterProductsPage() {
         fetch("/api/auth/me")
             .then((r) => r.json())
             .then((j) => {
-                if (j.ok) setUserRole(j.user?.role ?? "operator");
+                if (j.ok) setPerms(j.user?.permissions ?? null);
             })
-            .catch(() => {});
+            .catch(() => { });
         // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchAllData();
     }, [fetchAllData]);
 
-    const isAdmin = userRole === "admin";
+    // Boleh kelola produk/spesifikasi = izin "products" level edit (default tolak sampai izin terbaca)
+    const canEdit = hasLevel(perms, "products", "edit");
 
     // ── Handler Modal Add / Edit ──────────────────────────────────────────────
     function handleOpenAdd(tab) {
@@ -178,7 +177,7 @@ export default function MasterProductsPage() {
 
     // ── Toggle Status Aktif ───────────────────────────────────────────────────
     async function handleToggleStatus(tab, item) {
-        if (!isAdmin) return;
+        if (!canEdit) return;
         const isProd = tab === "products";
         const endpoint = isProd ? `/api/products/${item.id}` : `/api/product-specs/${item.id}`;
         const nextActive = !item.isActive;
@@ -207,7 +206,7 @@ export default function MasterProductsPage() {
 
     // ── Delete Handler ────────────────────────────────────────────────────────
     async function handleConfirmDelete() {
-        if (!deleteTarget || !isAdmin) return;
+        if (!deleteTarget || !canEdit) return;
         setDeleting(true);
         const isProd = deleteTarget.tab === "products";
         const endpoint = isProd
@@ -259,9 +258,9 @@ export default function MasterProductsPage() {
                         Pengelolaan katalog nama produk dan spesifikasi kemasan secara terpisah untuk persiapan batch sterilisasi
                     </p>
                 </div>
-                {!isAdmin && (
+                {!canEdit && (
                     <div className="text-xs text-[#5C6B6A] font-medium bg-white border border-[#D8DEDC] px-3.5 py-2 rounded shadow-sm">
-                        Mode Lihat (Hanya Admin yang dapat mengelola data)
+                        Mode Lihat (Anda tidak punya izin mengelola data)
                     </div>
                 )}
             </div>
@@ -273,20 +272,18 @@ export default function MasterProductsPage() {
                 <button
                     type="button"
                     onClick={() => setActiveTab("products")}
-                    className={`px-5 py-3 text-sm font-bold rounded-t-md transition-all flex items-center gap-2 border-t border-l border-r ${
-                        activeTab === "products"
+                    className={`px-5 py-3 text-sm font-bold rounded-t-md transition-all flex items-center gap-2 border-t border-l border-r ${activeTab === "products"
                             ? "bg-white text-[#1C6E74] border-[#D8DEDC] border-b-2 border-b-white -mb-[1px] shadow-sm"
                             : "bg-[#EEF1F0] text-[#5C6B6A] border-transparent hover:text-[#1E2A2E]"
-                    }`}
+                        }`}
                 >
                     <span>🏷️</span>
                     <span>1. Master Nama Produk</span>
                     <span
-                        className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            activeTab === "products"
+                        className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === "products"
                                 ? "bg-[#1C6E74] text-white"
                                 : "bg-[#D8DEDC] text-[#5C6B6A]"
-                        }`}
+                            }`}
                     >
                         {products.length}
                     </span>
@@ -295,20 +292,18 @@ export default function MasterProductsPage() {
                 <button
                     type="button"
                     onClick={() => setActiveTab("specs")}
-                    className={`px-5 py-3 text-sm font-bold rounded-t-md transition-all flex items-center gap-2 border-t border-l border-r ${
-                        activeTab === "specs"
+                    className={`px-5 py-3 text-sm font-bold rounded-t-md transition-all flex items-center gap-2 border-t border-l border-r ${activeTab === "specs"
                             ? "bg-white text-[#1C6E74] border-[#D8DEDC] border-b-2 border-b-white -mb-[1px] shadow-sm"
                             : "bg-[#EEF1F0] text-[#5C6B6A] border-transparent hover:text-[#1E2A2E]"
-                    }`}
+                        }`}
                 >
                     <span>🧴</span>
                     <span>2. Master Spesifikasi Kemasan</span>
                     <span
-                        className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            activeTab === "specs"
+                        className={`ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${activeTab === "specs"
                                 ? "bg-[#1C6E74] text-white"
                                 : "bg-[#D8DEDC] text-[#5C6B6A]"
-                        }`}
+                            }`}
                     >
                         {specs.length}
                     </span>
@@ -354,7 +349,7 @@ export default function MasterProductsPage() {
                                 </select>
                             </div>
 
-                            {isAdmin && (
+                            {canEdit && (
                                 <button
                                     onClick={() => handleOpenAdd("products")}
                                     className="px-4 py-2 bg-[#4F7A52] hover:bg-[#446C47] text-white rounded text-sm font-bold transition-colors flex items-center gap-1.5 shadow-sm shrink-0"
@@ -375,19 +370,19 @@ export default function MasterProductsPage() {
                                         <th className="px-4 py-3.5">Nama Produk</th>
                                         <th className="px-4 py-3.5 w-32 text-center">Status</th>
                                         <th className="px-4 py-3.5 w-48 text-center">Terakhir Diubah</th>
-                                        {isAdmin && <th className="px-4 py-3.5 w-60 text-center">Aksi</th>}
+                                        {canEdit && <th className="px-4 py-3.5 w-60 text-center">Aksi</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#D8DEDC]">
                                     {loading ? (
                                         <tr>
-                                            <td colSpan={isAdmin ? 5 : 4} className="p-10 text-center text-[#5C6B6A] italic">
+                                            <td colSpan={canEdit ? 5 : 4} className="p-10 text-center text-[#5C6B6A] italic">
                                                 Memuat daftar produk…
                                             </td>
                                         </tr>
                                     ) : filteredProducts.length === 0 ? (
                                         <tr>
-                                            <td colSpan={isAdmin ? 5 : 4} className="p-10 text-center text-[#5C6B6A]">
+                                            <td colSpan={canEdit ? 5 : 4} className="p-10 text-center text-[#5C6B6A]">
                                                 {searchProd || filterStatusProd !== "all"
                                                     ? "Tidak ada nama produk yang cocok dengan pencarian / filter."
                                                     : "Belum ada nama produk terdaftar. Klik \"+ Tambah Nama Produk\" untuk menambahkan."}
@@ -408,7 +403,7 @@ export default function MasterProductsPage() {
                                                 <td className="px-4 py-3 text-center text-xs text-[#5C6B6A] whitespace-nowrap">
                                                     {fmtDate(prod.updatedAt)}
                                                 </td>
-                                                {isAdmin && (
+                                                {canEdit && (
                                                     <td className="px-4 py-3 text-center whitespace-nowrap">
                                                         <div className="flex items-center justify-center gap-2">
                                                             {/* Tombol Toggle Status */}
@@ -416,11 +411,10 @@ export default function MasterProductsPage() {
                                                                 type="button"
                                                                 onClick={() => handleToggleStatus("products", prod)}
                                                                 title={prod.isActive ? "Nonaktifkan produk ini" : "Aktifkan produk ini"}
-                                                                className={`px-2.5 py-1 rounded text-xs font-bold border transition-colors ${
-                                                                    prod.isActive
+                                                                className={`px-2.5 py-1 rounded text-xs font-bold border transition-colors ${prod.isActive
                                                                         ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
                                                                         : "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100"
-                                                                }`}
+                                                                    }`}
                                                             >
                                                                 {prod.isActive ? "Nonaktifkan" : "Aktifkan"}
                                                             </button>
@@ -494,7 +488,7 @@ export default function MasterProductsPage() {
                                 </select>
                             </div>
 
-                            {isAdmin && (
+                            {canEdit && (
                                 <button
                                     onClick={() => handleOpenAdd("specs")}
                                     className="px-4 py-2 bg-[#4F7A52] hover:bg-[#446C47] text-white rounded text-sm font-bold transition-colors flex items-center gap-1.5 shadow-sm shrink-0"
@@ -515,19 +509,19 @@ export default function MasterProductsPage() {
                                         <th className="px-4 py-3.5">Spesifikasi Kemasan / Larutan</th>
                                         <th className="px-4 py-3.5 w-32 text-center">Status</th>
                                         <th className="px-4 py-3.5 w-48 text-center">Terakhir Diubah</th>
-                                        {isAdmin && <th className="px-4 py-3.5 w-60 text-center">Aksi</th>}
+                                        {canEdit && <th className="px-4 py-3.5 w-60 text-center">Aksi</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#D8DEDC]">
                                     {loading ? (
                                         <tr>
-                                            <td colSpan={isAdmin ? 5 : 4} className="p-10 text-center text-[#5C6B6A] italic">
+                                            <td colSpan={canEdit ? 5 : 4} className="p-10 text-center text-[#5C6B6A] italic">
                                                 Memuat daftar spesifikasi…
                                             </td>
                                         </tr>
                                     ) : filteredSpecs.length === 0 ? (
                                         <tr>
-                                            <td colSpan={isAdmin ? 5 : 4} className="p-10 text-center text-[#5C6B6A]">
+                                            <td colSpan={canEdit ? 5 : 4} className="p-10 text-center text-[#5C6B6A]">
                                                 {searchSpec || filterStatusSpec !== "all"
                                                     ? "Tidak ada spesifikasi yang cocok dengan pencarian / filter."
                                                     : "Belum ada spesifikasi terdaftar. Klik \"+ Tambah Spesifikasi\" untuk menambahkan."}
@@ -548,7 +542,7 @@ export default function MasterProductsPage() {
                                                 <td className="px-4 py-3 text-center text-xs text-[#5C6B6A] whitespace-nowrap">
                                                     {fmtDate(sp.updatedAt)}
                                                 </td>
-                                                {isAdmin && (
+                                                {canEdit && (
                                                     <td className="px-4 py-3 text-center whitespace-nowrap">
                                                         <div className="flex items-center justify-center gap-2">
                                                             {/* Tombol Toggle Status */}
@@ -556,11 +550,10 @@ export default function MasterProductsPage() {
                                                                 type="button"
                                                                 onClick={() => handleToggleStatus("specs", sp)}
                                                                 title={sp.isActive ? "Nonaktifkan spesifikasi ini" : "Aktifkan spesifikasi ini"}
-                                                                className={`px-2.5 py-1 rounded text-xs font-bold border transition-colors ${
-                                                                    sp.isActive
+                                                                className={`px-2.5 py-1 rounded text-xs font-bold border transition-colors ${sp.isActive
                                                                         ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
                                                                         : "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100"
-                                                                }`}
+                                                                    }`}
                                                             >
                                                                 {sp.isActive ? "Nonaktifkan" : "Aktifkan"}
                                                             </button>

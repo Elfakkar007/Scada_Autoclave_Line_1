@@ -1,20 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { hasLevel } from "@/lib/permissionCatalog";
 
 // ── Helper: petakan nama field snake_case dari API ke camelCase key form ──────
 // Dipakai saat menampilkan error invalidFields dari server per-field di form.
 const SNAKE_TO_CAMEL = {
-    formula_no:      "formulaNo",
-    control_temp:    "controlTemp",
-    space_temp:      "spaceTemp",
-    steril_temp:     "sterilTemp",
+    formula_no: "formulaNo",
+    control_temp: "controlTemp",
+    space_temp: "spaceTemp",
+    steril_temp: "sterilTemp",
     steril_time_min: "sterilTime",
-    alarm_pres:      "alarmPres",
-    cooling_temp1:   "coolingTemp1",
-    cooling_temp2:   "coolingTemp2",
-    fo_val_setting:  "foValSetting",
-    control_type:    "controlType",
+    alarm_pres: "alarmPres",
+    cooling_temp1: "coolingTemp1",
+    cooling_temp2: "coolingTemp2",
+    fo_val_setting: "foValSetting",
+    control_type: "controlType",
     steril_material: "sterilMaterial",
 };
 function snakeToCamelField(snakeKey) {
@@ -26,11 +27,11 @@ function snakeToCamelField(snakeKey) {
 // ──────────────────────────────────────────────
 const DEFAULT_FORM = {
     formulaNo: "",
-    controlTemp:  "",
-    spaceTemp:    "",
-    sterilTemp:   "",
-    sterilTime:   "",
-    alarmPres:    "",
+    controlTemp: "",
+    spaceTemp: "",
+    sterilTemp: "",
+    sterilTime: "",
+    alarmPres: "",
     coolingTemp1: "",
     coolingTemp2: "",
     foValSetting: "",
@@ -42,21 +43,25 @@ const DEFAULT_FORM = {
 // Konfigurasi field form (urutan, label, tipe)
 // ──────────────────────────────────────────────
 const LEFT_FIELDS = [
-    { key: "controlTemp",    label: "Control Temp",     unit: "°C",  type: "number" },
-    { key: "spaceTemp",      label: "Space Temp",       unit: "°C",  type: "number" },
-    { key: "sterilTemp",     label: "Steril. Temp",     unit: "°C",  type: "number" },
-    { key: "sterilTime",     label: "Steril. Time",     unit: "MIN", type: "integer" },
-    { key: "controlType",    label: "Control Type",     unit: "",    type: "select",
-      options: ["Time"] }, // dikunci: mode F0/"Level" tidak dipakai produksi
+    { key: "controlTemp", label: "Control Temp", unit: "°C", type: "number" },
+    { key: "spaceTemp", label: "Space Temp", unit: "°C", type: "number" },
+    { key: "sterilTemp", label: "Steril. Temp", unit: "°C", type: "number" },
+    { key: "sterilTime", label: "Steril. Time", unit: "MIN", type: "integer" },
+    {
+        key: "controlType", label: "Control Type", unit: "", type: "select",
+        options: ["Time"]
+    }, // dikunci: mode F0/"Level" tidak dipakai produksi
 ];
 
 const RIGHT_FIELDS = [
-    { key: "alarmPres",      label: "Alarm Pres.",      unit: "KPa", type: "number" },
-    { key: "coolingTemp1",   label: "Cooling Temp1",    unit: "°C",  type: "number" },
-    { key: "coolingTemp2",   label: "Cooling Temp2",    unit: "°C",  type: "number" },
-    { key: "foValSetting",   label: "FOVal (opsional)",  unit: "MIN", type: "number" },
-    { key: "sterilMaterial", label: "Steril. Material", unit: "",    type: "select",
-      options: ["Soft bottle", "Hard bottle"] },
+    { key: "alarmPres", label: "Alarm Pres.", unit: "KPa", type: "number" },
+    { key: "coolingTemp1", label: "Cooling Temp1", unit: "°C", type: "number" },
+    { key: "coolingTemp2", label: "Cooling Temp2", unit: "°C", type: "number" },
+    { key: "foValSetting", label: "FOVal (opsional)", unit: "MIN", type: "number" },
+    {
+        key: "sterilMaterial", label: "Steril. Material", unit: "", type: "select",
+        options: ["Soft bottle", "Hard bottle"]
+    },
 ];
 
 // ──────────────────────────────────────────────
@@ -115,15 +120,15 @@ function FieldRow({ field, value, onChange, disabled }) {
 // Komponen utama halaman
 // ──────────────────────────────────────────────
 export default function FormulaPage() {
-    const [formulas, setFormulas]       = useState([]);
-    const [loading, setLoading]         = useState(true);
-    const [selectedNo, setSelectedNo]   = useState(null);
-    const [form, setForm]               = useState(DEFAULT_FORM);
-    const [isNewEntry, setIsNewEntry]   = useState(false);
-    const [toast, setToast]             = useState(null);
-    const [errors, setErrors]           = useState({});
-    const [saving, setSaving]           = useState(false);
-    const [userRole, setUserRole]       = useState(null); // "admin" | "operator" | null
+    const [formulas, setFormulas] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedNo, setSelectedNo] = useState(null);
+    const [form, setForm] = useState(DEFAULT_FORM);
+    const [isNewEntry, setIsNewEntry] = useState(false);
+    const [toast, setToast] = useState(null);
+    const [errors, setErrors] = useState({});
+    const [saving, setSaving] = useState(false);
+    const [perms, setPerms] = useState(null); // { resource: level } dari /api/auth/me
 
     // ── Fetch semua formula dari API ──────────
     const fetchFormulas = useCallback(async () => {
@@ -141,14 +146,15 @@ export default function FormulaPage() {
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchFormulas();
-        // Fetch role user untuk RBAC UI
+        // Fetch izin user untuk RBAC UI
         fetch("/api/auth/me")
             .then((r) => r.json())
-            .then((json) => { if (json.ok) setUserRole(json.user.role); })
-            .catch(() => {});
+            .then((json) => { if (json.ok) setPerms(json.user.permissions ?? null); })
+            .catch(() => { });
     }, [fetchFormulas]);
 
-    const isAdmin = userRole === "admin";
+    // Boleh ubah/hapus formula = izin "formula" level edit (default tolak sampai izin terbaca)
+    const canEdit = hasLevel(perms, "formula", "edit");
 
     // ── Helper: tampilkan toast 2 detik ──────
     function showToast(msg, type = "success") {
@@ -188,13 +194,13 @@ export default function FormulaPage() {
 
         // Rentang per field (mirroring recipeValidation.js RANGE)
         const fieldRanges = [
-            { key: "controlTemp",  min: 100,  max: 150,  unit: "°C",    integer: false },
-            { key: "spaceTemp",    min: 0.1,  max: 20,   unit: "°C",    integer: false },
-            { key: "sterilTemp",   min: 100,  max: 150,  unit: "°C",    integer: false },
-            { key: "sterilTime",   min: 1,    max: 500,  unit: "menit", integer: true  },
-            { key: "alarmPres",    min: 100,  max: 300,  unit: "kPa",   integer: true  },
-            { key: "coolingTemp1", min: 30,   max: 130,  unit: "°C",    integer: false },
-            { key: "coolingTemp2", min: 20,   max: 130,  unit: "°C",    integer: false },
+            { key: "controlTemp", min: 100, max: 150, unit: "°C", integer: false },
+            { key: "spaceTemp", min: 0.1, max: 20, unit: "°C", integer: false },
+            { key: "sterilTemp", min: 100, max: 150, unit: "°C", integer: false },
+            { key: "sterilTime", min: 1, max: 500, unit: "menit", integer: true },
+            { key: "alarmPres", min: 100, max: 300, unit: "kPa", integer: true },
+            { key: "coolingTemp1", min: 30, max: 130, unit: "°C", integer: false },
+            { key: "coolingTemp2", min: 20, max: 130, unit: "°C", integer: false },
         ];
 
         for (const { key, min, max, unit, integer } of fieldRanges) {
@@ -230,7 +236,7 @@ export default function FormulaPage() {
         // Pengecekan antar-field
         const ct2 = Number(form.coolingTemp2);
         const ct1 = Number(form.coolingTemp1);
-        const st  = Number(form.sterilTemp);
+        const st = Number(form.sterilTemp);
         if (!errs.coolingTemp2 && !errs.coolingTemp1 && ct2 >= ct1) {
             errs.coolingTemp2 = `Cooling Temp2 (${ct2}) harus < Cooling Temp1 (${ct1})`;
         }
@@ -269,12 +275,12 @@ export default function FormulaPage() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         ...form,
-                        formulaNo:    String(form.formulaNo).trim(),
-                        controlTemp:  parseFloat(form.controlTemp),
-                        spaceTemp:    parseFloat(form.spaceTemp),
-                        sterilTemp:   parseFloat(form.sterilTemp),
-                        sterilTime:   parseInt(form.sterilTime, 10),
-                        alarmPres:    parseFloat(form.alarmPres),
+                        formulaNo: String(form.formulaNo).trim(),
+                        controlTemp: parseFloat(form.controlTemp),
+                        spaceTemp: parseFloat(form.spaceTemp),
+                        sterilTemp: parseFloat(form.sterilTemp),
+                        sterilTime: parseInt(form.sterilTime, 10),
+                        alarmPres: parseFloat(form.alarmPres),
                         coolingTemp1: parseFloat(form.coolingTemp1),
                         coolingTemp2: parseFloat(form.coolingTemp2),
                         foValSetting: form.foValSetting !== "" && form.foValSetting != null ? parseFloat(form.foValSetting) : null,
@@ -339,11 +345,11 @@ export default function FormulaPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...form,
-                    controlTemp:  parseFloat(form.controlTemp),
-                    spaceTemp:    parseFloat(form.spaceTemp),
-                    sterilTemp:   parseFloat(form.sterilTemp),
-                    sterilTime:   parseInt(form.sterilTime, 10),
-                    alarmPres:    parseFloat(form.alarmPres),
+                    controlTemp: parseFloat(form.controlTemp),
+                    spaceTemp: parseFloat(form.spaceTemp),
+                    sterilTemp: parseFloat(form.sterilTemp),
+                    sterilTime: parseInt(form.sterilTime, 10),
+                    alarmPres: parseFloat(form.alarmPres),
                     coolingTemp1: parseFloat(form.coolingTemp1),
                     coolingTemp2: parseFloat(form.coolingTemp2),
                     foValSetting: form.foValSetting !== "" && form.foValSetting != null ? parseFloat(form.foValSetting) : null,
@@ -437,8 +443,8 @@ export default function FormulaPage() {
                         Super Water Sterilizer — Resep &amp; Parameter Sterilisasi
                     </p>
                 </div>
-                {/* Tombol + Formula Baru: hanya tampil untuk admin */}
-                {isAdmin && (
+                {/* Tombol + Formula Baru: hanya tampil bila punya izin ubah */}
+                {canEdit && (
                     <button
                         onClick={handleAddNew}
                         disabled={isNewEntry}
@@ -453,11 +459,10 @@ export default function FormulaPage() {
             {/* ── Toast notifikasi ── */}
             {toast && (
                 <div
-                    className={`mb-4 px-4 py-2 rounded text-sm font-medium transition-all ${
-                        toast.type === "error"
+                    className={`mb-4 px-4 py-2 rounded text-sm font-medium transition-all ${toast.type === "error"
                             ? "bg-red-900 border border-red-700 text-red-200"
                             : "bg-green-900 border border-green-700 text-green-200"
-                    }`}
+                        }`}
                 >
                     {toast.msg}
                 </div>
@@ -486,11 +491,10 @@ export default function FormulaPage() {
                                     <li key={f.formulaNo === "" ? `__new__${idx}` : f.formulaNo}>
                                         <button
                                             onClick={() => handleSelect(f)}
-                                            className={`w-full text-left px-4 py-3 text-sm border-b border-scada-rule last:border-0 transition-colors ${
-                                                selectedNo === f.formulaNo
+                                            className={`w-full text-left px-4 py-3 text-sm border-b border-scada-rule last:border-0 transition-colors ${selectedNo === f.formulaNo
                                                     ? "bg-scada-water text-white font-semibold"
                                                     : "hover:bg-scada-bg text-scada-ink"
-                                            }`}
+                                                }`}
                                         >
                                             <span className="block font-mono text-base">
                                                 {f.formulaNo === "" ? (
@@ -530,11 +534,10 @@ export default function FormulaPage() {
                             <input
                                 type="text"
                                 placeholder="Masukkan nomor formula"
-                                className={`w-36 bg-white border rounded px-3 py-1.5 text-sm font-mono font-bold focus:outline-none transition-colors ${
-                                    errors.formulaNo
+                                className={`w-36 bg-white border rounded px-3 py-1.5 text-sm font-mono font-bold focus:outline-none transition-colors ${errors.formulaNo
                                         ? "border-scada-stop focus:border-red-400"
                                         : "border-scada-idle focus:border-scada-water"
-                                } ${isNewEntry ? "text-scada-ink" : "text-scada-muted cursor-default bg-scada-bg"}`}
+                                    } ${isNewEntry ? "text-scada-ink" : "text-scada-muted cursor-default bg-scada-bg"}`}
                                 value={isNewEntry ? form.formulaNo : (selectedNo ?? "")}
                                 readOnly={!isNewEntry}
                                 onChange={(e) =>
@@ -561,7 +564,7 @@ export default function FormulaPage() {
                                             field={field}
                                             value={form[field.key]}
                                             onChange={handleFieldChange}
-                                            disabled={!isAdmin}
+                                            disabled={!canEdit}
                                         />
                                         {errors[field.key] && (
                                             <p className="mt-0.5 ml-[9.5rem] text-xs text-red-400">
@@ -580,7 +583,7 @@ export default function FormulaPage() {
                                             field={field}
                                             value={form[field.key]}
                                             onChange={handleFieldChange}
-                                            disabled={!isAdmin}
+                                            disabled={!canEdit}
                                         />
                                         {errors[field.key] && (
                                             <p className="mt-0.5 ml-[9.5rem] text-xs text-red-400">
@@ -595,9 +598,9 @@ export default function FormulaPage() {
                         {/* Divider */}
                         <div className="mt-6 border-t border-scada-rule" />
 
-                        {/* Tombol aksi: hanya untuk admin */}
+                        {/* Tombol aksi: hanya bila punya izin ubah */}
                         <div className="mt-4 flex flex-wrap gap-3">
-                            {isAdmin ? (
+                            {canEdit ? (
                                 <>
                                     <button
                                         onClick={handleSave}
@@ -616,7 +619,7 @@ export default function FormulaPage() {
                                 </>
                             ) : (
                                 <p className="text-xs text-scada-muted italic">
-                                    Hanya admin yang bisa mengubah atau menghapus formula.
+                                    Anda hanya punya akses lihat untuk formula.
                                 </p>
                             )}
                         </div>

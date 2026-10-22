@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { hasLevel } from "@/lib/permissionCatalog";
 
 const LIMIT = 20;
 
@@ -80,7 +81,7 @@ export default function AuditLogPage() {
         fetch("/api/auth/me")
             .then((r) => r.json())
             .then((json) => {
-                if (json.ok && json.user?.role === "admin") {
+                if (json.ok && hasLevel(json.user?.permissions, "audit_log", "view")) {
                     setAuthorized(true);
                 } else {
                     router.replace("/");
@@ -223,7 +224,7 @@ export default function AuditLogPage() {
             <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Audit Log</h1>
-                    <p className="text-sm text-scada-muted mt-1">Riwayat aktivitas sistem (khusus admin)</p>
+                    <p className="text-sm text-scada-muted mt-1">Riwayat aktivitas sistem (lihat dan ekspor)</p>
                 </div>
                 {/* Tombol export */}
                 <div className="flex items-center gap-2 flex-wrap">

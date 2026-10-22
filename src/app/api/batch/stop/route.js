@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { readPlcSnapshot } from "@/lib/plc";
 import { pulsePlcTag } from "@/lib/plcWrite";
 import { finalizeBatch } from "@/lib/batchFinalize";
@@ -8,10 +8,12 @@ import { tryAudit } from "@/lib/auditLog";
 
 export async function POST() {
     try {
-        // Proteksi server-side: wajib login (admin atau operator boleh)
+        // Proteksi server-side: wajib login, izin dashboard ≥ edit, DAN action.batch_control = edit
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAuth(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "dashboard", "edit");
         if (errorResponse) return errorResponse;
+        const { errorResponse: errBatchCtrl } = await requirePermission(cookieStore, "action.batch_control", "edit");
+        if (errBatchCtrl) return errBatchCtrl;
 
         // Cari batch yang sedang running
         // (tidak perlu join recipes: fo_val_setting tidak dipakai di sini, dan nilai resep

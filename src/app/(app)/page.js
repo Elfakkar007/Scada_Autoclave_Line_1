@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { hasLevel } from "@/lib/permissionCatalog";
 import { describeStopResponse, describeResetPulse } from "@/lib/plcCommandAlert";
 import { AtvDiagram, PhaseGuide } from "@/components/AtvDiagram";
 import { STEPS, PHASE_CODE_TO_STEP, STEP_COLOR } from "@/lib/atvProcess";
@@ -204,8 +205,11 @@ export default function Home() {
   // dan tombol Reset hilang. Bentuk: { level, title, lines } atau null.
   const [cmdAlert, setCmdAlert] = useState(null);
 
-  // Dialog START batch (menggantikan halaman /prepare)
+  // State untuk dialog START batch (menggantikan halaman /prepare)
   const [startDialogOpen, setStartDialogOpen] = useState(false);
+
+  // Izin user: null = belum terbaca (default tolak), {} = terbaca tapi tidak ada izin
+  const [perms, setPerms] = useState(null);
 
   // Mode tampilan diagram: "live" (ikut PLC) atau "learn" (simulasi edukasi per fase)
   const [mode, setMode] = useState("live");
@@ -245,6 +249,15 @@ export default function Home() {
     return () => clearInterval(interval);
     // fetchData stabil (useCallback dengan deps kosong); interval harus segera dimulai saat mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ambil izin user dari /api/auth/me (sekali saat mount, default tolak)
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      .then((json) => { if (json.ok) setPerms(json.user?.permissions ?? {}); })
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -366,6 +379,11 @@ export default function Home() {
     }
   }
 
+  // canControl: true hanya bila KEDUA izin terpenuhi — default tolak sampai /api/auth/me terbaca
+  const canControl = hasLevel(perms, "dashboard", "edit") && hasLevel(perms, "action.batch_control", "edit");
+  // canViewDashboard: false = tampilkan pesan "tidak punya akses" tanpa redirect
+  const canViewDashboard = hasLevel(perms, "dashboard", "view");
+
   if (!data) {
     return (
       <main className="min-h-screen bg-[#EEF1F0] text-[#1E2A2E] p-8">
@@ -441,8 +459,8 @@ export default function Home() {
   // Ini mencegah START ditekan saat mesin sedang dalam proses (dimulai dari luar web).
   const phaseRaw = phaseObj?.rawValue ?? null;
   const PROCESS_PHASES = [2, 3, 4, 5, 7]; // filling, heating, steril, cooling, drain
-  // const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
-  const startAllowed = true;
+  const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
+  // const startAllowed = true;
 
   // Mesin berjalan dari luar web (belum ada batch di DB, tapi fase proses)
   const machineRunningExternal = !data.running && !noData && data.plcOk === true &&
@@ -488,6 +506,16 @@ export default function Home() {
         </section>
 
         {/* ── Banner koneksi: PLC putus / server tidak terjangkau / data simulasi (dev) ── */}
+        {/* Banner akses ditolak: dashboard = none (jangan redirect, dashboard adalah beranda) */}
+        {perms !== null && !canViewDashboard && (
+          <div
+            role="alert"
+            className="bg-white border-l-[3px] border-[#A23B2E] px-3 py-2 text-sm text-[#1E2A2E]"
+          >
+            <span className="font-semibold">Anda tidak punya akses ke halaman ini.</span>{" "}
+            Hubungi admin untuk mendapatkan izin Dashboard.
+          </div>
+        )}
         {noData && (
           <div
             role="alert"
@@ -679,7 +707,7 @@ export default function Home() {
             </section>
 
             <section className="flex flex-col gap-1.5">
-              {startAllowed ? (
+              {startAllowed && canControl ? (
                 <button
                   type="button"
                   onClick={() => setStartDialogOpen(true)}
@@ -690,14 +718,17 @@ export default function Home() {
               ) : (
                 <span
                   aria-disabled="true"
-                  title={startBlockReason ?? undefined}
+                  title={!canControl ? "Anda tidak punya izin untuk aksi ini" : (startBlockReason ?? undefined)}
                   className="block text-center px-2 py-1.5 rounded-[3px] border border-[#D8DEDC] text-[#B8C0BE] text-[13px] font-semibold cursor-not-allowed"
                 >
                   START
                 </span>
               )}
               {/* Alasan START nonaktif — tampil bila ada, kecuali batch sudah running (sudah jelas dari status) */}
-              {startBlockReason && !data.running && (
+              {!canControl && perms !== null && (
+                <p className="text-[11px] text-[#A23B2E] leading-snug px-1">Anda tidak punya izin untuk menjalankan batch.</p>
+              )}
+              {canControl && startBlockReason && !data.running && (
                 <p className="text-[11px] text-[#5C6B6A] leading-snug px-1">{startBlockReason}</p>
               )}
 
@@ -714,7 +745,8 @@ export default function Home() {
 
               <button
                 onClick={handleStop}
-                disabled={stopping || !data.running}
+                disabled={stopping || !data.running || !canControl}
+                title={!canControl ? "Anda tidak punya izin untuk aksi ini" : undefined}
                 className="px-2 py-1.5 rounded-[3px] bg-[#A23B2E] hover:bg-[#8F3327] active:bg-[#7B2B21] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold transition-colors"
               >
                 {stopping ? "Menghentikan…" : "STOP"}
@@ -746,7 +778,7 @@ export default function Home() {
               )}
 
               {/* ── Tombol Reset Mesin: hanya tampil saat fase=6 dan tidak ada batch running ── */}
-              {!noData && data.plcOk && data.phase?.rawValue === 6 && !data.running && (
+              {!noData && data.plcOk && data.phase?.rawValue === 6 && !data.running && canControl && (
                 <div className="pt-1 border-t border-[#D8DEDC]">
                   {/* Dialog konfirmasi inline */}
                   {resetDialog ? (

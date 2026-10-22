@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { readPlcSnapshot } from "@/lib/plc";
 import { writePlcTags, pulsePlcTag } from "@/lib/plcWrite";
 import { validateRecipe } from "@/lib/recipeValidation";
@@ -96,10 +96,12 @@ async function pollUntilPhase(targetPhases, timeoutMs = 10_000, intervalMs = 500
 export async function POST(request) {
     let lock = null;
     try {
-        // ▼ PROTEKSI SERVER-SIDE: wajib login (admin atau operator boleh)
+        // ▼ PROTEKSI SERVER-SIDE: wajib login, izin dashboard ≥ edit, DAN action.batch_control = edit
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAuth(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "dashboard", "edit");
         if (errorResponse) return errorResponse;
+        const { errorResponse: errBatchCtrl } = await requirePermission(cookieStore, "action.batch_control", "edit");
+        if (errBatchCtrl) return errBatchCtrl;
 
         // ▼ Lock anti-klik ganda: hanya satu proses START pada satu waktu
         lock = await acquireStartLock();

@@ -28,7 +28,11 @@ export async function POST(request) {
 
         // Ambil data user dari DB untuk memastikan status aktif & ambil password_hash
         const result = await pool.query(
-            "SELECT id, username, full_name, role, password_hash, is_active FROM users WHERE username = $1",
+            `SELECT u.id, u.username, u.full_name, u.password_hash, u.is_active,
+                    r.key AS role_key, r.name AS role_name
+               FROM users u
+               LEFT JOIN roles r ON r.id = u.role_id
+              WHERE u.username = $1`,
             [session.username]
         );
 
@@ -41,12 +45,14 @@ export async function POST(request) {
         }
 
         const user = result.rows[0];
+        // Key role dari tabel roles (bukan kolom lama users.role)
+        const roleKey = user.role_key ?? "none";
         const match = await bcrypt.compare(password, user.password_hash);
 
         if (!match) {
             await tryAudit({
                 actor: user.username,
-                actorRole: user.role,
+                actorRole: roleKey,
                 action: "unlock_screen_failed",
                 entityType: "user",
                 entityId: user.username,
@@ -62,7 +68,7 @@ export async function POST(request) {
         // Catat audit buka kunci layar berhasil
         await tryAudit({
             actor: user.username,
-            actorRole: user.role,
+            actorRole: roleKey,
             action: "unlock_screen",
             entityType: "user",
             entityId: user.username,
@@ -74,7 +80,8 @@ export async function POST(request) {
             user: {
                 username: user.username,
                 fullName: user.full_name,
-                role: user.role,
+                role: roleKey,
+                roleName: user.role_name ?? roleKey,
             },
         });
     } catch (error) {

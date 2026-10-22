@@ -139,7 +139,8 @@ export default function ScreenLock() {
                 setShowPassword(false);
                 setError("");
                 if (data.user) {
-                    setUser(data.user);
+                    // Gabung, supaya field dari /api/auth/me (mis. permissions) tidak hilang
+                    setUser((prev) => ({ ...prev, ...data.user }));
                 }
             } else if (data.expired || data.deactive) {
                 // Sesi habis atau user dinonaktifkan
@@ -237,7 +238,7 @@ export default function ScreenLock() {
                                         </span>
                                     </div>
                                     <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-scada-rule/80 text-scada-ink">
-                                        {user?.role || "OPERATOR"}
+                                        {user?.roleName ?? user?.role ?? "OPERATOR"}
                                     </span>
                                 </div>
                             </div>
