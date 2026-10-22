@@ -1,12 +1,12 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { buildDateRangeFilter } from "@/lib/dateRange";
 
 export async function GET(request) {
     try {
         const cookieStore = await cookies();
-        const { errorResponse } = await requireAdmin(cookieStore);
+        const { errorResponse } = await requirePermission(cookieStore, "audit_log", "view");
         if (errorResponse) return errorResponse;
 
         const { searchParams } = new URL(request.url);

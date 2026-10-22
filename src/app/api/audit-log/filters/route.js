@@ -1,12 +1,12 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 
 // GET /api/audit-log/filters — distinct actions & entity_types untuk dropdown
 export async function GET() {
     try {
         const cookieStore = await cookies();
-        const { errorResponse } = await requireAdmin(cookieStore);
+        const { errorResponse } = await requirePermission(cookieStore, "audit_log", "view");
         if (errorResponse) return errorResponse;
 
         const [actionsResult, entityTypesResult] = await Promise.all([

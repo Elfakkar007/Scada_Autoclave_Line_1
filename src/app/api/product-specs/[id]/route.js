@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth, requireAdmin } from "@/lib/auth";
+import { requireAuth, requirePermission } from "@/lib/auth";
 
 const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
 
@@ -42,7 +42,7 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
     try {
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAdmin(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "products", "edit");
         if (errorResponse) return errorResponse;
 
         const { id: rawId } = await params;
@@ -133,7 +133,7 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
     try {
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAdmin(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "products", "edit");
         if (errorResponse) return errorResponse;
 
         const { id: rawId } = await params;

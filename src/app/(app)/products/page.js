@@ -113,6 +113,7 @@ export default function MasterProductsPage() {
                 if (j.ok) setUserRole(j.user?.role ?? "operator");
             })
             .catch(() => {});
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchAllData();
     }, [fetchAllData]);
 
@@ -690,7 +691,7 @@ export default function MasterProductsPage() {
                         <p className="text-xs text-[#5C6B6A] mb-5 leading-relaxed font-medium">
                             Anda yakin ingin menghapus{" "}
                             <strong className="text-[#1E2A2E]">
-                                "{deleteTarget.tab === "products" ? deleteTarget.item.name : deleteTarget.item.spec}"
+                                &quot;{deleteTarget.tab === "products" ? deleteTarget.item.name : deleteTarget.item.spec}&quot;
                             </strong>{" "}
                             dari master? Tindakan ini akan dicatat ke dalam Audit Log.
                         </p>

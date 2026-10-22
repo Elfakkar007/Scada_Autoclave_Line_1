@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { buildDateRangeFilter } from "@/lib/dateRange";
 
 const MAX_ROWS = 50_000;
@@ -52,7 +52,7 @@ function buildQuery(searchParams) {
 export async function GET(request) {
     try {
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAdmin(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "audit_log", "view");
         if (errorResponse) return errorResponse;
 
         const { searchParams } = new URL(request.url);

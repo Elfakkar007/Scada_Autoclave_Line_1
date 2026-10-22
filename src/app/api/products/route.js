@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth, requireAdmin } from "@/lib/auth";
+import { requireAuth, requirePermission } from "@/lib/auth";
 
 const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
 
@@ -65,7 +65,7 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAdmin(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "products", "edit");
         if (errorResponse) return errorResponse;
 
         await ensureProductNamesTable();

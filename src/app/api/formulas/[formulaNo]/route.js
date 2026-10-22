@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth, requireAdmin } from "@/lib/auth";
+import { requireAuth, requirePermission } from "@/lib/auth";
 import { validateRecipe } from "@/lib/recipeValidation";
 import { isStartInProgress, getRecipeUsage } from "@/lib/recipeGuard";
 
@@ -62,7 +62,7 @@ export async function PUT(request, { params }) {
     try {
         // ▼ PROTEKSI SERVER-SIDE: hanya admin yang boleh
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAdmin(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "formula", "edit");
         if (errorResponse) return errorResponse;
 
         const { formulaNo: rawNo } = await params;
@@ -227,7 +227,7 @@ export async function DELETE(request, { params }) {
     try {
         // ▼ PROTEKSI SERVER-SIDE: hanya admin yang boleh
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAdmin(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "formula", "edit");
         if (errorResponse) return errorResponse;
 
         const { formulaNo: rawNo } = await params;

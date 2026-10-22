@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth, requireAdmin } from "@/lib/auth";
+import { requireAuth, requirePermission } from "@/lib/auth";
 import { validateRecipe } from "@/lib/recipeValidation";
 
 const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
@@ -53,7 +53,7 @@ export async function POST(request) {
     try {
         // ▼ PROTEKSI SERVER-SIDE: hanya admin yang boleh
         const cookieStore = await cookies();
-        const { session, errorResponse } = await requireAdmin(cookieStore);
+        const { session, errorResponse } = await requirePermission(cookieStore, "formula", "edit");
         if (errorResponse) return errorResponse;
 
         const body = await request.json();
