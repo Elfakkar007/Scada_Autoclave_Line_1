@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth, requirePermission } from "@/lib/auth";
+import { requireAnyPermission, requirePermission } from "@/lib/auth";
 import { validateRecipe } from "@/lib/recipeValidation";
 
 const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
@@ -25,11 +25,14 @@ function rowToFormula(row) {
     };
 }
 
-// ── GET /api/formulas — semua role yang login boleh akses ─────────────────────
+// ── GET /api/formulas — formula >= view ATAU dashboard >= view (modal StartDialog) ──
 export async function GET() {
     try {
         const cookieStore = await cookies();
-        const { errorResponse } = await requireAuth(cookieStore);
+        const { errorResponse } = await requireAnyPermission(cookieStore, [
+            ["formula", "view"],
+            ["dashboard", "view"],
+        ]);
         if (errorResponse) return errorResponse;
 
         const result = await pool.query(

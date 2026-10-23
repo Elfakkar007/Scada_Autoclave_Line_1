@@ -7,6 +7,7 @@ import {
     ReferenceLine,
 } from "recharts";
 import { eventLabel } from "@/lib/alarmEventLabels";
+import PermissionGate from "@/components/PermissionGate";
 
 // ── Helper format waktu Asia/Jakarta ─────────────────────────────────────────
 function fmtTime(dateStr) {
@@ -113,7 +114,7 @@ function ManualLegend() {
 }
 
 // ── Halaman cetak ─────────────────────────────────────────────────────────────
-export default function PrintDataReport() {
+function PrintDataReportContent() {
     const { batchNo } = useParams();
     const decoded = decodeURIComponent(batchNo);
 
@@ -651,5 +652,13 @@ export default function PrintDataReport() {
                 )}
             </div>{/* end print-sheet bagian 3 */}
         </>
+    );
+}
+
+export default function PrintDataReport() {
+    return (
+        <PermissionGate resource="data_report" minLevel="view">
+            <PrintDataReportContent />
+        </PermissionGate>
     );
 }

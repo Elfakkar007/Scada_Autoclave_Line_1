@@ -17,7 +17,7 @@ export async function GET() {
         }
 
         const result = await pool.query(
-            `SELECT u.full_name, u.is_active, u.role_id,
+            `SELECT u.full_name, u.is_active, u.deleted_at, u.role_id,
                     r.key AS role_key, r.name AS role_name
                FROM users u
                LEFT JOIN roles r ON r.id = u.role_id
@@ -25,8 +25,8 @@ export async function GET() {
             [jwtPayload.username]
         );
 
-        if (result.rows.length === 0 || !result.rows[0].is_active) {
-            // Akun tidak aktif atau tidak ditemukan — hapus cookie session
+        if (result.rows.length === 0 || !result.rows[0].is_active || result.rows[0].deleted_at !== null) {
+            // Akun tidak aktif, terhapus, atau tidak ditemukan — hapus cookie session
             cookieStore.delete("session_token");
             return Response.json(
                 { ok: false, error: "Akun tidak aktif" },

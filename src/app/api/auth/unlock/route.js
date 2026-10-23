@@ -28,7 +28,7 @@ export async function POST(request) {
 
         // Ambil data user dari DB untuk memastikan status aktif & ambil password_hash
         const result = await pool.query(
-            `SELECT u.id, u.username, u.full_name, u.password_hash, u.is_active,
+            `SELECT u.id, u.username, u.full_name, u.password_hash, u.is_active, u.deleted_at,
                     r.key AS role_key, r.name AS role_name
                FROM users u
                LEFT JOIN roles r ON r.id = u.role_id
@@ -36,7 +36,7 @@ export async function POST(request) {
             [session.username]
         );
 
-        if (result.rows.length === 0 || !result.rows[0].is_active) {
+        if (result.rows.length === 0 || !result.rows[0].is_active || result.rows[0].deleted_at !== null) {
             cookieStore.delete("session_token");
             return Response.json(
                 { ok: false, error: "Akun dinonaktifkan atau tidak ditemukan", deactive: true },

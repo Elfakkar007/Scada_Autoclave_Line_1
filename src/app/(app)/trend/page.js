@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import PermissionGate from "@/components/PermissionGate";
 import {
     ResponsiveContainer,
     ComposedChart,
@@ -76,7 +77,7 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 // ── Halaman utama ─────────────────────────────────────────────────────────────
-export default function TrendPage() {
+function TrendContent() {
     const [batches, setBatches]           = useState([]);        // daftar batch untuk dropdown
     const [selectedBatchNo, setSelectedBatchNo] = useState(""); // batch yang dipilih
     const [batchDetail, setBatchDetail]   = useState(null);     // { batch, trend }
@@ -330,5 +331,14 @@ export default function TrendPage() {
                 </div>
             )}
         </main>
+    );
+}
+
+
+export default function TrendPage() {
+    return (
+        <PermissionGate resource="trend" minLevel="view">
+            <TrendContent />
+        </PermissionGate>
     );
 }

@@ -1,8 +1,16 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAnyPermission } from "@/lib/auth";
 import { buildDateRangeFilter } from "@/lib/dateRange";
 
 export async function GET(request) {
     try {
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAnyPermission(cookieStore, [
+            ["data_report", "view"],
+            ["trend", "view"],
+        ]);
+        if (errorResponse) return errorResponse;
         const { searchParams } = new URL(request.url);
         const search = searchParams.get("search") ?? "";
         const status = searchParams.get("status") ?? "";

@@ -6,13 +6,18 @@
  * Lokasi file: src/app/api/alarms/active/route.js
  * Perlindungan login: sama seperti route alarms lain (lewat proxy).
  */
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAuth } from "@/lib/auth";
 import { ALARM_CATALOG } from "@/lib/alarmCatalog";
 
 const MONITOR_STALE_SEC = 30; // heartbeat tiap 10 dtk; lewat 30 dtk dianggap pemantau mati
 
 export async function GET() {
     try {
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAuth(cookieStore);
+        if (errorResponse) return errorResponse;
         const [openRes, hbRes] = await Promise.all([
             pool.query(
                 `SELECT a.episode_id, a.alarm_key, a.variable_name, a.alarm_type, a.alarm_value,

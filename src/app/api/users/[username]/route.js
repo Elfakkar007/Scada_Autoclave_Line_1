@@ -39,6 +39,11 @@ export async function PUT(request, { params }) {
             if (oldRes.rows.length === 0) throw new HttpError(404, `User "${username}" tidak ditemukan`);
             const oldUser = rowToUser(oldRes.rows[0]);
 
+            // User terhapus secara lunak diperlakukan sebagai tidak ada
+            if (oldUser.deletedAt !== null) {
+                throw new HttpError(404, `User "${username}" tidak ditemukan`);
+            }
+
             let newRole = { id: oldUser.roleId, key: oldUser.role, name: oldUser.roleName };
             if (wantsRoleChange) {
                 const resolved = await resolveRole(client, body);
@@ -101,7 +106,8 @@ export async function PUT(request, { params }) {
     }
 }
 
-// ── DELETE /api/users/[username] — SOFT DELETE: is_active=false (users = edit) ─
+// ── DELETE /api/users/[username] — NONAKTIFKAN: is_active=false (users = edit) ─
+// Ini bukan hapus permanen. Hapus permanen (hapus lunak) ada di POST /api/users/[username]/delete
 export async function DELETE(request, { params }) {
     try {
         const cookieStore = await cookies();
@@ -120,8 +126,15 @@ export async function DELETE(request, { params }) {
         await withTransaction(async (client) => {
             await lockRoleMutations(client);
 
-            const check = await client.query("SELECT id FROM users WHERE username = $1", [username]);
+            const check = await client.query(
+                "SELECT id, deleted_at FROM users WHERE username = $1",
+                [username]
+            );
             if (check.rows.length === 0) throw new HttpError(404, `User "${username}" tidak ditemukan`);
+            // User terhapus secara lunak diperlakukan sebagai tidak ada
+            if (check.rows[0].deleted_at !== null) {
+                throw new HttpError(404, `User "${username}" tidak ditemukan`);
+            }
 
             await client.query(
                 "UPDATE users SET is_active = false, updated_at = now() WHERE username = $1",

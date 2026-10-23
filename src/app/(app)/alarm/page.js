@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { eventLabel } from "@/lib/alarmEventLabels";
+import PermissionGate from "@/components/PermissionGate";
 
 const LIMIT = 20;
 
@@ -64,7 +65,7 @@ function EmptyState({ hasFilter }) {
 }
 
 // ── Halaman utama ─────────────────────────────────────────────────────────────
-export default function AlarmPage() {
+function AlarmContent() {
     const [rows, setRows] = useState([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -311,5 +312,13 @@ export default function AlarmPage() {
                 </div>
             )}
         </main>
+    );
+}
+
+export default function AlarmPage() {
+    return (
+        <PermissionGate resource="alarm" minLevel="view">
+            <AlarmContent />
+        </PermissionGate>
     );
 }

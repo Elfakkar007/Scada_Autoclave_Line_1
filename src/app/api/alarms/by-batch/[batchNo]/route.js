@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAnyPermission } from "@/lib/auth";
 
 /**
  * GET /api/alarms/by-batch/[batchNo]
@@ -9,6 +11,9 @@ import pool from "@/lib/db";
  */
 export async function GET(request, { params }) {
     try {
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAnyPermission(cookieStore, [["data_report", "view"]]);
+        if (errorResponse) return errorResponse;
         const { batchNo: rawNo } = await params;
         let batchNo;
         try {

@@ -75,6 +75,7 @@ async function loadUserAccess(username) {
     try {
         const result = await pool.query(
             `SELECT u.is_active,
+                    u.deleted_at,
                     u.role_id,
                     r.key  AS role_key,
                     r.name AS role_name,
@@ -91,6 +92,8 @@ async function loadUserAccess(username) {
         );
         if (result.rows.length === 0) return null;
         const row = result.rows[0];
+        // Akun terhapus secara lunak diperlakukan sama seperti tidak ada
+        if (row.deleted_at !== null) return null;
         return {
             isActive: row.is_active,
             roleId: row.role_id,

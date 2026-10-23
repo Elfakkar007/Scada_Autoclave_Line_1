@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import pool from "@/lib/db";
-import { requireAuth, requirePermission } from "@/lib/auth";
+import { requireAnyPermission, requirePermission } from "@/lib/auth";
 import { validateRecipe } from "@/lib/recipeValidation";
 import { isStartInProgress, getRecipeUsage } from "@/lib/recipeGuard";
 
@@ -27,11 +27,11 @@ function rowToFormula(row) {
     };
 }
 
-// ── GET /api/formulas/[formulaNo] — semua role yang login boleh akses ─────────
+// ── GET /api/formulas/[formulaNo] — formula >= view ───────────────────────────
 export async function GET(request, { params }) {
     try {
         const cookieStore = await cookies();
-        const { errorResponse } = await requireAuth(cookieStore);
+        const { errorResponse } = await requireAnyPermission(cookieStore, [["formula", "view"]]);
         if (errorResponse) return errorResponse;
 
         const { formulaNo: rawNo } = await params;

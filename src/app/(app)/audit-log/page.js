@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { hasLevel } from "@/lib/permissionCatalog";
+import DeletedUserBadge from "@/components/DeletedUserBadge";
 
 const LIMIT = 20;
 
@@ -332,7 +333,10 @@ export default function AuditLogPage() {
                                         <td className={tdClass + " whitespace-nowrap font-mono text-xs"}>{fmt(row.eventTime)}</td>
                                         <td className={tdClass}>
                                             <div className="flex flex-col gap-0.5">
-                                                <span className="font-semibold">{row.actorName ?? row.actor ?? "-"}</span>
+                                                <span className="font-semibold">
+                                                    {row.actorName ?? row.actor ?? "-"}
+                                                    {row.actorDeleted && <DeletedUserBadge />}
+                                                </span>
                                                 {row.actorName && row.actor && (
                                                     <span className="text-xs text-scada-muted font-mono">{row.actor}</span>
                                                 )}

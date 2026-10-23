@@ -11,10 +11,19 @@
  * Perilaku endpoint dari sisi konsumen (frontend) TIDAK BERUBAH.
  */
 
+import { cookies } from "next/headers";
+import { requireAnyPermission } from "@/lib/auth";
 import { readPlcSnapshot } from "@/lib/plc";
 import pool from "@/lib/db";
 
 export async function GET() {
+    const cookieStore = await cookies();
+    const { errorResponse } = await requireAnyPermission(cookieStore, [
+        ["dashboard", "view"],
+        ["trend", "view"],
+    ]);
+    if (errorResponse) return errorResponse;
+
     // Baca semua data PLC (sudah include scaling dan phase).
     // Jika PLC mati: plcOk=false dan semua nilai null (bukan dummy, kecuali mode dev).
     const { plcOk, plcError, ...sensorData } = await readPlcSnapshot();

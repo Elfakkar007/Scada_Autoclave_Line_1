@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
     try {
         const result = await pool.query(
-            "SELECT username, full_name FROM users WHERE is_active = true ORDER BY full_name"
+            "SELECT username, full_name FROM users WHERE is_active = true AND deleted_at IS NULL ORDER BY full_name"
         );
         return Response.json({
             ok: true,

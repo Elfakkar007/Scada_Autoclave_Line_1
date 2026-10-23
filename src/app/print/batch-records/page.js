@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import PermissionGate from "@/components/PermissionGate";
 
 function toWIBStr(date) {
     return new Date(date).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
@@ -174,8 +175,10 @@ function BatchRecordsPrintContent() {
 
 export default function PrintBatchRecordsPage() {
     return (
-        <Suspense fallback={<div style={{ padding:24 }}>Memuat…</div>}>
-            <BatchRecordsPrintContent />
-        </Suspense>
+        <PermissionGate resource="data_report" minLevel="view">
+            <Suspense fallback={<div style={{ padding:24 }}>Memuat…</div>}>
+                <BatchRecordsPrintContent />
+            </Suspense>
+        </PermissionGate>
     );
 }

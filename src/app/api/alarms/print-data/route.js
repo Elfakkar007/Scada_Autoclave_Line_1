@@ -3,7 +3,9 @@
  * Lokasi file: src/app/api/alarms/print-data/route.js
  * Perlindungan login: lewat proxy (sama seperti /api/alarms).
  */
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAnyPermission } from "@/lib/auth";
 import { ALARM_FROM, ALARM_ORDER, buildAlarmFilter } from "@/lib/alarmQuery";
 
 const MAX_ROWS = 50_000;
@@ -16,6 +18,9 @@ function toWIB(dateVal) {
 
 export async function GET(request) {
     try {
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAnyPermission(cookieStore, [["alarm", "view"]]);
+        if (errorResponse) return errorResponse;
         const { searchParams } = new URL(request.url);
         const q = buildAlarmFilter(searchParams);
         if (q.error) return Response.json({ ok: false, error: q.error }, { status: 400 });

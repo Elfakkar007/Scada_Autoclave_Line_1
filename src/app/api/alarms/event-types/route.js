@@ -1,10 +1,15 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAnyPermission } from "@/lib/auth";
 
 // GET /api/alarms/event-types
 // Return array of distinct event_type strings untuk isi dropdown filter.
 // Kalau tabel kosong atau semua event_type null, return [].
 export async function GET() {
     try {
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAnyPermission(cookieStore, [["alarm", "view"]]);
+        if (errorResponse) return errorResponse;
         const result = await pool.query(
             `SELECT DISTINCT event_type
              FROM alarm_log

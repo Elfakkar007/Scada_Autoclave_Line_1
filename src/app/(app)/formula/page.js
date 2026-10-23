@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { hasLevel } from "@/lib/permissionCatalog";
+import PermissionGate from "@/components/PermissionGate";
 
 // ── Helper: petakan nama field snake_case dari API ke camelCase key form ──────
 // Dipakai saat menampilkan error invalidFields dari server per-field di form.
@@ -119,7 +120,7 @@ function FieldRow({ field, value, onChange, disabled }) {
 // ──────────────────────────────────────────────
 // Komponen utama halaman
 // ──────────────────────────────────────────────
-export default function FormulaPage() {
+function FormulaContent() {
     const [formulas, setFormulas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedNo, setSelectedNo] = useState(null);
@@ -632,5 +633,13 @@ export default function FormulaPage() {
                 </div>
             </div>
         </main>
+    );
+}
+
+export default function FormulaPage() {
+    return (
+        <PermissionGate resource="formula" minLevel="view">
+            <FormulaContent />
+        </PermissionGate>
     );
 }

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense } from "react";
 import { flushSync } from "react-dom";
 import { eventLabel } from "@/lib/alarmEventLabels";
+import PermissionGate from "@/components/PermissionGate";
 
 function toWIBStr(date) {
     return new Date(date).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
@@ -237,8 +238,10 @@ function AlarmPrintContent() {
 
 export default function PrintAlarmPage() {
     return (
-        <Suspense fallback={<div style={{ padding: 24 }}>Memuat…</div>}>
-            <AlarmPrintContent />
-        </Suspense>
+        <PermissionGate resource="alarm" minLevel="view">
+            <Suspense fallback={<div style={{ padding: 24 }}>Memuat…</div>}>
+                <AlarmPrintContent />
+            </Suspense>
+        </PermissionGate>
     );
 }

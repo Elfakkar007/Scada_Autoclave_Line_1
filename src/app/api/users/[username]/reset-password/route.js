@@ -25,8 +25,15 @@ export async function POST(request, { params }) {
         const passwordHash = bcrypt.hashSync(newPassword, 10);
 
         await withTransaction(async (client) => {
-            const check = await client.query("SELECT id FROM users WHERE username = $1", [username]);
+            const check = await client.query(
+                "SELECT id, deleted_at FROM users WHERE username = $1",
+                [username]
+            );
             if (check.rows.length === 0) throw new HttpError(404, `User "${username}" tidak ditemukan`);
+            // User terhapus secara lunak diperlakukan sebagai tidak ada
+            if (check.rows[0].deleted_at !== null) {
+                throw new HttpError(404, `User "${username}" tidak ditemukan`);
+            }
 
             await client.query(
                 "UPDATE users SET password_hash = $1, updated_at = now() WHERE username = $2",

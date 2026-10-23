@@ -6,8 +6,8 @@ import { HttpError } from "./roleAdmin.js";
 
 export const ROLE_SELECT = `
     SELECT r.id, r.key, r.name, r.description, r.is_system, r.created_at, r.updated_at,
-           (SELECT count(*)::int FROM users u WHERE u.role_id = r.id)                  AS user_count,
-           (SELECT count(*)::int FROM users u WHERE u.role_id = r.id AND u.is_active)  AS active_user_count,
+           (SELECT count(*)::int FROM users u WHERE u.role_id = r.id AND u.deleted_at IS NULL)                  AS user_count,
+           (SELECT count(*)::int FROM users u WHERE u.role_id = r.id AND u.is_active AND u.deleted_at IS NULL)  AS active_user_count,
            COALESCE((SELECT jsonb_object_agg(rp.resource, rp.level)
                        FROM role_permissions rp WHERE rp.role_id = r.id), '{}'::jsonb) AS permissions
       FROM roles r`;

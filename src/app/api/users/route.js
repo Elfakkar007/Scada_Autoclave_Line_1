@@ -11,14 +11,16 @@ import {
     toErrorResponse,
 } from "@/lib/roleAdmin";
 
-// ── GET /api/users — daftar semua user (izin: users ≥ view) ───────────────────
+// ── GET /api/users — daftar user aktif/nonaktif, TIDAK termasuk akun terhapus (users ≥ view) ──
 export async function GET() {
     try {
         const cookieStore = await cookies();
         const { errorResponse } = await requirePermission(cookieStore, "users", "view");
         if (errorResponse) return errorResponse;
 
-        const result = await pool.query(`${USER_SELECT} ORDER BY u.created_at DESC`);
+        const result = await pool.query(
+            `${USER_SELECT} WHERE u.deleted_at IS NULL ORDER BY u.created_at DESC`
+        );
         return Response.json(result.rows.map(rowToUser));
     } catch (error) {
         return toErrorResponse(error, "GET /api/users");
@@ -56,6 +58,19 @@ export async function POST(request) {
             const role = await resolveRole(client, body);
             if (!role) throw new HttpError(400, "Role tidak valid");
 
+            // Cek akun terhapus: TANPA membedakan huruf besar/kecil (409)
+            const deletedCheck = await client.query(
+                "SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND deleted_at IS NOT NULL",
+                [username.trim()]
+            );
+            if (deletedCheck.rows.length > 0) {
+                throw new HttpError(
+                    409,
+                    "Username ini pernah dipakai akun yang sudah dihapus dan tidak bisa dipakai lagi"
+                );
+            }
+
+            // Cek akun aktif: case-sensitive seperti perilaku lama (400)
             const existing = await client.query(
                 "SELECT id FROM users WHERE username = $1",
                 [username.trim()]

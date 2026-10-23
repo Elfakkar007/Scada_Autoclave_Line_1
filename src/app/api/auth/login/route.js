@@ -106,7 +106,7 @@ export async function POST(request) {
                     r.key AS role_key, r.name AS role_name
                FROM users u
                LEFT JOIN roles r ON r.id = u.role_id
-              WHERE u.username = $1 AND u.is_active = true`,
+              WHERE u.username = $1 AND u.is_active = true AND u.deleted_at IS NULL`,
             [username]
         );
         const user = result.rows[0] ?? null;

@@ -4,9 +4,9 @@
 // ── SELECT user + role (tanpa password_hash) ──────────────────────────────────
 export const USER_SELECT = `
     SELECT u.id, u.username, u.full_name, u.is_active, u.last_login_at, u.created_at,
-           u.role_id, r.key AS role_key, r.name AS role_name
+           u.deleted_at, u.role_id, r.key AS role_key, r.name AS role_name
       FROM users u
-      JOIN roles r ON r.id = u.role_id`;
+      LEFT JOIN roles r ON r.id = u.role_id`;
 
 // `role` tetap berisi KEY role supaya UI lama tidak rusak; roleId/roleName tambahan.
 export function rowToUser(row) {
@@ -20,6 +20,7 @@ export function rowToUser(row) {
         isActive:    row.is_active,
         lastLoginAt: row.last_login_at,
         createdAt:   row.created_at,
+        deletedAt:   row.deleted_at ?? null,
     };
 }
 

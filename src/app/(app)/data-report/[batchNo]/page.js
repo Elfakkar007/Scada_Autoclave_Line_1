@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import PermissionGate from "@/components/PermissionGate";
 
 // ── Helper: format tanggal-jam ────────────────────────────────────────────────
 function fmt(dateStr) {
@@ -163,7 +164,7 @@ function TrendTable({ trend }) {
 }
 
 // ── Halaman utama ─────────────────────────────────────────────────────────────
-export default function BatchDetailPage() {
+function BatchDetailContent() {
     // useParams dari next/navigation — ini client hook, TIDAK perlu await
     const { batchNo } = useParams();
     const decodedBatchNo = decodeURIComponent(batchNo);
@@ -343,5 +344,13 @@ export default function BatchDetailPage() {
                 <TrendTable trend={trend} />
             </SectionCard>
         </main>
+    );
+}
+
+export default function BatchDetailPage() {
+    return (
+        <PermissionGate resource="data_report" minLevel="view">
+            <BatchDetailContent />
+        </PermissionGate>
     );
 }

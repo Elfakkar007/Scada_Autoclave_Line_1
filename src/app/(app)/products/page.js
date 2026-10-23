@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { hasLevel } from "@/lib/permissionCatalog";
+import PermissionGate from "@/components/PermissionGate";
 
 function Toast({ toast }) {
     if (!toast) return null;
@@ -50,7 +51,7 @@ const inputClass =
     "w-full bg-white border border-[#B8C0BE] rounded px-3 py-2 text-sm text-[#1E2A2E] placeholder-[#8C9E9B] focus:outline-none focus:border-[#1C6E74] focus:ring-1 focus:ring-[#1C6E74] transition-colors";
 const labelClass = "block text-xs text-[#1E2A2E] font-bold uppercase mb-1";
 
-export default function MasterProductsPage() {
+function MasterProductsContent() {
     // Tab: "products" (Nama Produk) | "specs" (Spesifikasi Kemasan)
     const [activeTab, setActiveTab] = useState("products");
 
@@ -710,5 +711,13 @@ export default function MasterProductsPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function MasterProductsPage() {
+    return (
+        <PermissionGate resource="products" minLevel="view">
+            <MasterProductsContent />
+        </PermissionGate>
     );
 }

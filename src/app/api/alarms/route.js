@@ -1,8 +1,13 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAnyPermission } from "@/lib/auth";
 import { ALARM_FROM, ALARM_ORDER, buildAlarmFilter } from "@/lib/alarmQuery";
 
 export async function GET(request) {
     try {
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAnyPermission(cookieStore, [["alarm", "view"]]);
+        if (errorResponse) return errorResponse;
         const { searchParams } = new URL(request.url);
         // limit/offset dibersihkan: nilai non-angka tidak boleh menjadi NaN ke query.
         const limitRaw = parseInt(searchParams.get("limit") ?? "20", 10);

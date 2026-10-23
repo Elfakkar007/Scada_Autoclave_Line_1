@@ -1,9 +1,17 @@
+import { cookies } from "next/headers";
 import pool from "@/lib/db";
+import { requireAnyPermission } from "@/lib/auth";
 import { snapshotNumber } from "@/lib/recipeSnapshot";
 
 export async function GET(request, { params }) {
     try {
         // Next.js 15: params adalah Promise, wajib di-await dulu
+        const cookieStore = await cookies();
+        const { errorResponse } = await requireAnyPermission(cookieStore, [
+            ["data_report", "view"],
+            ["trend", "view"],
+        ]);
+        if (errorResponse) return errorResponse;
         const { batchNo: rawNo } = await params;
         let batchNo;
         try {

@@ -160,6 +160,10 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
     const [newPassword, setNewPassword] = useState("");
     const [resetting, setResetting] = useState(false);
 
+    // State untuk konfirmasi hapus
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+
     // ── Save edit ──────────────────────────────────────────────────────────
     async function handleSaveEdit() {
         setSaving(true);
@@ -262,6 +266,28 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
         }
     }
 
+    // ── Hapus lunak (permanent soft-delete) ───────────────────────────────────
+    async function handleDelete() {
+        setDeleting(true);
+        try {
+            const res = await fetch(`/api/users/${encodeURIComponent(user.username)}/delete`, {
+                method: "POST",
+            });
+            const json = await res.json();
+            if (!res.ok || json.ok === false) {
+                onToast(json.error ?? "Gagal menghapus user", "error");
+                return;
+            }
+            onToast(`User ${user.username} berhasil dihapus`);
+            setDeleteOpen(false);
+            onUpdated();
+        } catch {
+            onToast("Gagal terhubung ke server", "error");
+        } finally {
+            setDeleting(false);
+        }
+    }
+
     const btnSm = "px-3 py-1 rounded text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
     return (
@@ -289,7 +315,7 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                         <div className="flex flex-wrap gap-1.5">
                             <button
                                 className={`${btnSm} bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink`}
-                                onClick={() => { setEditOpen((v) => !v); setResetOpen(false); }}
+                                onClick={() => { setEditOpen((v) => !v); setResetOpen(false); setDeleteOpen(false); }}
                                 disabled={saving}
                             >
                                 Edit
@@ -304,11 +330,21 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                             </button>
                             <button
                                 className={`${btnSm} bg-scada-steam hover:bg-scada-steam-hover text-white`}
-                                onClick={() => { setResetOpen((v) => !v); setEditOpen(false); }}
+                                onClick={() => { setResetOpen((v) => !v); setEditOpen(false); setDeleteOpen(false); }}
                                 disabled={saving}
                             >
                                 Reset PW
                             </button>
+                            {!isSelf && (
+                                <button
+                                    className={`${btnSm} bg-red-700 hover:bg-red-800 text-white`}
+                                    onClick={() => { setDeleteOpen((v) => !v); setEditOpen(false); setResetOpen(false); }}
+                                    disabled={saving || deleting}
+                                    title="Hapus akun secara permanen (username tidak bisa dipakai lagi)"
+                                >
+                                    Hapus
+                                </button>
+                            )}
                         </div>
                     )}
                     {canEdit && isSelf && (
@@ -393,6 +429,39 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                                 </button>
                                 <button
                                     onClick={() => { setResetOpen(false); setNewPassword(""); }}
+                                    className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded text-sm font-semibold transition-colors"
+                                >
+                                    Batal
+                                </button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            )}
+            {/* ── Dialog konfirmasi hapus ── */}
+            {deleteOpen && !isSelf && canEdit && (
+                <tr className="bg-red-50 border-b border-red-200">
+                    <td colSpan={6} className="px-4 py-4">
+                        <div className="text-sm">
+                            <p className="font-semibold text-red-800 mb-1">Hapus akun ini secara permanen?</p>
+                            <p className="text-scada-ink mb-1">
+                                Username: <span className="font-mono font-semibold">{user.username}</span>
+                                &ensp;|&ensp;
+                                Nama: <span className="font-semibold">{user.fullName}</span>
+                            </p>
+                            <p className="text-red-700 text-xs mb-3">
+                                ⚠ Username <span className="font-mono font-semibold">{user.username}</span> tidak bisa dipakai lagi setelah dihapus.
+                            </p>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleDelete}
+                                    disabled={deleting}
+                                    className="px-4 py-1.5 bg-red-700 hover:bg-red-800 text-white disabled:opacity-40 rounded text-sm font-semibold transition-colors"
+                                >
+                                    {deleting ? "Menghapus…" : "Ya, Hapus"}
+                                </button>
+                                <button
+                                    onClick={() => setDeleteOpen(false)}
                                     className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded text-sm font-semibold transition-colors"
                                 >
                                     Batal

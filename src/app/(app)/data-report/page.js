@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import PermissionGate from "@/components/PermissionGate";
 
 const LIMIT = 20;
 
@@ -34,7 +35,7 @@ function fmt(dateStr) {
     return new Date(dateStr).toLocaleString("id-ID");
 }
 
-export default function DataReportPage() {
+function DataReportContent() {
     const [rows, setRows]         = useState([]);
     const [total, setTotal]       = useState(0);
     const [loading, setLoading]   = useState(true);
@@ -291,5 +292,13 @@ export default function DataReportPage() {
                 </div>
             )}
         </main>
+    );
+}
+
+export default function DataReportPage() {
+    return (
+        <PermissionGate resource="data_report" minLevel="view">
+            <DataReportContent />
+        </PermissionGate>
     );
 }

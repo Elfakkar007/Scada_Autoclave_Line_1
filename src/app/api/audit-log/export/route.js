@@ -25,22 +25,22 @@ function buildQuery(searchParams) {
     if (search.trim()) {
         values.push(`%${search.trim()}%`);
         conditions.push(
-            `(actor ILIKE $${values.length}
-              OR actor_name ILIKE $${values.length}
-              OR entity_id ILIKE $${values.length}
-              OR description ILIKE $${values.length})`
+            `(al.actor ILIKE $${values.length}
+              OR al.actor_name ILIKE $${values.length}
+              OR al.entity_id ILIKE $${values.length}
+              OR al.description ILIKE $${values.length})`
         );
     }
     if (action.trim()) {
         values.push(action.trim());
-        conditions.push(`action = $${values.length}`);
+        conditions.push(`al.action = $${values.length}`);
     }
     if (entityType.trim()) {
         values.push(entityType.trim());
-        conditions.push(`entity_type = $${values.length}`);
+        conditions.push(`al.entity_type = $${values.length}`);
     }
 
-    const df = buildDateRangeFilter(from, to, "event_time", values.length + 1);
+    const df = buildDateRangeFilter(from, to, "al.event_time", values.length + 1);
     if (df.error) return { error: df.error };
     values.push(...df.values);
     conditions.push(...df.conditions);
@@ -63,7 +63,7 @@ export async function GET(request) {
 
         // Cek jumlah baris sebelum export
         const countRes = await pool.query(
-            `SELECT COUNT(*) FROM audit_log ${q.where}`, q.values
+            `SELECT COUNT(*) FROM audit_log al LEFT JOIN users u ON u.username = al.actor ${q.where}`, q.values
         );
         const total = parseInt(countRes.rows[0].count, 10);
         if (total > MAX_ROWS) {
@@ -74,13 +74,22 @@ export async function GET(request) {
         }
 
         const dataRes = await pool.query(
-            `SELECT event_time, actor, actor_name, actor_role, action, entity_type, entity_id,
-                    source, description, old_value, new_value
-             FROM audit_log ${q.where}
-             ORDER BY event_time DESC`,
+            `SELECT al.event_time, al.actor, al.actor_name, al.actor_role, al.action, al.entity_type, al.entity_id,
+                    al.source, al.description, al.old_value, al.new_value,
+                    (u.deleted_at IS NOT NULL) AS actor_deleted
+             FROM audit_log al
+             LEFT JOIN users u ON u.username = al.actor
+             ${q.where}
+             ORDER BY al.event_time DESC`,
             q.values
         );
         const rows = dataRes.rows;
+
+        // Helper: tambahkan suffix ke nama bila actor sudah dihapus (untuk ekspor non-badge)
+        function actorNameExport(r) {
+            const name = r.actor_name ?? r.actor ?? "";
+            return r.actor_deleted ? `${name} (deleted user)` : name;
+        }
 
         // ── Catat audit export ────────────────────────────────────────────
         try {
@@ -105,7 +114,7 @@ export async function GET(request) {
             const data = rows.map((r) => ({
                 eventTime: toWIB(r.event_time),
                 actor: r.actor ?? "",
-                actorName: r.actor_name ?? "",
+                actorName: actorNameExport(r),
                 actorRole: r.actor_role ?? "",
                 action: r.action ?? "",
                 entityType: r.entity_type ?? "",
@@ -148,7 +157,7 @@ export async function GET(request) {
         rows.forEach((r) => {
             ws.addRow({
                 eventTime: toWIB(r.event_time),
-                actorName: r.actor_name ?? "",
+                actorName: actorNameExport(r),
                 actor: r.actor ?? "",
                 actorRole: r.actor_role ?? "",
                 action: r.action ?? "",

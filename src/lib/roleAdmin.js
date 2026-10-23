@@ -43,7 +43,7 @@ export async function assertRoleManagerRemains(client) {
            FROM users u
            JOIN role_permissions rp
              ON rp.role_id = u.role_id AND rp.resource = 'roles' AND rp.level = 'edit'
-          WHERE u.is_active`
+          WHERE u.is_active AND u.deleted_at IS NULL`
     );
     if (r.rows[0].n < 1) {
         throw new HttpError(
