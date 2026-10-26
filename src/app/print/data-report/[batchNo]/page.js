@@ -7,6 +7,7 @@ import {
     ReferenceLine,
 } from "recharts";
 import { eventLabel } from "@/lib/alarmEventLabels";
+import { operatorText } from "@/lib/operatorLabel";
 import PermissionGate from "@/components/PermissionGate";
 
 // ── Helper format waktu Asia/Jakarta ─────────────────────────────────────────
@@ -56,11 +57,7 @@ function fmtStr(v) {
     return String(v);
 }
 
-// Cetak tidak memakai badge: akun operator yang sudah dihapus diberi akhiran teks.
-function operatorText(name, deleted) {
-    const base = fmtStr(name);
-    return deleted && base !== "-" ? `${base} (deleted user)` : base;
-}
+// operatorText diimpor dari @/lib/operatorLabel (tugas D: helper bersama).
 
 // ── Pemetaan phase_code → label ───────────────────────────────────────────────
 const PHASE_LABELS = {

@@ -6,6 +6,7 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid,
     ReferenceLine,
 } from "recharts";
+import { operatorText } from "@/lib/operatorLabel";
 
 // ── Helper format ─────────────────────────────────────────────────────────────
 function fmtTime(dateStr) {
@@ -222,7 +223,7 @@ export default function PrintCurvePage() {
                         { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
                     ]} />
                     <HRow cols={[
-                        { label: "Operator  :", value: fmtStr(batch.operator), flex: 1 },
+                        { label: "Operator  :", value: operatorText(batch.operator, batch.operatorDeleted), flex: 1 },
                         { label: "Batch.No. :", value: fmtStr(batch.batchNo), flex: 1 },
                         { label: "Mach. ID. :", value: fmtStr(batch.machineId), flex: 1 },
                     ]} />

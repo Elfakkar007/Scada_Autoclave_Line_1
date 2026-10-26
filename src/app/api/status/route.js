@@ -36,7 +36,10 @@ export async function GET() {
                 br.product_name,
                 br.machine_id,
                 br.run_begin,
-                r.formula_no
+                r.formula_no,
+                EXISTS (SELECT 1 FROM users u
+                        WHERE u.username = br.operator_username
+                          AND u.deleted_at IS NOT NULL) AS operator_deleted
              FROM batch_records br
              LEFT JOIN recipes r ON br.recipe_id = r.id
              WHERE br.status = 'running'
@@ -52,6 +55,7 @@ export async function GET() {
                 running: true,
                 batchNo: row.batch_no,
                 operator: row.operator,
+                operatorDeleted: row.operator_deleted === true,
                 productName: row.product_name,
                 machineId: row.machine_id,
                 formulaNo: row.formula_no,
@@ -63,8 +67,8 @@ export async function GET() {
             ...sensorData,
             plcOk, plcError,
             running: false,
-            batchNo: null, operator: null, productName: null,
-            machineId: null, formulaNo: null, runBegin: null,
+            batchNo: null, operator: null, operatorDeleted: false,
+            productName: null, machineId: null, formulaNo: null, runBegin: null,
         });
     } catch (error) {
         console.error("[GET /api/status] DB error:", error);

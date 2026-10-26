@@ -6,6 +6,7 @@ import { describeStopResponse, describeResetPulse } from "@/lib/plcCommandAlert"
 import { AtvDiagram, PhaseGuide } from "@/components/AtvDiagram";
 import { STEPS, PHASE_CODE_TO_STEP, STEP_COLOR } from "@/lib/atvProcess";
 import StartDialog from "@/components/StartDialog";
+import DeletedUserBadge from "@/components/DeletedUserBadge";
 
 /* ─────────────────────────────────────────────────────────────
    Product material masih belum ada tag PLC-nya (murni data resep
@@ -664,7 +665,10 @@ export default function Home() {
                   </div>
                   <div>
                     <dt className="text-xs text-[#5C6B6A]">Operator</dt>
-                    <dd className="font-semibold">{data.operator}</dd>
+                    <dd className="font-semibold">
+                      {data.operator}
+                      {data.operatorDeleted && <DeletedUserBadge />}
+                    </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-[#5C6B6A]">Produk</dt>

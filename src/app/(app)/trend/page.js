@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import PermissionGate from "@/components/PermissionGate";
+import DeletedUserBadge from "@/components/DeletedUserBadge";
 import {
     ResponsiveContainer,
     ComposedChart,
@@ -218,7 +219,10 @@ function TrendContent() {
                         </div>
                         <div>
                             <p className="text-xs text-scada-muted uppercase mb-0.5">Operator</p>
-                            <p className="text-sm">{batch.operator ?? "-"}</p>
+                            <p className="text-sm">
+                                {batch.operator ?? "-"}
+                                {batch.operatorDeleted && <DeletedUserBadge />}
+                            </p>
                         </div>
                         <div>
                             <p className="text-xs text-scada-muted uppercase mb-0.5">Status</p>
