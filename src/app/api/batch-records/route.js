@@ -73,7 +73,10 @@ export async function GET(request) {
                 run_finish,
                 total_time_min,
                 status,
-                fo_min
+                fo_min,
+                EXISTS (SELECT 1 FROM users u
+                        WHERE u.username = batch_records.operator_username
+                          AND u.deleted_at IS NOT NULL) AS operator_deleted
              FROM batch_records
              ${whereClause}
              ORDER BY COALESCE(run_begin, created_at) DESC
@@ -85,6 +88,7 @@ export async function GET(request) {
         const data = dataResult.rows.map((row) => ({
             batchNo: row.batch_no,
             operator: row.operator,
+            operatorDeleted: row.operator_deleted === true, // akun pembuat batch sudah dihapus-lunak
             productName: row.product_name,
             machineId: row.machine_id,
             sterTemp: row.ster_temp !== null ? parseFloat(row.ster_temp) : null,

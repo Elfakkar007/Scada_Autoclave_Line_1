@@ -255,7 +255,6 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       .then((json) => { if (json.ok) setPerms(json.user?.permissions ?? {}); })
       .catch(() => { });
   }, []);

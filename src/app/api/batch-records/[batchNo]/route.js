@@ -25,7 +25,10 @@ export async function GET(request, { params }) {
         // Sumber utama = b.recipe_snapshot (item 6). Kolom live_fo_val_setting hanya dipakai
         // bila batch tidak punya snapshot (batch sebelum item 6).
         const batchResult = await pool.query(
-            `SELECT b.*, r.fo_val_setting AS live_fo_val_setting
+            `SELECT b.*, r.fo_val_setting AS live_fo_val_setting,
+                    EXISTS (SELECT 1 FROM users u
+                        WHERE u.username = b.operator_username
+                          AND u.deleted_at IS NOT NULL) AS operator_deleted
              FROM batch_records b
              LEFT JOIN recipes r ON b.recipe_id = r.id
              WHERE b.batch_no = $1`,
@@ -48,6 +51,7 @@ export async function GET(request, { params }) {
             batchNo: row.batch_no,
             loadingNo: row.loading_no,
             operator: row.operator,
+            operatorDeleted: row.operator_deleted === true, // akun pembuat batch sudah dihapus-lunak
             machineId: row.machine_id,
             recipeId: row.recipe_id,
             productName: row.product_name,

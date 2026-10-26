@@ -56,6 +56,12 @@ function fmtStr(v) {
     return String(v);
 }
 
+// Cetak tidak memakai badge: akun operator yang sudah dihapus diberi akhiran teks.
+function operatorText(name, deleted) {
+    const base = fmtStr(name);
+    return deleted && base !== "-" ? `${base} (deleted user)` : base;
+}
+
 // ── Pemetaan phase_code → label ───────────────────────────────────────────────
 const PHASE_LABELS = {
     0: "IDLE (pintu terbuka)",
@@ -404,7 +410,7 @@ function PrintDataReportContent() {
                         { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
                     ]} />
                     <HRow cols={[
-                        { label: "Operator  :", value: fmtStr(batch.operator), flex: 1 },
+                        { label: "Operator  :", value: operatorText(batch.operator, batch.operatorDeleted), flex: 1 },
                         { label: "Batch.No. :", value: fmtStr(batch.batchNo), flex: 1 },
                         { label: "Mach. ID. :", value: fmtStr(batch.machineId), flex: 1 },
                     ]} />
@@ -496,7 +502,7 @@ function PrintDataReportContent() {
                     {/* Header mini kurva */}
                     <div style={{ marginBottom: 4, fontSize: 10 }}>
                         <HRow cols={[
-                            { label: "Operator  :", value: fmtStr(batch.operator), flex: 1 },
+                            { label: "Operator  :", value: operatorText(batch.operator, batch.operatorDeleted), flex: 1 },
                             { label: "Batch.No. :", value: fmtStr(batch.batchNo), flex: 1 },
                             { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
                         ]} />
@@ -643,7 +649,7 @@ function PrintDataReportContent() {
                                         <td className="alarm-td" style={{ textAlign: "center", whiteSpace: "nowrap" }}>{row.recoveryValue !== null && row.recoveryValue !== undefined ? fmtTemp(row.recoveryValue) : "-"}</td>
                                         <td className="alarm-td" style={{ textAlign: "center", whiteSpace: "nowrap" }}>{row.limitValue !== null && row.limitValue !== undefined ? fmtTemp(row.limitValue) : "-"}</td>
                                         <td className="alarm-td" style={{ fontWeight: isAlarm ? 700 : 400, whiteSpace: "nowrap" }}>{eventLabel(row.eventType)}</td>
-                                        <td className="alarm-td" style={{ whiteSpace: "nowrap" }}>{row.operator || "-"}</td>
+                                        <td className="alarm-td" style={{ whiteSpace: "nowrap" }}>{operatorText(row.operator, row.operatorDeleted)}</td>
                                     </tr>
                                 );
                             })}

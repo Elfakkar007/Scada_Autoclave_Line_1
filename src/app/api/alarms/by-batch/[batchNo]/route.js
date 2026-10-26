@@ -35,7 +35,14 @@ export async function GET(request, { params }) {
                     operator,
                     description,
                     phase_code,
-                    episode_id
+                    episode_id,
+                    -- Operator alarm disalin dari batch saat alarm terjadi (alarmMonitor), jadi status
+                    -- akunnya ditelusuri lewat batch_no -> batch_records.operator_username -> users.
+                    EXISTS (SELECT 1
+                            FROM batch_records b
+                            JOIN users u ON u.username = b.operator_username
+                            WHERE b.batch_no = alarm_log.batch_no
+                              AND u.deleted_at IS NOT NULL) AS operator_deleted
              FROM alarm_log
              WHERE batch_no = $1
              ORDER BY COALESCE(alarm_date, event_date) ASC, created_at ASC`,
@@ -53,6 +60,7 @@ export async function GET(request, { params }) {
             limitValue: row.limit_value !== null ? parseFloat(row.limit_value) : null,
             eventType: row.event_type,
             operator: row.operator,
+            operatorDeleted: row.operator_deleted === true,
             description: row.description,
             phaseCode: row.phase_code,
             episodeId: row.episode_id,

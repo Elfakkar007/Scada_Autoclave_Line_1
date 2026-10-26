@@ -16,6 +16,12 @@ function fmtNum(v) {
     return Number.isFinite(n) ? Number(n.toFixed(1)) : "";
 }
 
+// Ekspor tidak memakai badge: akun yang sudah dihapus diberi akhiran teks.
+function operatorExport(r) {
+    const name = r.operator ?? "";
+    return r.operator_deleted ? `${name} (deleted user)` : name;
+}
+
 function buildQuery(searchParams) {
     const search = searchParams.get("search") ?? "";
     const status = searchParams.get("status") ?? "";
@@ -88,7 +94,10 @@ export async function GET(request) {
                          THEN (recipe_snapshot->>'foValSetting')::numeric
                          ELSE (SELECT r.fo_val_setting FROM recipes r WHERE r.id = batch_records.recipe_id)
                     END AS fo_val_setting,
-                    status
+                    status,
+                    EXISTS (SELECT 1 FROM users u
+                        WHERE u.username = batch_records.operator_username
+                          AND u.deleted_at IS NOT NULL) AS operator_deleted
              FROM batch_records
              ${q.where}
              ORDER BY COALESCE(run_begin, created_at) DESC`,
@@ -121,7 +130,7 @@ export async function GET(request) {
                 loadingNo: r.loading_no ?? "",
                 productName: r.product_name ?? "",
                 productSpec: r.product_spec ?? "",
-                operator: r.operator ?? "",
+                operator: operatorExport(r),
                 machineId: r.machine_id ?? "",
                 sterTemp: fmtNum(r.ster_temp),
                 runBegin: toWIB(r.run_begin),
@@ -190,7 +199,7 @@ export async function GET(request) {
                 loadingNo: r.loading_no ?? "",
                 productName: r.product_name ?? "",
                 productSpec: r.product_spec ?? "",
-                operator: r.operator ?? "",
+                operator: operatorExport(r),
                 machineId: r.machine_id ?? "",
                 sterTemp: fmtNum(r.ster_temp),
                 runBegin: toWIB(r.run_begin),

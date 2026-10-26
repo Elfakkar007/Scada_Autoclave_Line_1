@@ -16,6 +16,12 @@ function toWIB(dateVal) {
     return new Date(dateVal).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 }
 
+// Halaman cetak tidak memakai badge: akun yang sudah dihapus diberi akhiran teks.
+function operatorExport(r) {
+    const name = r.operator ?? "";
+    return name && r.operator_deleted ? `${name} (deleted user)` : name;
+}
+
 export async function GET(request) {
     try {
         const cookieStore = await cookies();
@@ -36,7 +42,13 @@ export async function GET(request) {
 
         const dataRes = await pool.query(
             `SELECT alarm_date, event_date, variable_name, alarm_type, alarm_value,
-                    recovery_value, limit_value, event_type, operator, description
+                    recovery_value, limit_value, event_type, operator, description,
+                    -- Operator alarm disalin dari batch (alarmMonitor): telusuri batch_no -> operator_username -> users.
+                    EXISTS (SELECT 1
+                    FROM batch_records b
+                    JOIN users u ON u.username = b.operator_username
+                    WHERE b.batch_no = t.batch_no
+                      AND u.deleted_at IS NOT NULL) AS operator_deleted
              ${ALARM_FROM}
              ${q.where}
              ${ALARM_ORDER}`,
@@ -52,7 +64,7 @@ export async function GET(request) {
             recoveryValue: r.recovery_value ?? "",
             limitValue: r.limit_value ?? "",
             eventType: r.event_type ?? "",
-            operator: r.operator ?? "",
+            operator: operatorExport(r),
             description: r.description ?? "",
         }));
         return Response.json({ rows, total: rows.length });

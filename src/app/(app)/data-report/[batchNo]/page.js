@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import PermissionGate from "@/components/PermissionGate";
+import DeletedUserBadge from "@/components/DeletedUserBadge";
 
 // ── Helper: format tanggal-jam ────────────────────────────────────────────────
 function fmt(dateStr) {
@@ -258,7 +259,7 @@ function BatchDetailContent() {
             {/* ── Baris 2: Identitas batch ── */}
             <SectionCard title="Identitas Batch">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <InfoField label="Operator"   value={val(batch.operator)} />
+                    <InfoField label="Operator"   value={<>{val(batch.operator)}{batch.operatorDeleted && <DeletedUserBadge />}</>} />
                     <InfoField label="Batch No"   value={val(batch.batchNo)} />
                     <InfoField label="Loading No" value={val(batch.loadingNo)} />
                     <InfoField label="Machine ID" value={val(batch.machineId)} />

@@ -7,6 +7,7 @@ import { validateRecipe } from "@/lib/recipeValidation";
 import { validateBatchNo } from "@/lib/batchNo";
 import { buildRecipeSnapshot } from "@/lib/recipeSnapshot";
 import { START_LOCK_KEY } from "@/lib/recipeGuard";
+import { insertAudit, tryAudit } from "@/lib/auditLog";
 
 // Rentang nilai resep dikelola di src/lib/recipeValidation.js.
 // Aturan format nomor batch ada di src/lib/batchNo.js (dipakai juga oleh klien).
@@ -594,15 +595,16 @@ async function runStart(request, session) {
         try {
             const insertResult = await pool.query(
                 `INSERT INTO batch_records
-                    (batch_no, loading_no, operator, machine_id, recipe_id,
+                    (batch_no, loading_no, operator, operator_username, machine_id, recipe_id,
                      product_name, product_spec, ctrl_type, ster_temp, cool_temp,
                      recipe_snapshot, status, run_begin)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'running', now())
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, 'running', now())
                  RETURNING *`,
                 [
                     String(batchNo).trim(),
                     String(loadingNo).trim(),
                     operator,
+                    session.username,             // operator_username = username akun dari sesi server (bukan dari body)
                     String(machineId).trim(),
                     recipe.id,
                     String(productName).trim(),

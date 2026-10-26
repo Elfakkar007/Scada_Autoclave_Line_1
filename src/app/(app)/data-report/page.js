@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import PermissionGate from "@/components/PermissionGate";
+import DeletedUserBadge from "@/components/DeletedUserBadge";
 
 const LIMIT = 20;
 
@@ -245,7 +246,7 @@ function DataReportContent() {
                                             </Link>
                                         </td>
                                         <td className={tdClass}>{row.productName ?? "-"}</td>
-                                        <td className={tdClass}>{row.operator ?? "-"}</td>
+                                        <td className={tdClass}>{row.operator ?? "-"}{row.operatorDeleted && <DeletedUserBadge />}</td>
                                         <td className={tdClass}>{row.sterTemp !== null ? `${row.sterTemp} °C` : "-"}</td>
                                         <td className={tdClass + " whitespace-nowrap"}>{fmt(row.runBegin)}</td>
                                         <td className={tdClass + " whitespace-nowrap"}>{fmt(row.runFinish)}</td>

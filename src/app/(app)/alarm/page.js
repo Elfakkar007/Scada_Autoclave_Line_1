@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { eventLabel } from "@/lib/alarmEventLabels";
 import PermissionGate from "@/components/PermissionGate";
+import DeletedUserBadge from "@/components/DeletedUserBadge";
 
 const LIMIT = 20;
 
@@ -275,7 +276,7 @@ function AlarmContent() {
                                         <td className={tdClass}>
                                             <EventTypeBadge value={row.eventType} />
                                         </td>
-                                        <td className={tdClass}>{row.operator ?? "-"}</td>
+                                        <td className={tdClass}>{row.operator ?? "-"}{row.operatorDeleted && <DeletedUserBadge />}</td>
                                     </tr>
                                 ))}
                             </tbody>

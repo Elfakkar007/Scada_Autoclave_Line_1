@@ -319,7 +319,6 @@ export default function RolesPage() {
         if (!authorized || selectedId == null) return;
         let cancelled = false;
         (async () => {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setLoadingDetail(true);
             setDetailError(null);
             try {
