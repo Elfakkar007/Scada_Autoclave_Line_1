@@ -104,7 +104,7 @@ export async function POST(request) {
 
         // ── Ambil user (aktif ATAU nonaktif; yang terhapus-lunak dianggap tidak ada) ──
         // + role dari tabel roles. Status aktif diperiksa SESUDAH password cocok (lihat bawah).
-        // Kolom lama users.role TIDAK dipakai lagi (hanya disinkronkan trigger untuk rollback).
+        // Peran user ditentukan lewat users.role_id -> tabel roles, dan izin lewat requirePermission/requireAnyPermission.
         const result = await pool.query(
             `SELECT u.id, u.username, u.full_name, u.password_hash, u.role_id, u.is_active,
                     r.key AS role_key, r.name AS role_name

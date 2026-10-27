@@ -77,7 +77,7 @@ export async function POST(request) {
             );
             if (existing.rows.length > 0) throw new HttpError(400, "Username sudah digunakan");
 
-            // users.role (kolom lama) diisi otomatis oleh trigger dari role_id
+            // Peran user ditentukan lewat users.role_id -> tabel roles, dan izin lewat requirePermission/requireAnyPermission
             const ins = await client.query(
                 `INSERT INTO users (username, password_hash, full_name, role_id)
                  VALUES ($1, $2, $3, $4)

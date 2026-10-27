@@ -325,8 +325,6 @@ export default function Home() {
       try {
         const res = await fetch("/api/batch/stop", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ actor: data.operator ?? "unknown" }),
         });
         status = res.status;
         json = await res.json().catch(() => null);

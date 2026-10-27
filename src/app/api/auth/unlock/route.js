@@ -45,7 +45,7 @@ export async function POST(request) {
         }
 
         const user = result.rows[0];
-        // Key role dari tabel roles (bukan kolom lama users.role)
+        // Peran user ditentukan lewat users.role_id -> tabel roles, dan izin lewat requirePermission/requireAnyPermission
         const roleKey = user.role_key ?? "none";
         const match = await bcrypt.compare(password, user.password_hash);
 

@@ -78,7 +78,7 @@ export async function POST(request, { params }) {
                 entityType: "user",
                 entityId:   username,
                 oldValue,
-                description: `User ${username} (${target.roleName ?? target.role}) dihapus secara permanen oleh ${session.username}`,
+                description: `User ${username} (${target.roleName ?? target.role}) dihapus oleh ${session.username} (hapus-lunak; data tetap tersimpan, username terkunci)`,
             });
 
             // Pastikan masih ada pemegang Role Management setelah penghapusan
