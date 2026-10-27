@@ -16,6 +16,9 @@ const MAX_USERNAME_LEN = 64;
 const MAX_PASSWORD_LEN = 200;
 
 const GENERIC_ERROR = "Username atau password salah";
+// Hanya ditampilkan bila username ada, belum dihapus, akun nonaktif, DAN password benar
+// (jadi tidak bisa dipakai menebak status akun tanpa tahu password).
+const INACTIVE_ERROR = "Akun Anda dinonaktifkan. Hubungi administrator.";
 const BLOCKED_ERROR = "Terlalu banyak percobaan login gagal. Coba lagi beberapa menit lagi.";
 
 // Hash palsu: supaya waktu respons untuk username yang tidak ada mirip dengan yang ada.
@@ -99,14 +102,15 @@ export async function POST(request) {
             );
         }
 
-        // ── Ambil user (hanya yang aktif) + role dari tabel roles ─────────────
+        // ── Ambil user (aktif ATAU nonaktif; yang terhapus-lunak dianggap tidak ada) ──
+        // + role dari tabel roles. Status aktif diperiksa SESUDAH password cocok (lihat bawah).
         // Kolom lama users.role TIDAK dipakai lagi (hanya disinkronkan trigger untuk rollback).
         const result = await pool.query(
-            `SELECT u.id, u.username, u.full_name, u.password_hash, u.role_id,
+            `SELECT u.id, u.username, u.full_name, u.password_hash, u.role_id, u.is_active,
                     r.key AS role_key, r.name AS role_name
                FROM users u
                LEFT JOIN roles r ON r.id = u.role_id
-              WHERE u.username = $1 AND u.is_active = true AND u.deleted_at IS NULL`,
+              WHERE u.username = $1 AND u.deleted_at IS NULL`,
             [username]
         );
         const user = result.rows[0] ?? null;
@@ -122,10 +126,25 @@ export async function POST(request) {
                 action: "login_failed",
                 entityType: "user",
                 entityId: username,
-                newValue: { reason: user ? "wrong_password" : "unknown_or_inactive_user" },
+                newValue: { reason: user ? "wrong_password" : "unknown_user" },
                 description: `Login gagal untuk username "${username}"`,
             }, "auth/login");
             return Response.json({ ok: false, error: GENERIC_ERROR }, { status: 401 });
+        }
+
+        // Password benar tetapi akun dinonaktifkan: beri pesan informatif.
+        // Tetap dicatat sebagai login_failed (ikut hitungan batas percobaan, seperti sebelumnya).
+        if (!user.is_active) {
+            await tryAudit({
+                actor: username,
+                actorRole: null,
+                action: "login_failed",
+                entityType: "user",
+                entityId: username,
+                newValue: { reason: "inactive_account" },
+                description: `Login ditolak: akun "${username}" nonaktif`,
+            }, "auth/login");
+            return Response.json({ ok: false, error: INACTIVE_ERROR }, { status: 403 });
         }
 
         // ── Login berhasil ─────────────────────────────────────────────────────

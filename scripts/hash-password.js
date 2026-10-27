@@ -21,5 +21,6 @@ console.log("Password hash:");
 console.log(hash);
 console.log("");
 console.log("Copy hash di atas, lalu jalankan query INSERT berikut di pgAdmin:");
-console.log(`INSERT INTO users (username, password_hash, full_name, role) VALUES ('USERNAME_DISINI', '${hash}', 'NAMA_LENGKAP_DISINI', 'admin');`);
+// Peran ditentukan lewat role_id (kolom lama users.role sudah tidak dipakai/dihapus).
+console.log(`INSERT INTO users (username, password_hash, full_name, role_id) VALUES ('USERNAME_DISINI', '${hash}', 'NAMA_LENGKAP_DISINI', (SELECT id FROM roles WHERE key = 'admin'));`);
 console.log("");

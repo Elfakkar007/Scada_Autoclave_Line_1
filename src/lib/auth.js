@@ -8,9 +8,8 @@
 //  - Peran & izin SELALU dibaca dari database pada setiap request (bukan dari JWT).
 //  - session.role tetap berisi KEY role (mis. "admin", "qa") supaya kode lama
 //    yang memakai session.role (audit actor_role, dll.) tetap jalan.
-//  - requirePermission(...) adalah guard baru. requireAdmin dipertahankan
-//    sementara sebagai kompatibilitas (admin saja, seperti perilaku lama) dan
-//    DIHAPUS setelah semua pemakaiannya diganti.
+//  - requirePermission(...) adalah guard utama. requireAdmin (guard lama,
+//    admin saja) sudah DIHAPUS (13.4a): semua pemakaiannya telah diganti.
 // ==============================================================================
 
 import { SignJWT, jwtVerify } from "jose";
@@ -189,22 +188,6 @@ export async function requireAnyPermission(cookieStore, options) {
         return {
             session: null,
             errorResponse: forbidden("Anda tidak memiliki izin untuk aksi ini"),
-        };
-    }
-    return { session, errorResponse: null };
-}
-
-// ── 6. DEPRECATED — requireAdmin ──────────────────────────────────────────────
-// Kompatibilitas sementara: hanya role dengan key "admin" (perilaku lama).
-// Ganti semua pemakaian dengan requirePermission(...), lalu hapus fungsi ini.
-export async function requireAdmin(cookieStore) {
-    const { session, errorResponse } = await requireAuth(cookieStore);
-    if (errorResponse) return { session: null, errorResponse };
-
-    if (session.roleKey !== "admin") {
-        return {
-            session: null,
-            errorResponse: forbidden("Hanya admin yang diizinkan"),
         };
     }
     return { session, errorResponse: null };
