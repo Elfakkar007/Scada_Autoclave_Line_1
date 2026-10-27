@@ -340,7 +340,7 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                                     className={`${btnSm} bg-red-700 hover:bg-red-800 text-white`}
                                     onClick={() => { setDeleteOpen((v) => !v); setEditOpen(false); setResetOpen(false); }}
                                     disabled={saving || deleting}
-                                    title="Hapus akun secara permanen (username tidak bisa dipakai lagi)"
+                                    title="Hapus akun (akun akan dihapus dan tidak bisa login lagi. Riwayat tetap tersimpan dan username tidak dapat dipakai ulang)"
                                 >
                                     Hapus
                                 </button>
@@ -443,7 +443,7 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                 <tr className="bg-red-50 border-b border-red-200">
                     <td colSpan={6} className="px-4 py-4">
                         <div className="text-sm">
-                            <p className="font-semibold text-red-800 mb-1">Hapus akun ini secara permanen?</p>
+                            <p className="font-semibold text-red-800 mb-1">Hapus akun ini? Akun akan dihapus dan tidak bisa login lagi. Riwayat tetap tersimpan dan username tidak dapat dipakai ulang.</p>
                             <p className="text-scada-ink mb-1">
                                 Username: <span className="font-mono font-semibold">{user.username}</span>
                                 &ensp;|&ensp;
