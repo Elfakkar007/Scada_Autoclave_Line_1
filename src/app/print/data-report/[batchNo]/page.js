@@ -9,6 +9,7 @@ import {
 import { eventLabel } from "@/lib/alarmEventLabels";
 import { operatorText } from "@/lib/operatorLabel";
 import PermissionGate from "@/components/PermissionGate";
+import SignOffBlock from "@/components/SignOffBlock";
 
 // ── Helper format waktu Asia/Jakarta ─────────────────────────────────────────
 function fmtTime(dateStr) {
@@ -401,7 +402,10 @@ function PrintDataReportContent() {
 
                 {/* Header blok */}
                 <div style={{ border: "1px solid #555", padding: "4px 6px", marginBottom: 6, fontSize: 11 }}>
-                    <HRow cols={[{ label: "Prod.Name :", value: fmtStr(batch.productName) }]} />
+                    <HRow cols={[
+                        { label: "Prod.Name :", value: fmtStr(batch.productName), flex: 2 },
+                        { label: "Amount    :", value: batch.bottleCount !== null && batch.bottleCount !== undefined ? `${batch.bottleCount} Botol` : "-", flex: 1 },
+                    ]} />
                     <HRow cols={[
                         { label: "Prod.Spec.:", value: fmtStr(batch.productSpec), flex: 2 },
                         { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
@@ -482,6 +486,7 @@ function PrintDataReportContent() {
                         })}
                     </tbody>
                 </table>
+                <SignOffBlock style={{ marginTop: 24 }} />
             </div>{/* end print-sheet bagian 1 */}
 
             {/* ═══════════════════════════════════════════════════════════════
@@ -580,6 +585,8 @@ function PrintDataReportContent() {
                         <span>Total: {fmtMin(batch.totalTimeMin)} Min</span>
                         <span>Finish: {fmtTime(batch.runFinish)}</span>
                     </div>
+
+                    <SignOffBlock style={{ marginTop: 16 }} />
             </div>{/* end curve-block */}
             </div>{/* end print-sheet bagian 2 */}
 
@@ -653,6 +660,7 @@ function PrintDataReportContent() {
                         </tbody>
                     </table>
                 )}
+                <SignOffBlock style={{ marginTop: 24 }} />
             </div>{/* end print-sheet bagian 3 */}
         </>
     );

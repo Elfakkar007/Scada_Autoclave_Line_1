@@ -81,28 +81,51 @@ export async function GET(request) {
             );
         }
 
-        const dataRes = await pool.query(
-            `SELECT batch_no, loading_no, product_name, product_spec, operator,
-                    machine_id, ster_temp, run_begin, run_finish, total_time_min,
-                    heat_time_min, ster_time_min, cool_time_min,
-                    fo_min, fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol,
-                    -- Sumber utama = snapshot resep saat START (item 6). Resep "live" hanya fallback
-                    -- untuk batch tanpa snapshot. CASE (bukan COALESCE) disengaja: snapshot yang
-                    -- foValSetting-nya kosong harus tetap kosong, jangan diisi dari resep yang
-                    -- mungkin baru diberi nilai.
-                    CASE WHEN recipe_snapshot IS NOT NULL
-                         THEN (recipe_snapshot->>'foValSetting')::numeric
-                         ELSE (SELECT r.fo_val_setting FROM recipes r WHERE r.id = batch_records.recipe_id)
-                    END AS fo_val_setting,
-                    status,
-                    EXISTS (SELECT 1 FROM users u
-                        WHERE u.username = batch_records.operator_username
-                          AND u.deleted_at IS NOT NULL) AS operator_deleted
-             FROM batch_records
-             ${q.where}
-             ORDER BY COALESCE(run_begin, created_at) DESC`,
-            q.values
-        );
+        let dataRes;
+        try {
+            dataRes = await pool.query(
+                `SELECT batch_no, loading_no, product_name, product_spec, bottle_count, operator,
+                        machine_id, ster_temp, run_begin, run_finish, total_time_min,
+                        heat_time_min, ster_time_min, cool_time_min,
+                        fo_min, fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol,
+                        CASE WHEN recipe_snapshot IS NOT NULL
+                             THEN (recipe_snapshot->>'foValSetting')::numeric
+                             ELSE (SELECT r.fo_val_setting FROM recipes r WHERE r.id = batch_records.recipe_id)
+                        END AS fo_val_setting,
+                        status,
+                        EXISTS (SELECT 1 FROM users u
+                            WHERE u.username = batch_records.operator_username
+                              AND u.deleted_at IS NOT NULL) AS operator_deleted
+                 FROM batch_records
+                 ${q.where}
+                 ORDER BY COALESCE(run_begin, created_at) DESC`,
+                q.values
+            );
+        } catch (queryErr) {
+            if (queryErr.code === "42703") {
+                // Kolom bottle_count belum dimigrasi di pgAdmin, fallback NULL
+                dataRes = await pool.query(
+                    `SELECT batch_no, loading_no, product_name, product_spec, NULL::integer AS bottle_count, operator,
+                            machine_id, ster_temp, run_begin, run_finish, total_time_min,
+                            heat_time_min, ster_time_min, cool_time_min,
+                            fo_min, fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol,
+                            CASE WHEN recipe_snapshot IS NOT NULL
+                                 THEN (recipe_snapshot->>'foValSetting')::numeric
+                                 ELSE (SELECT r.fo_val_setting FROM recipes r WHERE r.id = batch_records.recipe_id)
+                            END AS fo_val_setting,
+                            status,
+                            EXISTS (SELECT 1 FROM users u
+                                WHERE u.username = batch_records.operator_username
+                                  AND u.deleted_at IS NOT NULL) AS operator_deleted
+                     FROM batch_records
+                     ${q.where}
+                     ORDER BY COALESCE(run_begin, created_at) DESC`,
+                    q.values
+                );
+            } else {
+                throw queryErr;
+            }
+        }
         const rows = dataRes.rows;
 
         // ── Catat audit ───────────────────────────────────────────────────
@@ -130,6 +153,7 @@ export async function GET(request) {
                 loadingNo: r.loading_no ?? "",
                 productName: r.product_name ?? "",
                 productSpec: r.product_spec ?? "",
+                bottleCount: r.bottle_count !== null && r.bottle_count !== undefined ? Number(r.bottle_count) : "",
                 operator: operatorExport(r),
                 machineId: r.machine_id ?? "",
                 sterTemp: fmtNum(r.ster_temp),
@@ -165,6 +189,7 @@ export async function GET(request) {
             { header: "Loading No", key: "loadingNo", width: 14 },
             { header: "Produk", key: "productName", width: 26 },
             { header: "Spesifikasi", key: "productSpec", width: 20 },
+            { header: "Jumlah Botol", key: "bottleCount", width: 14 },
             { header: "Operator", key: "operator", width: 16 },
             { header: "Mach. ID", key: "machineId", width: 12 },
             { header: "Ster. Temp", key: "sterTemp", width: 12 },
@@ -199,6 +224,7 @@ export async function GET(request) {
                 loadingNo: r.loading_no ?? "",
                 productName: r.product_name ?? "",
                 productSpec: r.product_spec ?? "",
+                bottleCount: r.bottle_count !== null && r.bottle_count !== undefined ? Number(r.bottle_count) : "",
                 operator: operatorExport(r),
                 machineId: r.machine_id ?? "",
                 sterTemp: fmtNum(r.ster_temp),

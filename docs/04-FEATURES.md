@@ -14,10 +14,10 @@ Pengguna memilih akun dari dropdown nama pengguna aktif dan memasukkan password.
 2. **Form Submit**: Pengguna memilih username dan mengetikkan password, memicu fungsi `handleSubmit` (`src/app/login/page.js:48`).
 3. **API Handler**: Permintaan HTTP `POST` diterima oleh `src/app/api/auth/login/route.js`.
 4. **Pemeriksaan Batas Gagal (Throttling)**: Fungsi `checkThrottle(username)` (`src/app/api/auth/login/route.js:25-50`) memeriksa tabel `audit_log` untuk menghitung event `login_failed` dalam 15 menit terakhir. Jika `>= 5`, endpoint mengembalikan status 429 Too Many Requests (`src/app/api/auth/login/route.js:98`).
-5. **Verifikasi Hash Password**: Handler mengambil data pengguna dari tabel `users` (`src/app/api/auth/login/route.js:103`) dan memverifikasi kata sandi menggunakan `bcrypt.compare` (`src/app/api/auth/login/route.js:110`).
+5. **Verifikasi Hash Password & Status Akun**: Handler mengambil data pengguna dari tabel `users` join `roles` (`src/app/api/auth/login/route.js:108-115`) dengan filter `deleted_at IS NULL`. Password diverifikasi menggunakan `bcrypt.compare` (`src/app/api/auth/login/route.js:119`). Jika user tidak aktif (`is_active = false`), login ditolak (`src/app/api/auth/login/route.js:139`).
 6. **Pencatatan Audit & Terbit Token**:
-   - Jika berhasil: Memperbarui kolom `last_login_at` (`src/app/api/auth/login/route.js:127`), memanggil `insertAudit` (`src/app/api/auth/login/route.js:129`), membuat JWT via `createSessionToken` (`src/lib/auth.js:25`), dan menyetel cookie `session_token` (`src/app/api/auth/login/route.js:146`).
-   - Jika gagal: Memanggil `tryAudit` dengan action `login_failed` (`src/app/api/auth/login/route.js:114`) dan mengembalikan status 401.
+   - Jika berhasil: Memperbarui kolom `last_login_at` (`src/app/api/auth/login/route.js:154`), memanggil `insertAudit` (`src/app/api/auth/login/route.js:156`), membuat JWT via `createSessionToken` (`src/lib/auth.js:23`) yang membawa `roleKey`, `roleId`, `roleName`, dan menyetel cookie `session_token` dengan opsi keamanan `sessionCookieOptions` (`src/app/api/auth/login/route.js:176`).
+   - Jika gagal: Memanggil `tryAudit` dengan action `login_failed` (`src/app/api/auth/login/route.js:123`) dan mengembalikan status 401.
 7. **Proteksi Akses Halaman**: Setiap permintaan ke rute terproteksi diperiksa oleh middleware `src/proxy.js:10-38` yang membaca cookie `session_token` dan memvalidasinya menggunakan `verifySessionToken` (`src/lib/auth.js:36`).
 8. **Logout**: Tombol logout pada `src/components/Navbar.js:33` mengirimkan `POST /api/auth/logout/route.js`, mencatat audit log, dan menghapus cookie `session_token` (`src/app/api/auth/logout/route.js:24`).
 
@@ -76,15 +76,16 @@ Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data sta
 ## 4. Fitur Memulai Batch Sterilisasi (Start Batch Sequence)
 
 ### Deskripsi Faktual
-Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Produk, Spesifikasi Kemasan, dan Formula Resep. Sistem mengunci eksekusi START agar tidak bisa ditekan ganda, memvalidasi resep, memeriksa ketiadaan batch aktif lain, memeriksa interlock fisik PLC (kedua pintu tertutup dan segel aktif), menulis 7 setpoint resep ke register PLC, melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records`.
+Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Produk (dropdown/ketik manual), Spesifikasi Kemasan (dropdown/ketik manual), Jumlah Botol (amount integer positif), dan Formula Resep. Sistem mengunci eksekusi START dengan advisory lock `START_LOCK_KEY` agar tidak bisa ditekan ganda, memvalidasi resep, memeriksa ketiadaan batch aktif lain, memeriksa interlock fisik PLC (kedua pintu tertutup dan segel aktif), menulis 7 setpoint resep ke register PLC, melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records` (termasuk kolom `bottle_count`).
 
 ### Rantai Alur Kode
-1. **Dialog Input**: Tombol "START BATCH" di `src/app/(app)/page.js:380` membuka modal `src/components/StartDialog.js`.
+1. **Dialog Input**: Tombol "START BATCH" di `src/app/(app)/page.js:380` membuka modal `src/components/StartDialog.js`. Modal menyediakan form 2 kolom responsif, combobox pencarian `SearchableCombobox` untuk Nama Produk dan Spesifikasi Kemasan, serta validasi bilangan bulat positif untuk Jumlah Botol (`bottleCount`).
 2. **Kirim START**: Operator menekan tombol "MULAI PROSES", memicu `handleStartSubmit` yang mengirim request `POST /api/batch/start` (`src/components/StartDialog.js:180`).
-3. **Advisory Lock Server**: Handler `src/app/api/batch/start/route.js:105` memanggil `acquireStartLock()` menggunakan kunci advisory `START_LOCK_KEY` (`847291034`) pada PostgreSQL (`src/app/api/batch/start/route.js:34`).
+3. **Advisory Lock Server**: Handler `src/app/api/batch/start/route.js:105` memanggil `acquireStartLock()` menggunakan kunci advisory `START_LOCK_KEY` (`7401001` dari `src/lib/recipeGuard.js:10`) pada PostgreSQL (`src/app/api/batch/start/route.js:35`).
 4. **Validasi Parameter**:
    - Memvalidasi Batch No melalui `validateBatchNo` (`src/lib/batchNo.js:16`).
    - Memeriksa keunikan Batch No pada tabel `batch_records` (`src/app/api/batch/start/route.js:218`).
+   - Membaca dan memvalidasi `bottleCount` (atau `amount`) dari body (`src/app/api/batch/start/route.js:134-141`).
    - Memvalidasi rentang fisik resep melalui `validateRecipe` (`src/lib/recipeValidation.js:52`).
    - Membangun snapshot formula resep melalui `buildRecipeSnapshot` (`src/lib/recipeSnapshot.js:18`).
 5. **Guard Interlock Mesin**:
@@ -105,12 +106,15 @@ Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Prod
 10. **Polling Fase PLC**:
     - Memanggil `pollUntilPhase([2, 3, 4], 10000, 500)` (`src/app/api/batch/start/route.js:547`) menunggu hingga register `PROCCES_TEXT` berubah menjadi kode 2 (Filling), 3 (Heating), atau 4 (Steril).
 11. **Pencatatan Batch Record**:
-    - Menjalankan `INSERT INTO batch_records` dengan status `'running'` dan menyimpan `recipe_snapshot` format JSON (`src/app/api/batch/start/route.js:593`).
-    - Mencatat aksi `start_batch` ke tabel `audit_log` (`src/app/api/batch/start/route.js:656`).
+    - Menjalankan `INSERT INTO batch_records` dengan kolom `bottle_count`, status `'running'`, dan snapshot resep JSON (`src/app/api/batch/start/route.js:606`).
+    - Menyediakan fallback bila kolom `bottle_count` belum ada di database (`colErr.code === "42703"`, `src/app/api/batch/start/route.js:630`).
+    - Mencatat aksi `start_batch` ke tabel `audit_log` (`src/app/api/batch/start/route.js:685`).
 
 ### Bukti Kode
-- `src/components/StartDialog.js:180-220`
-- `src/app/api/batch/start/route.js:96-675`
+- `src/components/StartDialog.js:1-420`
+- `src/components/SearchableCombobox.js:1-204`
+- `src/app/api/batch/start/route.js:1-743`
+- `src/lib/recipeGuard.js:1-55`
 - `src/lib/recipeValidation.js:52-120`
 - `src/lib/plcWrite.js:16-85`
 
@@ -310,21 +314,22 @@ Administrator dapat melihat daftar seluruh akun operator dan admin, mendaftarkan
 ## 13. Fitur Riwayat Data Report & Ekspor Excel Batch
 
 ### Deskripsi Faktual
-Pengguna dapat mencari data batch berdasarkan nomor batch, nama operator, atau produk, memfilter status batch, menyaring rentang tanggal WIB, membuka detail data laporan, serta mengekspor seluruh catatan batch ke dalam berkas spreadsheet Microsoft Excel (`.xlsx`).
+Pengguna dapat mencari data batch berdasarkan nomor batch, nama operator, atau produk, memfilter status batch, menyaring rentang tanggal WIB, membuka detail data laporan (termasuk informasi Jumlah Botol / Amount), serta mengekspor seluruh catatan batch ke dalam berkas spreadsheet Microsoft Excel (`.xlsx`) dan format JSON.
 
 ### Rantai Alur Kode
 1. **Halaman Daftar**: `src/app/(app)/data-report/page.js:40` memanggil `GET /api/batch-records/route.js` dengan parameter query URL.
-2. **Detail Batch**: Mengklik salah satu batch membuka `src/app/(app)/data-report/[batchNo]/page.js:35` yang mengambil data detail dan seluruh titik rekaman sensor dari `GET /api/batch-records/[batchNo]/route.js`.
+2. **Detail Batch**: Mengklik salah satu batch membuka `src/app/(app)/data-report/[batchNo]/page.js:35` yang mengambil data detail dan seluruh titik rekaman sensor dari `GET /api/batch-records/[batchNo]/route.js`. Kartu Informasi Produk menampilkan Amount / Jumlah Botol (`batch.bottleCount`).
 3. **Ekspor Spreadsheet**:
    - Tombol "Export Excel" pada `src/app/(app)/data-report/page.js:140` mengarahkan browser ke `/api/batch-records/export?format=xlsx`.
-   - Handler `src/app/api/batch-records/export/route.js:54` memvalidasi rentang baris (maksimal 50.000), mengambil data dari `batch_records`, mencatat audit `export_batch_records`, dan membangun worksheet 25 kolom melalui `exceljs` (`src/app/api/batch-records/export/route.js:150-216`).
+   - Handler `src/app/api/batch-records/export/route.js:54` memvalidasi rentang baris (maksimal 50.000), mengambil data dari `batch_records` (termasuk kolom `bottle_count` dengan fallback), mencatat audit `export_batch_records`, dan membangun worksheet 26 kolom melalui `exceljs` (`src/app/api/batch-records/export/route.js:180-230`).
    - Mengembalikan response binary dengan header `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
 
 ### Bukti Kode
 - `src/app/(app)/data-report/page.js:35-150`
+- `src/app/(app)/data-report/[batchNo]/page.js:250-265`
 - `src/app/api/batch-records/route.js:4-90`
-- `src/app/api/batch-records/export/route.js:54-228`
-- `src/app/api/batch-records/[batchNo]/route.js:4-118`
+- `src/app/api/batch-records/export/route.js:54-265`
+- `src/app/api/batch-records/[batchNo]/route.js:4-127`
 
 ---
 
@@ -335,7 +340,7 @@ Menyediakan pelacakan kepatuhan terhadap seluruh perubahan sistem SCADA: mencata
 
 ### Rantai Alur Kode
 1. **Halaman UI**: `src/app/(app)/audit-log/page.js:80` memanggil `GET /api/audit-log/route.js` dan `GET /api/audit-log/filters/route.js`.
-2. **Query Database**: Handler `src/app/api/audit-log/route.js:52` menjalankan query SQL dinamis pada tabel `audit_log` dengan pembatasan hak akses via `requireAdmin`.
+2. **Query Database**: Handler `src/app/api/audit-log/route.js:52` menjalankan query SQL dinamis pada tabel `audit_log` dengan pembatasan hak akses via `requirePermission(cookieStore, "audit_log", "view")`.
 3. **Ekspor Excel**: Tombol "Export Excel" memanggil `GET /api/audit-log/export?format=xlsx` (`src/app/api/audit-log/export/route.js:52`). Handler menghasilkan file spreadsheet Excel 11 kolom melalui pustaka `exceljs` dan mencatat aktivitas ekspor tersebut kembali ke tabel `audit_log`.
 
 ### Bukti Kode
@@ -364,19 +369,19 @@ Menampilkan grafik multi-sensor interaktif suhu (9 sensor) dan tekanan (kPa) unt
 ## 16. Fitur Pencetakan Dokumen Laporan Produksi (Print Layouts)
 
 ### Deskripsi Faktual
-Menyediakan tata letak dokumen yang diformat khusus untuk dicetak ke printer kertas atau disimpan sebagai berkas PDF (A4 Portrait dan A4 Landscape) dengan penomoran halaman otomatis.
+Menyediakan tata letak dokumen yang diformat khusus untuk dicetak ke printer kertas atau disimpan sebagai berkas PDF (A4 Portrait dan A4 Landscape) dengan penomoran halaman otomatis, informasi Jumlah Botol (Amount), serta blok tanda tangan pengesahan fisik (`SignOffBlock` - Operated by & Checked by) sesuai standar industri farmasi.
 
 ### Rantai Alur Kode
 1. **Cetak Laporan Gabungan Data Report**:
    - Rute: `src/app/print/data-report/[batchNo]/page.js`.
-   - Mengambil data dari `GET /api/batch-records/[batchNo]` dan `GET /api/alarms/by-batch/[batchNo]` (`src/app/print/data-report/[batchNo]/page.js:130`).
-   - Merender 3 seksi: Data Record tabel trend (A4 portrait), Kurva grafik Recharts lebar 680px (A4 portrait), dan Log Alarm batch (A4 landscape) dengan penomoran halaman yang diatur via CSS named pages.
+   - Mengambil data dari `GET /api/batch-records/[batchNo]` dan `GET /api/alarms/by-batch/[batchNo]` (`src/app/print/data-report/[batchNo]/page.js:130`). Header menampilkan `Amount :` (`batch.bottleCount`).
+   - Merender 3 seksi: Data Record tabel trend (A4 portrait), Kurva grafik Recharts lebar 680px (A4 portrait), dan Log Alarm batch (A4 landscape) dengan penomoran halaman yang diatur via CSS named pages. Menyematkan `<SignOffBlock />` di setiap akhir seksi.
 2. **Cetak Kurva Penuh**:
    - Rute: `src/app/print/data-report/[batchNo]/curve/page.js`.
-   - Merender kurva suhu dan tekanan berorientasi A4 landscape dengan fixed width 940px tanpa animasi grafik (`src/app/print/data-report/[batchNo]/curve/page.js:250`).
+   - Merender kurva suhu dan tekanan berorientasi A4 landscape dengan fixed width 940px tanpa animasi grafik (`src/app/print/data-report/[batchNo]/curve/page.js:250`), header `Amount :`, dan blok `<SignOffBlock />`.
 3. **Cetak Log Alarm**:
    - Rute: `src/app/print/alarm/page.js`.
-   - Mengambil seluruh baris filter dari `GET /api/alarms/print-data` dan merender tabel landscape A4 (`src/app/print/alarm/page.js:131`).
+   - Mengambil seluruh baris filter dari `GET /api/alarms/print-data` dan merender tabel landscape A4 (`src/app/print/alarm/page.js:131`), diakhiri blok `<SignOffBlock />` dengan styling `.keep-together`.
 4. **Cetak Log Audit**:
    - Rute: `src/app/print/audit-log/page.js`.
    - Mengambil data dari `GET /api/audit-log/export?format=json` dan merender tabel landscape A4 (`src/app/print/audit-log/page.js:135`).
@@ -385,9 +390,10 @@ Menyediakan tata letak dokumen yang diformat khusus untuk dicetak ke printer ker
    - Mengambil data dari `GET /api/batch-records/export?format=json` dan merender tabel 23 kolom landscape A4 (`src/app/print/batch-records/page.js:53`).
 
 ### Bukti Kode
-- `src/app/print/data-report/[batchNo]/page.js:116-360`
-- `src/app/print/data-report/[batchNo]/curve/page.js:105-310`
-- `src/app/print/alarm/page.js:59-235`
+- `src/components/SignOffBlock.js:1-43`
+- `src/app/print/data-report/[batchNo]/page.js:1-668`
+- `src/app/print/data-report/[batchNo]/curve/page.js:1-320`
+- `src/app/print/alarm/page.js:1-248`
 - `src/app/print/audit-log/page.js:58-235`
 - `src/app/print/batch-records/page.js:24-170`
 
@@ -404,3 +410,240 @@ Menyediakan tata letak dokumen yang diformat khusus untuk dicetak ke printer ker
 3. **Guard Interlock Bypass yang Dinonaktifkan**:
    - Berkas: `src/app/api/batch/start/route.js:342-347`.
    - Bukti: Pengecekan status tag bypass `DOOR_LOCK` (M6.0) dinonaktifkan dalam blok komentar karena berdasarkan pengujian fisik mesin di pabrik dapat berjalan normal saat tag tersebut aktif.
+4. **Penghapusan Kolom Legacy `users.role` (Migrasi 005)**:
+   - Berkas: `migrations/005_drop_legacy_role.sql`, `src/lib/auth.js`, `src/app/api/auth/login/route.js`, `src/app/api/users/route.js`, `scripts/hash-password.js`.
+   - Bukti: Kolom teks `users.role`, trigger `trg_users_sync_legacy_role`, fungsi trigger terkait, dan constraint `users_role_check` telah dihapus sepenuhnya dari skema database dan kode. Otorisasi dialihkan penuh ke `users.role_id` mengarah ke tabel `roles` dan perizinan via `role_permissions`.
+5. **Penghapusan Payload Body Mati pada Permintaan STOP**:
+   - Berkas: `src/app/(app)/page.js:326-330` dan `src/app/api/batch/stop/route.js:9`.
+   - Bukti: Pemanggilan fetch `/api/batch/stop` di Dashboard sebelumnya mengirim payload `body: JSON.stringify({ actor: ... })` beserta header `Content-Type: application/json`. Karena handler server mengambil aktor langsung dari sesi JWT terverifikasi, payload body dan header tersebut telah dihapus.
+6. **Penghapusan Harness Uji Usang `fase1_integration.mjs`**:
+   - Berkas: `fase1/tests/fase1_integration.mjs`.
+   - Bukti: Harness integrasi lama yang masih mengasumsikan adanya kolom `users.role` telah dihapus dari repositori. Pengujian matriks perizinan kini menggunakan `fase1/tests/matrix.mjs`.
+7. **Bypass Pengujian Status Kesiapan Mesin pada Dashboard**:
+   - Berkas: `src/app/(app)/page.js:460`.
+   - Bukti: Variabel evaluasi kesiapan mesin `startAllowed` di-hardcode menjadi `const startAllowed = true;`, sementara baris logika asli `!noData && data.plcOk === true && phaseRaw === 1 && !data.running` dinonaktifkan dalam komentar. Pengecekan server-side di `/api/batch/start` tetap memvalidasi interlock dan fase mesin secara fail-closed, namun penguncian tombol pada antarmuka web ter-bypass saat pengujian.
+
+---
+
+## 18. Fitur Manajemen Peran & Matriks Otorisasi Granular (Role-Based Access Control / RBAC)
+
+### Deskripsi Faktual
+Menggantikan sistem peran monolitik statis dengan sistem perizinan berbasis peran (RBAC) dinamis. Admin dapat membuat peran baru (atau mengkloning dari peran yang sudah ada), mengubah nama/deskripsi, dan mengatur matriks hak akses per resource sistem (`none`, `view`, `edit`). Sistem mencakup 13 resource halaman dan 3 kunci aksi kritis (`action.batch_control`, `action.write_calibration`, `action.write_safety_params`) yang seluruhnya telah terhubung ke modul antarmuka dan backend API fungsional. Peran sistem bawaan (`admin`, `operator`, `qa`, `maintainer`) dikunci dari penghapusan dan pengubahan key. Setiap mutasi peran dilindungi oleh advisory lock transaksi database `7001` serta invariant guard yang memastikan selalu tersisa minimal satu user aktif yang memegang izin Role Management (`roles = edit`).
+
+### Rantai Alur Kode
+1. **Halaman UI**: Admin mengakses `src/app/(app)/roles/page.js`. Halaman mengambil daftar peran via `GET /api/roles` (`src/app/api/roles/route.js:25`).
+2. **Katalog Perizinan**: Definisi resource, level izin yang diizinkan per resource, dan pemetaan rank diatur secara terpusat pada `src/lib/permissionCatalog.js:23-42`.
+3. **Pemberian / Pengubahan Izin**: Admin memilih level izin pada tabel matriks perizinan di UI dan menyimpan perubahan via `PUT /api/roles/[id]` (`src/app/api/roles/[id]/route.js:41`).
+4. **Pencegahan Lockout Sistem**: Handler mengeksekusi `assertRoleManagerRemains(client)` (`src/lib/roleAdmin.js:40`). Bila perubahan akan menyebabkan tidak ada lagi pengguna aktif pemegang izin `roles = edit`, transaksi otomatis dibatalkan (`ROLLBACK`) dan mengembalikan HTTP 409 Conflict.
+5. **Penjagaan Sisi Server**: Setiap route API memverifikasi izin pengguna secara real-time dari database via `requirePermission(cookieStore, resource, minLevel)` (`src/lib/auth.js:158`).
+6. **Penjagaan Sisi Klien**: Komponen `src/components/PermissionGate.js` membungkus antarmuka seluruh halaman terproteksi (Trend, Formula, Master Produk, Data Report, Alarm, Parameter Mesin, Kalibrasi, Jam PLC, Kontrol Manual, Dokumen Cetak) untuk menyembunyikan konten dari pengguna tanpa hak akses. Menu navigasi pada `src/components/Navbar.js:89-130` secara otomatis menyembunyikan tautan menu utama, menu mesin, dan menu admin yang memiliki izin `none`.
+
+### Bukti Kode
+- `src/lib/permissionCatalog.js:1-84`
+- `src/lib/roleAdmin.js:1-70`
+- `src/lib/roleQueries.js:1-106`
+- `src/components/PermissionGate.js:1-78`
+- `src/app/(app)/roles/page.js:1-624`
+- `src/app/api/roles/route.js:1-90`
+- `src/app/api/roles/[id]/route.js:1-158`
+- `src/app/api/roles/options/route.js:1-24`
+
+---
+
+## 19. Fitur Hapus-Lunak Akun Pengguna & Penguncian Username (Soft-Delete & Account Deletion)
+
+### Deskripsi Faktual
+Menyediakan mekanisme penghapusan akun pengguna yang patuh terhadap integritas jejak audit industri farmasi: data akun tidak pernah dihapus secara fisik (hard-delete) dari database agar seluruh riwayat batch dan catatan log aktivitas masa lalu tetap utuh. Akun yang dihapus ditandai dengan `deleted_at = now()`, `is_active = false`, dan `role_id = NULL`. Username akun terkunci secara permanen sehingga tidak dapat didaftarkan ulang oleh pengguna lain. Seluruh antarmuka SCADA dan laporan cetak menampilkan penanda eksplisit bahwa operator/pengguna terkait berstatus "deleted user".
+
+### Rantai Alur Kode
+1. **Konfirmasi Penghapusan di UI**: Admin membuka dialog hapus akun pada `src/app/(app)/users/page.js:442`. Dialog mengonfirmasi bahwa akun akan dihapus, tidak bisa login lagi, riwayat tetap tersimpan, dan username tidak dapat dipakai ulang.
+2. **Eksekusi API**: Penekanan tombol konfirmasi memicu `POST /api/users/[username]/delete` (`src/app/api/users/[username]/delete/route.js:16`).
+3. **Pencegahan Self-Delete**: Endpoint menolak penghapusan akun sendiri dengan HTTP 400 (`src/app/api/users/[username]/delete/route.js:25`).
+4. **Transaksi Hapus-Lunak**:
+   - Memperoleh advisory lock `lockRoleMutations(client)` (`src/lib/roleAdmin.js:36`).
+   - Menjalankan `UPDATE users SET deleted_at = now(), is_active = false, role_id = NULL WHERE username = $1` (`src/app/api/users/[username]/delete/route.js:63-71`).
+   - Menulis jejak audit `delete_user` ke tabel `audit_log` dengan rincian status hapus-lunak (`src/app/api/users/[username]/delete/route.js:74-82`).
+   - Memeriksa `assertRoleManagerRemains(client)` (`src/app/api/users/[username]/delete/route.js:85`) untuk memastikan masih ada admin aktif lain.
+5. **Penguncian Username**: Endpoint pendaftaran akun baru `POST /api/users` memeriksa tabel `users` dengan query `WHERE username = $1 AND deleted_at IS NOT NULL` (`src/app/api/users/route.js:63`). Jika ditemukan, pendaftaran ditolak dengan status HTTP 409 Conflict.
+6. **Penanda Visual Pada Antarmuka**:
+   - Komponen `src/components/DeletedUserBadge.js` merender lencana "deleted user" di samping nama operator pada Dashboard (`page.js`), Trend (`trend/page.js`), Data Report (`data-report/page.js`), dan Log Alarm (`alarm/page.js`).
+   - Fungsi helper `operatorText` (`src/lib/operatorLabel.js:16`) menyematkan teks akhiran ` (deleted user)` pada dokumen cetak (`print/data-report/[batchNo]/page.js` dan `print/data-report/[batchNo]/curve/page.js`).
+   - Rute ekspor server-side (`export/route.js`) menambahkan akhiran ` (deleted user)` pada file Excel dan data ekspor.
+
+### Bukti Kode
+- `src/app/api/users/[username]/delete/route.js:1-93`
+- `src/app/api/users/route.js:63-71`
+- `src/components/DeletedUserBadge.js:1-16`
+- `src/lib/operatorLabel.js:1-20`
+- `src/app/(app)/users/page.js:340-470`
+
+---
+
+## 20. Fitur Pengaturan Parameter Mesin PLC (Machine Parameters)
+
+### Deskripsi Faktual
+Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin sterilisasi autoclave yang tersimpan pada register PLC Siemens S7-200. Parameter dikelompokkan dalam 3 tab: Parameter Setting 1 (Ster. Temp, Control Temp, Temp. Space, Ster. Time, Alarm Press., Cool. Temp 1 & 2), Parameter Setting 2 (Safety Press., Regu. Press, Over. Temp, Drain Time, Exhau. Temp, Select Press), dan Pressure Coefficient (a1, b1, a2, b2, Heat/Ster/Cool Coeff). Seluruh operasi penulisan dilindungi oleh PostgreSQL advisory lock `PLC_WRITE_LOCK_KEY` (847291035) dan `START_LOCK_KEY`, validasi batas nilai fisik, cross-check logika antar-field, isian alasan wajib untuk audit trail, serta verifikasi baca-balik dari PLC hingga 4,5 detik. Parameter keselamatan kritis (`SAFETY_PRESS`, `ALRM_PRES`, `SEL_PRESU`) mewajibkan izin khusus `action.write_safety_params`.
+
+### Rantai Alur Kode
+1. **Halaman UI**: Pengguna mengakses `/machine-params` (`src/app/(app)/machine-params/page.js`) yang dibungkus `PermissionGate resource="machine_params" minLevel="view"`. Komponen `PlcParamEditor` memuat tab `["param1", "param2", "coef"]`.
+2. **Pembacaan Tag On-Demand**: `PlcParamEditor` memanggil `GET /api/plc-params?group=...` (`src/app/api/plc-params/route.js:19`).
+3. **Akses PLC Server-Side**: Handler memanggil `readPlcRaw` (`src/lib/plcAccess.js:48`) via REST API KEPServerEX `/iotgateway/read`, mengonversi raw ke nilai teknik via `rawToValue` (`src/lib/plcParamCatalog.js:133`), dan memeriksa status mesin via `checkMachineIdle(IDLE_PHASES_PARAMS)`.
+4. **Form Edit & Konfirmasi**: Pengguna dengan hak `machine_params >= edit` mengubah nilai, memicu dialog modal `PlcDialog` (`src/components/PlcParamEditor.js:58`) yang menampilkan perbandingan nilai lama vs baru, tanda bahaya merah untuk field keselamatan (`danger`), dan input teks alasan wajib minimal 3 karakter.
+5. **Eksekusi Penulisan ke API**: Permintaan dikirim ke `PUT /api/plc-params` (`src/app/api/plc-params/route.js:57`).
+6. **Guard Otorisasi & Serialisasi**:
+   - Handler memverifikasi izin `machine_params >= edit` dan `action.write_safety_params >= edit` (bila field keselamatan diubah).
+   - Menjalankan `withPlcLocks` (`src/lib/plcAccess.js:89`) yang memegang `START_LOCK_KEY` (7401001) dan `PLC_WRITE_LOCK_KEY` (847291035).
+   - Memastikan mesin idle (`checkMachineIdle`) dan tidak ada batch berjalan di database.
+7. **Pencatatan Audit Pre-Write**: Menulis entri `plc_parameter_write_attempt` ke tabel `audit_log` via `insertAudit`. Jika gagal, proses dibatalkan (fail-closed).
+8. **Tulis & Verifikasi Baca-Balik**:
+   - Memanggil `writeAndVerify` (`src/lib/plcAccess.js:152`) yang menulis tag via `writePlcTags` ke KEPServerEX, kemudian melakukan polling pembacaan ulang hingga 4500 ms untuk memastikan register PLC cocok dengan nilai baru (`rawEqualsKind`).
+   - Jika verifikasi gagal, mencatat audit `plc_parameter_verify_failed` dan mengembalikan HTTP 502.
+   - Jika cocok, mencatat audit `plc_parameter_write_success` dan mengembalikan HTTP 200 beserta nilai `readBack`.
+9. **Hasil di Antarmuka**: Modal menampilkan tabel hijau berisi konfirmasi nilai yang sukses terbaca kembali dari PLC (`src/components/PlcParamEditor.js:21-54`).
+
+### Bukti Kode
+- `src/app/(app)/machine-params/page.js:1-16`
+- `src/components/PlcParamEditor.js:1-401`
+- `src/components/PlcDialog.js:1-20`
+- `src/lib/plcParamCatalog.js:1-230`
+- `src/lib/plcAccess.js:1-185`
+- `src/app/api/plc-params/route.js:1-223`
+
+---
+
+## 21. Fitur Kalibrasi Offset Sensor PLC (Sensor Calibration)
+
+### Deskripsi Faktual
+Menyediakan antarmuka HMI-web untuk melihat dan mengkalibrasi nilai offset bertanda pada sensor autoclave yang terhubung ke PLC: 9 sensor suhu (TH, T1, T2, T3, T4, T5, T6, TM, TL pada tag `CAL_TH` s.d. `CAL_TL`), 2 sensor tekanan bejana (P1 pada `CAL_P1` dan P2 pada `CAL_P2`), serta konduktivitas air (L pada `CAL_L`). Mengubah offset kalibrasi dilindungi guard ganda: pengguna wajib memiliki hak akses `calibration >= edit` dan izin aksi kritis `action.write_calibration = edit`. Penulisan tunduk pada serialisasi penguncian mesin, pemeriksaan fase idle, pencatatan jejak audit lengkap dengan alasan, serta verifikasi baca-balik real-time.
+
+### Rantai Alur Kode
+1. **Halaman UI**: Pengguna mengakses `/calibration` (`src/app/(app)/calibration/page.js`) yang dibungkus `PermissionGate resource="calibration" minLevel="view"`. Komponen `PlcParamEditor` memuat grup `["calibration"]`.
+2. **Pembacaan Offset**: Handler `GET /api/plc-params?group=calibration` membaca tag `CAL_*` melalui `readPlcRaw` dan menampilkan nilai offset bertanda (misal `+0.5 °C` atau `-2 kPa`).
+3. **Pemberian Nilai Baru**: Pengguna memasukkan offset baru pada input desimal. Rentang offset suhu dibatasi -10 s.d. +10 °C, tekanan -50 s.d. +50 kPa, dan konduktivitas -500 s.d. +500 unit raw (`src/lib/plcParamCatalog.js:112-119`).
+4. **Validasi Hak Aksi Kritis**: Permintaan `PUT /api/plc-params` memeriksa izin `action.write_calibration >= edit` (`src/app/api/plc-params/route.js:69`). Jika ditolak, mengembalikan status 403 Forbidden.
+5. **Penulisan Terkunci & Audit**: Handler memperoleh kunci advisory `withPlcLocks`, memastikan fase idle `[0, 1, 6]`, mencatat jejak audit `plc_calibration_write_attempt`, menulis ke KEPServerEX, dan memverifikasi baca-balik tag `CAL_*`.
+6. **Audit Sukses**: Mencatat jejak audit `plc_calibration_write_success` dengan rincian nilai lama dan nilai baru ke tabel `audit_log`.
+
+### Bukti Kode
+- `src/app/(app)/calibration/page.js:1-16`
+- `src/lib/plcParamCatalog.js:111-120`
+- `src/lib/plcAccess.js:89-185`
+- `src/app/api/plc-params/route.js:57-223`
+
+---
+
+## 22. Fitur Pemantauan & Sinkronisasi Jam RTC PLC (PLC Clock Sync)
+
+### Deskripsi Faktual
+Memantau waktu Real-Time Clock (RTC) pengontrol Siemens S7-200 secara real-time dan menyediakan fungsi sinkronisasi jam PLC terhadap waktu sistem PC server atau pengisian waktu manual. Jam PLC dibaca dari register BCD VB2000..VB2005 (instruksi ladder TODR) dan diperbarui ke register buffer BCD VB3000..VB3005 sebelum dieksekusi melalui pulsa tepi naik tag `ENTER_RTC` (M31.0 untuk instruksi ladder TODW). Pengaturan jam dilindungi guard `plc_clock >= edit`, syarat mesin idle, pencatatan alasan wajib ke audit log, dan verifikasi baca-balik dengan jendela toleransi waktu ±6 detik.
+
+### Rantai Alur Kode
+1. **Halaman UI**: Antarmuka diakses di `/plc-clock` (`src/app/(app)/plc-clock/page.js`) dengan proteksi `PermissionGate resource="plc_clock" minLevel="view"`. Halaman melakukan polling ke `GET /api/plc-clock` setiap 2000 ms.
+2. **Pembacaan Waktu RTC**: Handler `src/app/api/plc-clock/route.js:27` membaca 6 tag BCD `R_YEAR`, `R_MONTH`, `R_DAY`, `R_HOURS`, `R_MINUTE`, `R_SECOND` via `readPlcRaw`, mendekode format BCD ke desimal melalui `decodeClock` (`src/lib/plcClock.js:67`), membandingkan selisih detik naif dengan waktu server (`clockToNaiveMs`), serta mengembalikan objek `{ plc, server, diffSec, idle }`.
+3. **Form Penyesuaian Jam**: Operator dapat menekan tombol pintas "Waktu PC" untuk mengisi cepat form dengan waktu jam komputer saat ini (`src/app/(app)/plc-clock/page.js:68`), atau mengisi angka manual (tahun 2000-2099, bulan 1-12, hari sesuai kalender, jam 0-23, menit 0-59, detik 0-59).
+4. **Konfirmasi Dialog**: Tombol "Atur Jam PLC" membuka modal `PlcDialog` yang menampilkan waktu baru, perbandingan terhadap jam PC, dan input alasan perubahan wajib minimal 3 karakter.
+5. **Eksekusi API**: Penekanan tombol konfirmasi mengirim `PUT /api/plc-clock` (`src/app/api/plc-clock/route.js:57`).
+6. **Validasi & Penulisan Buffer BCD**:
+   - Memvalidasi input via `validateClockInput` (`src/lib/plcClock.js:39`).
+   - Memegang advisory lock `withPlcLocks` dan memastikan mesin idle (`checkMachineIdle`).
+   - Mencatat audit `plc_clock_write_requested` ke tabel `audit_log`.
+   - Mengonversi waktu target ke format BCD via `encodeClockWrites` (`src/lib/plcClock.js:58`) dan menulis 6 byte ke VB3000..VB3005 via `writePlcTags`.
+7. **Pemicuan Pulsa TODW**: Handler mengirim pulsa ke tag `ENTER_RTC` (M31.0) melalui `pulsePlcTag(CLOCK_TRIGGER_TAG)` (`src/lib/plcWrite.js:58`) yang memicu tepi naik ladder PLC untuk menjalankan fungsi sistem TODW (Set RTC).
+8. **Verifikasi Baca-Balik Toleran**: Handler melakukan polling pembacaan ulang jam PLC hingga 6 detik. Karena waktu terus berjalan, verifikasi dinyatakan cocok jika selisih waktu terbaca dengan target waktu yang diperhitungkan dengan elapsed time berada dalam rentang toleransi `VERIFY_TOLERANCE_SEC` (±6 detik).
+9. **Pencatatan Audit Akhir**: Mencatat `plc_clock_write_success` ke `audit_log` dan mengembalikan status jam baru ke antarmuka.
+
+### Bukti Kode
+- `src/app/(app)/plc-clock/page.js:1-259`
+- `src/lib/plcClock.js:1-92`
+- `src/app/api/plc-clock/route.js:1-184`
+- `src/lib/plcAccess.js:1-185`
+
+---
+
+## 23. Fitur Kontrol Manual Aktuator PLC (Manual Control)
+
+### Deskripsi Faktual
+Menyediakan antarmuka pengoperasian manual aktuator mesin sterilisasi (10 item: katup steam 1 & 2, katup cooling 1 & 2, udara chamber, buang air drain, buang steam exhaust, pengisian air murni, pompa sirkulasi air, dan buzzer) yang dipetakan langsung ke subrutin PLC SBR9. Antarmuka menampilkan indikator lampu status perintah web vs status output relay fisik aktual secara real-time setiap 1,5 detik. Fitur ini dirancang dengan prinsip keselamatan industri farmasi:
+- **Masuk Mode Manual**: Hanya dapat diaktifkan saat mesin idle (kode fase 0 atau 1) dan memastikan seluruh 10 perintah mati terlebih dahulu.
+- **Keluar Mode Manual**: Dirancang sebagai tindakan darurat (emergency/safety action) yang SELALU diizinkan tanpa penguncian advisory lock dan tanpa syarat fase mesin. Prosedur keluar mematikan seluruh bit perintah katup terlebih dahulu, baru kemudian menurunkan bit `MANUAL_OPER` (M5.0) sehingga PLC mereset seluruh output proses.
+- **Pagar Interlock Katup**: Katup steam hanya dapat dibuka jika kedua pintu bejana tertutup rapat dan seal pintu aktif (`clsFrnt && clsRear && seal`). Katup steam dan katup cooling dilarang aktif secara bersamaan (mutually exclusive).
+
+### Rantai Alur Kode
+1. **Halaman UI**: Antarmuka diakses di `/manual` (`src/app/(app)/manual/page.js`) dengan proteksi `PermissionGate resource="manual_control" minLevel="view"`. Melakukan polling ke `GET /api/plc-manual` setiap 1500 ms.
+2. **Pemantauan Status Aktuator**: Handler `src/app/api/plc-manual/route.js:47` membaca seluruh tag perintah manual (`MAN_*`), tag output fisik aktual (`STEAM_1`, `COOLING_1`, `WTR_PUMP`, dll.), status pintu, dan level air via `readManualState` (`src/app/api/plc-manual/route.js:24`).
+3. **Mulai Mode Manual**:
+   - Operator dengan izin `manual_control >= edit` menekan "Mulai Mode Manual", mengisi alasan pada dialog modal, dan mengirim `POST /api/plc-manual` dengan `{ action: "enter", reason }` (`src/app/api/plc-manual/route.js:127`).
+   - Handler memperoleh advisory lock `withPlcLocks`, memeriksa mesin idle (`checkMachineIdle([0, 1])`), mematikan seluruh perintah `MAN_*`, menulis `MANUAL_OPER = true` (M5.0), dan mencatat jejak audit `plc_manual_command`.
+4. **Pemberian Perintah Aktuator**:
+   - Operator menekan tombol "Nyalakan" / "Matikan" pada kartu aktuator.
+   - Mengirim `POST /api/plc-manual` dengan `{ action: "set", key, value }`.
+   - Jika `value === false` (mematikan), permintaan langsung dieksekusi via `writeAndVerify` tanpa syarat interlock.
+   - Jika `value === true` (menyalakan), handler memeriksa `checkMachineIdle([0, 1])`, memvalidasi pagar interlock keselamatan `checkManualCommand` (`src/lib/plcManualCatalog.js:48`), menulis bit perintah ke PLC, dan mencatat jejak audit.
+5. **Keluar Mode Manual (Fail-Safe Exit)**:
+   - Operator menekan "Keluar Mode Manual". Mengirim `{ action: "exit" }` (`src/app/api/plc-manual/route.js:90`).
+   - Eksekusi berjalan tanpa penguncian lock agar tidak terhalang. Handler mematikan seluruh perintah `MAN_*` ke `false`, memverifikasi katup menutup, lalu menurunkan `MANUAL_OPER` ke `false` (tepi turun M5.0 memicu ladder PLC mereset seluruh output proses), dan mencatat jejak audit.
+
+### Bukti Kode
+- `src/app/(app)/manual/page.js:1-264`
+- `src/lib/plcManualCatalog.js:1-66`
+- `src/app/api/plc-manual/route.js:1-217`
+- `src/lib/plcAccess.js:1-185`
+
+---
+
+## 24. Fitur Pencatatan Jumlah Botol (Bottle Count / Amount Tracking)
+
+### Deskripsi Faktual
+Menambahkan pelacakan data jumlah botol (amount) produk dalam siklus sterilisasi autoclave. Data ini diisi secara manual oleh operator saat persiapan batch pada modal START, divalidasi sebagai bilangan bulat positif, dan disimpan ke kolom database `batch_records.bottle_count` melalui migrasi 006. Data jumlah botol disajikan secara komprehensif pada ringkasan modal START, kartu informasi produk detail batch, baris header laporan cetak proses dan kurva, serta diekspor ke berkas Excel spreadsheet XLSX dan format JSON.
+
+### Rantai Alur Kode
+1. **Input Modal START**: Komponen `src/components/StartDialog.js:127` memvalidasi input `bottleCount`. Nilai wajib diisi dan harus berupa integer > 0.
+2. **Pengiriman & Penyimpanan Server**:
+   - Handler `src/app/api/batch/start/route.js:134` mengekstrak `bottleCount` (atau alias `amount`), membersihkan karakter non-digit, dan memparsing menjadi integer.
+   - Menyisipkan nilai ke kolom `bottle_count` pada query `INSERT INTO batch_records` (`src/app/api/batch/start/route.js:610`).
+   - Menyediakan fallback bila skema database belum dimigrasi (`colErr.code === "42703"`, `src/app/api/batch/start/route.js:630`).
+3. **Penyajian di Antarmuka**:
+   - Halaman detail batch `src/app/(app)/data-report/[batchNo]/page.js:255` menampilkan baris "Amount / Jumlah Botol" dengan format angka pemisah ribuan (misal: `1.200 Botol`).
+   - Header dokumen cetak `src/app/print/data-report/[batchNo]/page.js:405` dan `src/app/print/data-report/[batchNo]/curve/page.js:223` menampilkan `Amount : <jumlah> Botol`.
+4. **Ekspor Spreadsheet & API**:
+   - Handler `src/app/api/batch-records/export/route.js:189` menambahkan kolom Excel "Jumlah Botol" (width: 14) pada baris data dan JSON payload.
+   - Endpoint `src/app/api/batch-records/[batchNo]/route.js:59` mengembalikan properti `bottleCount` dan `amount`.
+
+### Bukti Kode
+- `migrations/006_add_bottle_count.sql:1-8`
+- `migrations/006_add_bottle_count_rollback.sql:1-5`
+- `src/components/StartDialog.js:127-207`
+- `src/app/api/batch/start/route.js:134-141`
+- `src/app/api/batch-records/export/route.js:86-189`
+- `src/app/api/batch-records/[batchNo]/route.js:59-60`
+- `src/app/(app)/data-report/[batchNo]/page.js:255-261`
+
+---
+
+## 25. Fitur Blok Pengesahan Tanda Tangan Cetak (Print Sign-Off Block)
+
+### Deskripsi Faktual
+Menyediakan komponen lembar pengesahan tanda tangan fisik standar Good Manufacturing Practice (GMP) industri farmasi untuk seluruh laporan dokumen cetak autoclave. Komponen merender dua kolom tanda tangan formal: sisi kiri untuk operator pelaksana proses ("Operated by: ____ DATE: ____") dan sisi kanan untuk verifikator/penyelia pemastian mutu ("Checked by: ____ DATE: ____"). Dilengkapi aturan cetak CSS `page-break-inside: avoid` dan `.keep-together` guna menjamin blok tanda tangan tidak terpotong atau terpisah antar lembar kertas.
+
+### Rantai Alur Kode
+1. **Definisi Komponen**: Komponen `src/components/SignOffBlock.js` menerima properti opsional `columnWidth` (default: 260px) dan style inline tambahan.
+2. **Integrasi Dokumen Cetak**:
+   - `src/app/print/data-report/[batchNo]/page.js`: Disematkan pada akhir Bagian 1 (Data Record), Bagian 2 (Grafik Kurva F0), dan Bagian 3 (Tabel Log Alarm).
+   - `src/app/print/data-report/[batchNo]/curve/page.js`: Disematkan pada bagian bawah grafik kurva landscape satu halaman penuh.
+   - `src/app/print/alarm/page.js`: Disematkan pada akhir tabel log alarm mesin dengan kelas pembungkus `.keep-together`.
+3. **Pencegahan Potong Halaman (Page-Break)**: Menerapkan properti CSS `breakInside: "avoid"` dan `pageBreakInside: "avoid"` pada container flexbox serta deklarasi `@media print { .keep-together { page-break-inside: avoid; break-inside: avoid; } }`.
+
+### Bukti Kode
+- `src/components/SignOffBlock.js:1-43`
+- `src/app/print/data-report/[batchNo]/page.js:489, 588, 663`
+- `src/app/print/data-report/[batchNo]/curve/page.js:317`
+- `src/app/print/alarm/page.js:235`
+
+---
+
+## Change Log
+
+- [2026-10-29] ADDED: Menambahkan dokumentasi Fitur 20 (Pengaturan Parameter Mesin PLC), Fitur 21 (Kalibrasi Offset Sensor PLC), Fitur 22 (Pemantauan & Sinkronisasi Jam RTC PLC), Fitur 23 (Kontrol Manual Aktuator PLC), Fitur 24 (Pencatatan Jumlah Botol / Bottle Count Tracking), dan Fitur 25 (Blok Pengesahan Tanda Tangan Cetak / SignOffBlock). Menambahkan butir 7 pada Seksi 17 mengenai bypass pengujian `startAllowed = true` di Dashboard.
+- [2026-10-29] MODIFIED: Memperbarui alur Fitur 4 (Start Batch Sequence) dengan nilai kunci advisory `START_LOCK_KEY` yang benar (`7401001`), pencatatan `bottle_count`, integrasi `SearchableCombobox`, dan penataan form 2 kolom. Memperbarui Fitur 13 (Data Report & Ekspor), Fitur 16 (Print Layouts), dan Fitur 18 (RBAC) sejalan dengan implementasi nyata antarmuka HMI dan pencatatan jumlah botol.
+- [2026-10-28] ADDED: Menambahkan dokumentasi Fitur 18 (Manajemen Peran & Matriks Otorisasi Granular / RBAC) dan Fitur 19 (Hapus-Lunak Akun Pengguna & Penguncian Username). Menambahkan butir 4-6 pada Seksi 17 mengenai pembersihan kolom `users.role`, pembersihan payload `actor` mati pada permintaan STOP, dan penghapusan file uji usang `fase1_integration.mjs`.
+- [2026-10-28] MODIFIED: Memperbarui alur verifikasi login pada Fitur 1 untuk membaca `role_id` join `roles` dan menolak akun terhapus-lunak, serta memperbarui guard `requireAdmin` menjadi `requirePermission` pada Fitur 14 (Audit Trail) dan fitur terkait lainnya.

@@ -17,6 +17,14 @@ const mainMenu = [
     { href: "/products", label: "Master Produk", resource: "products" },
 ];
 
+// Menu fitur HMI (baca/ubah nilai PLC). Terikat ke resource izin masing-masing.
+const machineMenu = [
+    { href: "/machine-params", label: "Parameter Mesin", resource: "machine_params" },
+    { href: "/calibration", label: "Kalibrasi", resource: "calibration" },
+    { href: "/plc-clock", label: "Jam PLC", resource: "plc_clock" },
+    { href: "/manual", label: "Kontrol Manual", resource: "manual_control" },
+];
+
 const adminMenu = [
     { href: "/audit-log", label: "Audit Log", resource: "audit_log" },
     { href: "/users", label: "Kelola User", resource: "users" },
@@ -29,7 +37,7 @@ function NavLink({ item, pathname }) {
     return (
         <Link
             href={item.href}
-            className={`px-3 py-2 rounded text-sm transition-colors flex items-center gap-2 ${isActive
+            className={`px-3 py-1.5 rounded text-sm transition-colors flex items-center gap-2 ${isActive
                 ? "bg-white/20 text-white font-medium border-l-2 border-scada-steam"
                 : "text-scada-idle hover:bg-white/10 hover:text-white"
                 }`}
@@ -81,13 +89,14 @@ export default function Navbar() {
 
     const canSee = (item) => hasLevel(user?.permissions, item.resource, "view");
     const visibleMain = user ? mainMenu.filter(canSee) : [];
+    const visibleMachine = user ? machineMenu.filter(canSee) : [];
     const visibleAdmin = user ? adminMenu.filter(canSee) : [];
 
     return (
-        <nav className="w-48 shrink-0 h-full bg-scada-ink text-white flex flex-col justify-between py-6 z-10 shadow-lg border-r border-scada-ink">
+        <nav className="w-48 shrink-0 h-full bg-scada-ink text-white flex flex-col justify-between py-4 z-10 shadow-lg border-r border-scada-ink">
             {/* ── Menu atas ── */}
-            <div className="px-4 flex flex-col gap-1">
-                <div className="mb-6 px-2 flex flex-col items-center">
+            <div className="px-4 flex flex-col gap-1 min-h-0 overflow-y-auto no-scrollbar">
+                <div className="mb-3 px-2 flex flex-col items-center">
                     {/* Satoria Pharma Logo */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src="/satoria-logo.png" alt="Satoria Pharma" className="w-20 -mb-1 object-contain" />
@@ -106,6 +115,16 @@ export default function Navbar() {
                 {visibleMain.map((item) => (
                     <NavLink key={item.href} item={item} pathname={pathname} />
                 ))}
+
+                {/* Menu mesin (parameter, kalibrasi, jam, manual): hanya yang izinnya >= view */}
+                {visibleMachine.length > 0 && (
+                    <>
+                        <div className="my-2 border-t border-white/10 mx-2" />
+                        {visibleMachine.map((item) => (
+                            <NavLink key={item.href} item={item} pathname={pathname} />
+                        ))}
+                    </>
+                )}
 
                 {/* Menu administrasi: hanya yang izinnya >= view */}
                 {visibleAdmin.length > 0 && (

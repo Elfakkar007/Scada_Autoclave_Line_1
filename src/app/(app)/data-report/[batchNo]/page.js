@@ -250,9 +250,15 @@ function BatchDetailContent() {
 
             {/* ── Baris 1: Produk ── */}
             <SectionCard title="Informasi Produk">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <InfoField label="Product Name" value={val(batch.productName)} />
                     <InfoField label="Product Spec" value={val(batch.productSpec)} />
+                    <InfoField
+                        label="Amount / Jumlah Botol"
+                        value={batch.bottleCount !== null && batch.bottleCount !== undefined
+                            ? `${Number(batch.bottleCount).toLocaleString("id-ID")} Botol`
+                            : "-"}
+                    />
                 </div>
             </SectionCard>
 

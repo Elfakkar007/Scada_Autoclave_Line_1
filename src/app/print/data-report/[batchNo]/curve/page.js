@@ -7,6 +7,7 @@ import {
     ReferenceLine,
 } from "recharts";
 import { operatorText } from "@/lib/operatorLabel";
+import SignOffBlock from "@/components/SignOffBlock";
 
 // ── Helper format ─────────────────────────────────────────────────────────────
 function fmtTime(dateStr) {
@@ -185,6 +186,7 @@ export default function PrintCurvePage() {
                     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                     /* Jaga agar header + grafik tidak terpisah antar halaman */
                     .curve-block { page-break-inside: avoid; break-inside: avoid; }
+                    .keep-together { page-break-inside: avoid; break-inside: avoid; }
                 }
                 body { font-family: 'IBM Plex Mono','Courier New',monospace; background: #fff; color: #000; margin: 0; }
             `}</style>
@@ -217,7 +219,10 @@ export default function PrintCurvePage() {
 
                 {/* Header */}
                 <div style={{ marginBottom: 4, fontSize: 10 }}>
-                    <HRow cols={[{ label: "Prod.Name :", value: fmtStr(batch.productName) }]} />
+                    <HRow cols={[
+                        { label: "Prod.Name :", value: fmtStr(batch.productName), flex: 2 },
+                        { label: "Amount    :", value: batch.bottleCount !== null && batch.bottleCount !== undefined ? `${batch.bottleCount} Botol` : "-", flex: 1 },
+                    ]} />
                     <HRow cols={[
                         { label: "Prod.Spec.:", value: fmtStr(batch.productSpec), flex: 2 },
                         { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
@@ -308,6 +313,8 @@ export default function PrintCurvePage() {
                     <span>Total: {fmtMin(batch.totalTimeMin)} Min</span>
                     <span>Finish: {fmtTime(batch.runFinish)}</span>
                 </div>
+
+                <SignOffBlock style={{ marginTop: 16 }} />
             </div>{/* end curve-block */}
             </div>
         </>

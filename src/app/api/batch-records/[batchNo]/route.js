@@ -56,6 +56,8 @@ export async function GET(request, { params }) {
             recipeId: row.recipe_id,
             productName: row.product_name,
             productSpec: row.product_spec,
+            bottleCount: row.bottle_count !== null && row.bottle_count !== undefined ? Number(row.bottle_count) : null,
+            amount: row.bottle_count !== null && row.bottle_count !== undefined ? Number(row.bottle_count) : null,
             ctrlType: row.ctrl_type,
             sterTemp: row.ster_temp !== null ? parseFloat(row.ster_temp) : null,
             coolTemp: row.cool_temp !== null ? parseFloat(row.cool_temp) : null,

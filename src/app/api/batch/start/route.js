@@ -131,6 +131,14 @@ async function runStart(request, session) {
         // "operator" dan "actor" dari body DIABAIKAN — diambil dari session
         const { machineId, formulaNo } = body;
         let { batchNo, loadingNo, productName, productSpec } = body;
+        const rawBottleCount = body.bottleCount ?? body.amount;
+        let parsedBottleCount = null;
+        if (rawBottleCount !== undefined && rawBottleCount !== null && String(rawBottleCount).trim() !== "") {
+            const num = parseInt(String(rawBottleCount).replace(/[^\d]/g, ""), 10);
+            if (!isNaN(num) && num > 0) {
+                parsedBottleCount = num;
+            }
+        }
 
         // Operator diambil dari session (tidak bisa dipalsukan)
         const operator = session.fullName ?? session.username;
@@ -593,28 +601,61 @@ async function runStart(request, session) {
         // ── INSERT batch_records setelah konfirmasi PLC mulai ────────────────
         let newBatch;
         try {
-            const insertResult = await pool.query(
-                `INSERT INTO batch_records
-                    (batch_no, loading_no, operator, operator_username, machine_id, recipe_id,
-                     product_name, product_spec, ctrl_type, ster_temp, cool_temp,
-                     recipe_snapshot, status, run_begin)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, 'running', now())
-                 RETURNING *`,
-                [
-                    String(batchNo).trim(),
-                    String(loadingNo).trim(),
-                    operator,
-                    session.username,             // operator_username = username akun dari sesi server (bukan dari body)
-                    String(machineId).trim(),
-                    recipe.id,
-                    String(productName).trim(),
-                    String(productSpec).trim(),
-                    recipeSnapshot.controlType,   // ctrl_type  = turunan snapshot (kolom header laporan)
-                    recipeSnapshot.sterilTemp,    // ster_temp  = setpoint sterilisasi (bukan ctrlTemp)
-                    recipeSnapshot.coolingTemp2,  // cool_temp  = cooling_temp2 sesuai printout SCADA lama
-                    JSON.stringify(recipeSnapshot),
-                ]
-            );
+            let insertResult;
+            try {
+                insertResult = await pool.query(
+                    `INSERT INTO batch_records
+                        (batch_no, loading_no, operator, operator_username, machine_id, recipe_id,
+                         product_name, product_spec, bottle_count, ctrl_type, ster_temp, cool_temp,
+                         recipe_snapshot, status, run_begin)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, 'running', now())
+                     RETURNING *`,
+                    [
+                        String(batchNo).trim(),
+                        String(loadingNo).trim(),
+                        operator,
+                        session.username,             // operator_username = username akun dari sesi server (bukan dari body)
+                        String(machineId).trim(),
+                        recipe.id,
+                        String(productName).trim(),
+                        String(productSpec).trim(),
+                        parsedBottleCount,
+                        recipeSnapshot.controlType,   // ctrl_type  = turunan snapshot (kolom header laporan)
+                        recipeSnapshot.sterilTemp,    // ster_temp  = setpoint sterilisasi (bukan ctrlTemp)
+                        recipeSnapshot.coolingTemp2,  // cool_temp  = cooling_temp2 sesuai printout SCADA lama
+                        JSON.stringify(recipeSnapshot),
+                    ]
+                );
+            } catch (colErr) {
+                // Jika kolom bottle_count belum dimigrasi di pgAdmin (error 42703), fallback simpan tanpa bottle_count
+                if (colErr.code === "42703") {
+                    console.warn("[batch/start] Kolom bottle_count belum ada di tabel batch_records, fallback tanpa bottle_count:", colErr.message);
+                    insertResult = await pool.query(
+                        `INSERT INTO batch_records
+                            (batch_no, loading_no, operator, operator_username, machine_id, recipe_id,
+                             product_name, product_spec, ctrl_type, ster_temp, cool_temp,
+                             recipe_snapshot, status, run_begin)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, 'running', now())
+                         RETURNING *`,
+                        [
+                            String(batchNo).trim(),
+                            String(loadingNo).trim(),
+                            operator,
+                            session.username,
+                            String(machineId).trim(),
+                            recipe.id,
+                            String(productName).trim(),
+                            String(productSpec).trim(),
+                            recipeSnapshot.controlType,
+                            recipeSnapshot.sterilTemp,
+                            recipeSnapshot.coolingTemp2,
+                            JSON.stringify(recipeSnapshot),
+                        ]
+                    );
+                } else {
+                    throw colErr;
+                }
+            }
             newBatch = insertResult.rows[0];
         } catch (dbErr) {
             // PLC sudah mulai jalan, tapi pencatatan database gagal — ini kritis.

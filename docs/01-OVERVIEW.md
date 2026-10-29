@@ -22,11 +22,11 @@ Daftar pustaka dan versi yang tercantum pada `package.json`:
 - `next`: `16.3.5` — Framework web full-stack React.
 - `react`: `19.2.8` — Library antarmuka komponen UI.
 - `react-dom`: `19.2.8` — Renderer DOM untuk React.
-- `pg`: `^8.18.0` — Driver PostgreSQL client pool (`src/lib/db.js:1`).
-- `jose`: `^6.2.2` — Library JSON Web Token (JWT) untuk sesi autentikasi (`src/lib/auth.js:1`).
+- `pg`: `^8.23.0` — Driver PostgreSQL client pool (`src/lib/db.js:1`).
+- `jose`: `^6.2.12` — Library JSON Web Token (JWT) untuk sesi autentikasi (`src/lib/auth.js:15`).
 - `bcryptjs`: `^3.0.3` — Pustaka hashing password akun pengguna (`src/app/api/auth/login/route.js:1`, `scripts/hash-password.js:1`).
 - `exceljs`: `^4.4.0` — Generator file spreadsheet `.xlsx` untuk ekspor laporan data (`src/app/api/batch-records/export/route.js:150`, `src/app/api/audit-log/export/route.js:122`).
-- `recharts`: `^3.7.0` — Library visualisasi grafik kurva suhu dan tekanan (`src/app/(app)/trend/page.js:14`, `src/app/print/data-report/[batchNo]/page.js:8`).
+- `recharts`: `^3.10.1` — Library visualisasi grafik kurva suhu dan tekanan (`src/app/(app)/trend/page.js:14`, `src/app/print/data-report/[batchNo]/page.js:8`).
 
 ### DevDependencies (`package.json:22-28`)
 - `tailwindcss`: `^4` — Utility CSS framework versi 4 (`src/app/globals.css:1`).
@@ -57,7 +57,7 @@ Aplikasi dijalankan menggunakan server HTTP berbasis Node.js `http.createServer`
 2. **Ekstraksi Client IP**: Menyediakan header `x-forwarded-for` dan resolusi alamat IP klien berdasarkan variabel lingkungan `TRUST_PROXY` (`server.js:25-27`).
 3. **Background Worker 1 — Trend Recorder**: Memanggil fungsi `recordTrendTick()` setiap 5000 ms (5 detik) untuk merekam data sensor PLC ke database tabel `batch_trend` (`server.js:46-48`).
 4. **Background Worker 2 — Alarm Monitor**: Memanggil fungsi `startAlarmMonitor()` yang memantau status alarm mesin setiap 1000 ms (1 detik) (`server.js:52-54`).
-5. **Proxy Middleware Konvensi Next.js 16**: Menggunakan `src/proxy.js` dengan ekspor fungsi `proxy(request)` untuk memeriksa sesi token JWT pada route yang dilindungi (`src/proxy.js:10-38`).
+5. **Proxy Middleware Konvensi Next.js 16**: Menggunakan `src/proxy.js` dengan ekspor fungsi `proxy(request)` untuk memeriksa sesi token JWT pada route yang dilindungi (`src/proxy.js:10-38`). Verifikasi izin granular per resource/level dilakukan pada server runtime melalui fungsi `requirePermission` / `requireAnyPermission` di masing-masing route handler, serta komponen `PermissionGate` pada sisi klien.
 
 ---
 
@@ -68,14 +68,21 @@ Variabel lingkungan yang diakses langsung melalui `process.env.*` pada kode sumb
 | Nama Variabel | Lokasi Pemanggilan | Nilai Default / Catatan Faktual |
 | :--- | :--- | :--- |
 | `DATABASE_URL` | `src/lib/db.js:14` | [TIDAK TERVERIFIKASI: format URL kredensial PostgreSQL aktual di server produksi]. |
-| `JWT_SECRET` | `src/lib/auth.js:6` | Default fallback: string hardcoded `"dev-jwt-secret-min-32-chars-scada-line1-change-in-prod"` (`src/lib/auth.js:7`). |
-| `COOKIE_SECURE` | `src/lib/auth.js:18` | Default bernilai `true` jika `NODE_ENV === "production"`, atau `false` jika bernilai `"false"` (`src/lib/auth.js:18`). |
-| `IOT_GATEWAY_PROTOCOL` | `src/lib/plc.js:31` | Default `"http"` (`src/lib/plc.js:31`). |
-| `IOT_GATEWAY_HOST` | `src/lib/plc.js:32` | Default `"127.0.0.1"` (`src/lib/plc.js:32`). |
-| `IOT_GATEWAY_PORT` | `src/lib/plc.js:33` | Default `39320` (`src/lib/plc.js:33`). |
-| `IOT_GATEWAY_USER` | `src/lib/plc.js:34` | Default string kosong `""` (`src/lib/plc.js:34`). Digunakan pada autentikasi Basic KEPServerEX. |
-| `IOT_GATEWAY_PASS` | `src/lib/plc.js:35` | Default string kosong `""` (`src/lib/plc.js:35`). [TIDAK TERVERIFIKASI: password gateway pada instalasi fisik]. |
-| `NODE_ENV` | `server.js:15`, `src/lib/plc.js:37`, `src/lib/auth.js:18` | Menentukan mode eksekusi `"production"` atau `"development"`. |
+| `JWT_SECRET` | `src/lib/auth.js:19`, `src/proxy.js:5` | Tidak ada fallback string dev (wajib didefinisikan pada environment host). Di-encode langsung via `new TextEncoder().encode(process.env.JWT_SECRET)`. |
+| `COOKIE_SECURE` | `src/lib/auth.js:41` | Bernilai `true` hanya bila diset `"true"`. Default bernilai `false` (tidak lagi mengikuti `NODE_ENV` agar akses HTTP lokal mesin pabrik tidak tertolak browser, `src/lib/auth.js:33-41`). |
+| `IOT_GATEWAY_PROTOCOL` | `src/lib/plc.js:31`, `src/lib/plcAccess.js:26` | Default `"http"`. |
+| `IOT_GATEWAY_HOST` | `src/lib/plc.js:32`, `src/lib/plcAccess.js:27` | Default `"127.0.0.1"` di `plc.js`. Pada `plcAccess.js`, bernilai wajib (fail-closed jika tidak diset). |
+| `IOT_GATEWAY_PORT` | `src/lib/plc.js:33`, `src/lib/plcAccess.js:28` | Default `39320` di `plc.js`. Pada `plcAccess.js`, bernilai wajib. |
+| `IOT_GATEWAY_USER` | `src/lib/plc.js:34`, `src/lib/plcAccess.js:29` | Default string kosong `""` di `plc.js`. Pada `plcAccess.js`, bernilai wajib untuk autentikasi Basic KEPServerEX. |
+| `IOT_GATEWAY_PASS` | `src/lib/plc.js:35`, `src/lib/plcAccess.js:30` | Default string kosong `""` di `plc.js`. [TIDAK TERVERIFIKASI: password gateway pada instalasi fisik]. Wajib pada `plcAccess.js`. |
+| `NODE_ENV` | `server.js:15`, `src/lib/plc.js:37` | Menentukan mode eksekusi `"production"` atau `"development"`. |
 | `PORT` | `server.js:16` | Nomor port listening HTTP server. Default `3001` (`server.js:16`). |
 | `HOSTNAME` | `server.js:17` | Alamat host binding HTTP server. Default `"0.0.0.0"` (`server.js:17`). |
 | `TRUST_PROXY` | `server.js:25` | Konfigurasi evaluasi header reverse proxy. Bernilai boolean atau string (`server.js:25`). |
+
+---
+
+## Change Log
+
+- [2026-10-29] MODIFIED: Memperbarui catatan faktual variabel `JWT_SECRET` (tanpa fallback string dev di `auth.js` dan `proxy.js`), memperbarui lokasi pemanggilan `IOT_GATEWAY_*` yang kini juga diakses oleh pustaka baru `src/lib/plcAccess.js:26-38`, dan mencatat integrasi 4 modul HMI-web (`machine_params`, `calibration`, `plc_clock`, `manual_control`).
+- [2026-10-28] MODIFIED: Memperbarui versi pustaka dependensi `package.json` (`pg` ke `^8.23.0`, `jose` ke `^6.2.12`, `recharts` ke `^3.10.1`), baris pemanggilan `JWT_SECRET` (`src/lib/auth.js:19`), perilaku `COOKIE_SECURE` (`src/lib/auth.js:41`), serta menambahkan catatan arsitektur otorisasi granular runtime `requirePermission` dan `PermissionGate`.

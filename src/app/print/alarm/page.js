@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { flushSync } from "react-dom";
 import { eventLabel } from "@/lib/alarmEventLabels";
 import PermissionGate from "@/components/PermissionGate";
+import SignOffBlock from "@/components/SignOffBlock";
 
 function toWIBStr(date) {
     return new Date(date).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
@@ -173,6 +174,7 @@ function AlarmPrintContent() {
                     .no-print { display: none !important; }
                     body { background: white !important; }
                     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .keep-together { page-break-inside: avoid; break-inside: avoid; }
                 }
                 body { font-family: 'IBM Plex Mono','Courier New',monospace; background:#fff; color:#000; margin:0; font-size:10px; }
                 table { border-collapse: collapse; width: 100%; }
@@ -204,32 +206,35 @@ function AlarmPrintContent() {
                 {loading && <div style={{ textAlign: "center", padding: 24 }}>Memuat…</div>}
                 {error && <div style={{ textAlign: "center", color: "red", padding: 12 }}>Error: {error}</div>}
                 {!loading && !error && (
-                    <table>
-                        <thead>
-                            <tr>
-                                {["Alarm Date", "Event Date", "Variable", "Alarm Type", "Alarm Value", "Recovery", "Limit", "Event", "Operator"].map((h) => (
-                                    <th key={h}>{h}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rows.length === 0 ? (
-                                <tr><td colSpan={9} style={{ textAlign: "center", padding: 8 }}>Tidak ada data</td></tr>
-                            ) : rows.map((r, i) => (
-                                <tr key={i}>
-                                    <td style={{ whiteSpace: "nowrap" }}>{r.alarmDate || "-"}</td>
-                                    <td style={{ whiteSpace: "nowrap" }}>{r.eventDate || "-"}</td>
-                                    <td>{r.variableName || "-"}</td>
-                                    <td>{r.alarmType || "-"}</td>
-                                    <td>{r.alarmValue || "-"}</td>
-                                    <td>{r.recoveryValue || "-"}</td>
-                                    <td>{r.limitValue || "-"}</td>
-                                    <td style={{ fontWeight: r.eventType === "alarm_active" ? 700 : 400 }}>{eventLabel(r.eventType)}</td>
-                                    <td>{r.operator || "-"}</td>
+                    <>
+                        <table>
+                            <thead>
+                                <tr>
+                                    {["Alarm Date", "Event Date", "Variable", "Alarm Type", "Alarm Value", "Recovery", "Limit", "Event", "Operator"].map((h) => (
+                                        <th key={h}>{h}</th>
+                                    ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {rows.length === 0 ? (
+                                    <tr><td colSpan={9} style={{ textAlign: "center", padding: 8 }}>Tidak ada data</td></tr>
+                                ) : rows.map((r, i) => (
+                                    <tr key={i}>
+                                        <td style={{ whiteSpace: "nowrap" }}>{r.alarmDate || "-"}</td>
+                                        <td style={{ whiteSpace: "nowrap" }}>{r.eventDate || "-"}</td>
+                                        <td>{r.variableName || "-"}</td>
+                                        <td>{r.alarmType || "-"}</td>
+                                        <td>{r.alarmValue || "-"}</td>
+                                        <td>{r.recoveryValue || "-"}</td>
+                                        <td>{r.limitValue || "-"}</td>
+                                        <td style={{ fontWeight: r.eventType === "alarm_active" ? 700 : 400 }}>{eventLabel(r.eventType)}</td>
+                                        <td>{r.operator || "-"}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <SignOffBlock style={{ marginTop: 24 }} />
+                    </>
                 )}
             </div>
         </>

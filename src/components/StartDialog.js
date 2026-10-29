@@ -16,10 +16,12 @@
 import { useEffect, useRef, useState } from "react";
 import { validateBatchNo, BATCH_NO_MAX_LEN, BATCH_NO_RULE_TEXT } from "@/lib/batchNo";
 import { describeStartResponse } from "@/lib/plcCommandAlert";
+import SearchableCombobox from "@/components/SearchableCombobox";
 
 const EMPTY_FORM = {
     batchNo: "",
     loadingNo: "",
+    bottleCount: "",          // Jumlah botol / amount yang diisi manual oleh operator
     machineId: "SG-40",       // default SG-40 sesuai ROADMAP item 17a
     productName: "",
     productSpec: "",
@@ -122,7 +124,9 @@ export default function StartDialog({ open, onClose, onStarted }) {
     const allFilled = Object.keys(EMPTY_FORM).every((k) => String(form[k]).trim() !== "");
     const batchNoCheck = form.batchNo.trim() !== "" ? validateBatchNo(form.batchNo) : null;
     const batchNoInvalid = batchNoCheck !== null && !batchNoCheck.ok;
-    const canProceed = allFilled && !formulaInvalid && !batchNoInvalid && startNotice === null;
+    const bottleCountNum = Number(form.bottleCount);
+    const bottleCountInvalid = form.bottleCount.trim() !== "" && (!Number.isInteger(bottleCountNum) || bottleCountNum <= 0);
+    const canProceed = allFilled && !formulaInvalid && !batchNoInvalid && !bottleCountInvalid && startNotice === null;
 
     // ── Request START ke server ────────────────────────────────────────────────
     async function handleConfirm() {
@@ -200,6 +204,7 @@ export default function StartDialog({ open, onClose, onStarted }) {
                         <Row label="Loading No." value={form.loadingNo} />
                         <Row label="Produk" value={form.productName} />
                         <Row label="Spesifikasi" value={form.productSpec} />
+                        <Row label="Jumlah Botol" value={form.bottleCount ? `${Number(form.bottleCount).toLocaleString("id-ID")} Botol` : "—"} />
                         <Row label="Mach. ID" value={form.machineId} />
                         <Row label="Operator" value={userFullName || "—"} />
                         <Row label="Formula" value={fLabel} />
@@ -330,65 +335,39 @@ export default function StartDialog({ open, onClose, onStarted }) {
                         />
                     </Field>
                     <Field label="Nama Produk">
-                        {productNames.length > 0 && (
-                            <select
-                                className={inputCls + " mb-1.5 cursor-pointer bg-[#F8FAFC] text-xs font-semibold"}
-                                onChange={(e) => {
-                                    if (e.target.value) handleChange("productName", e.target.value);
-                                }}
-                                value=""
-                            >
-                                <option value="">-- Pilih dari Master Produk --</option>
-                                {productNames.map((p) => (
-                                    <option key={p.id} value={p.name}>
-                                        {p.name}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
-                        <input
-                            type="text"
-                            className={inputCls}
-                            placeholder="Nama produk (atau ketik manual)"
+                        <SearchableCombobox
                             value={form.productName}
-                            onChange={(e) => handleChange("productName", e.target.value)}
+                            onChange={(val) => handleChange("productName", val)}
+                            options={productNames.map((p) => p.name)}
+                            placeholder="Pilih produk atau ketik manual"
                         />
                     </Field>
 
                     <Field label="Spesifikasi Kemasan">
-                        {productSpecs.length > 0 && (
-                            <select
-                                className={inputCls + " mb-1.5 cursor-pointer bg-[#F8FAFC] text-xs font-semibold"}
-                                onChange={(e) => {
-                                    if (e.target.value) handleChange("productSpec", e.target.value);
-                                }}
-                                value=""
-                            >
-                                <option value="">-- Pilih dari Master Spesifikasi --</option>
-                                {productSpecs.map((s) => (
-                                    <option key={s.id} value={s.spec}>
-                                        {s.spec}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
-                        <input
-                            type="text"
-                            className={inputCls}
-                            placeholder="Spesifikasi (atau ketik manual)"
+                        <SearchableCombobox
                             value={form.productSpec}
-                            onChange={(e) => handleChange("productSpec", e.target.value)}
+                            onChange={(val) => handleChange("productSpec", val)}
+                            options={productSpecs.map((s) => s.spec)}
+                            placeholder="Pilih spesifikasi atau ketik manual"
                         />
                     </Field>
-                </div>
 
-                {/* Baris Operator & Mach. ID */}
-                <div className="grid grid-cols-2 gap-3">
-                    <Field label="Operator">
-                        <div className="px-2.5 py-1.5 rounded-[3px] border border-[#D8DEDC] bg-[#F5F7F6] text-sm text-[#1E2A2E] min-h-[34px]">
-                            {userFullName || <span className="text-[#B8C0BE] italic">Memuat…</span>}
-                        </div>
+                    <Field
+                        label="Jumlah Botol (Amount)"
+                        hint="Jumlah botol aktual dalam sterilizer."
+                        error={bottleCountInvalid ? "Harus berupa angka bulat positif" : null}
+                    >
+                        <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            className={inputCls}
+                            placeholder="contoh: 2400"
+                            value={form.bottleCount}
+                            onChange={(e) => handleChange("bottleCount", e.target.value)}
+                        />
                     </Field>
+
                     <Field label="Mach. ID">
                         <input
                             type="text"
@@ -398,47 +377,53 @@ export default function StartDialog({ open, onClose, onStarted }) {
                             onChange={(e) => handleChange("machineId", e.target.value)}
                         />
                     </Field>
+
+                    <Field label="Operator">
+                        <div className="px-2.5 py-1.5 rounded-[3px] border border-[#D8DEDC] bg-[#F5F7F6] text-sm text-[#1E2A2E] min-h-[34px]">
+                            {userFullName || <span className="text-[#B8C0BE] italic">Memuat…</span>}
+                        </div>
+                    </Field>
+
+                    <Field label="Formula">
+                        {loadingFormulas ? (
+                            <p className="text-sm text-[#5C6B6A] italic">Memuat daftar formula…</p>
+                        ) : formulas.length === 0 ? (
+                            <p className="text-sm text-[#A23B2E]">Tidak ada formula. Tambahkan di halaman Formula.</p>
+                        ) : (
+                            <select
+                                className={inputCls + " cursor-pointer"}
+                                value={form.formulaNo}
+                                onChange={(e) => handleChange("formulaNo", e.target.value)}
+                            >
+                                <option value="">-- Pilih Formula --</option>
+                                {formulas.map((f) => (
+                                    <option key={f.formulaNo} value={f.formulaNo}>
+                                        {f.formulaNo} ({f.controlTemp}°C, {f.sterilTime} MIN)
+                                        {f.validation && !f.validation.ok ? " — TIDAK LENGKAP" : ""}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    </Field>
                 </div>
 
-                {/* Pilih Formula */}
-                <Field label="Formula">
-                    {loadingFormulas ? (
-                        <p className="text-sm text-[#5C6B6A] italic">Memuat daftar formula…</p>
-                    ) : formulas.length === 0 ? (
-                        <p className="text-sm text-[#A23B2E]">Tidak ada formula. Tambahkan di halaman Formula.</p>
-                    ) : (
-                        <select
-                            className={inputCls + " cursor-pointer"}
-                            value={form.formulaNo}
-                            onChange={(e) => handleChange("formulaNo", e.target.value)}
-                        >
-                            <option value="">-- Pilih Formula --</option>
-                            {formulas.map((f) => (
-                                <option key={f.formulaNo} value={f.formulaNo}>
-                                    {f.formulaNo} ({f.controlTemp}°C, {f.sterilTime} MIN)
-                                    {f.validation && !f.validation.ok ? " — TIDAK LENGKAP" : ""}
-                                </option>
-                            ))}
-                        </select>
-                    )}
-
-                    {formulaInvalid && (
-                        <div className="mt-1.5 rounded-[3px] border border-[#A23B2E] bg-[#FEF2F2] px-3 py-2 text-[11px] text-[#A23B2E]">
-                            <p className="font-semibold mb-1">Formula ini belum bisa dipakai:</p>
-                            <ul className="list-disc list-inside space-y-0.5">
-                                {formulaProblems.map((p, i) => <li key={i}>{p.message}</li>)}
-                            </ul>
-                        </div>
-                    )}
-                    {formulaHasWarn && (
-                        <div className="mt-1.5 rounded-[3px] border border-[#B9762F] bg-[#FEF9EE] px-3 py-2 text-[11px] text-[#5C6B6A]">
-                            <p className="font-semibold text-[#B9762F] mb-1">Catatan formula:</p>
-                            <ul className="list-disc list-inside space-y-0.5">
-                                {formulaWarnings.map((w, i) => <li key={i}>{w.message}</li>)}
-                            </ul>
-                        </div>
-                    )}
-                </Field>
+                {/* Catatan / Error Formula (jika ada) */}
+                {formulaInvalid && (
+                    <div className="rounded-[3px] border border-[#A23B2E] bg-[#FEF2F2] px-3 py-2 text-[11px] text-[#A23B2E]">
+                        <p className="font-semibold mb-1">Formula ini belum bisa dipakai:</p>
+                        <ul className="list-disc list-inside space-y-0.5">
+                            {formulaProblems.map((p, i) => <li key={i}>{p.message}</li>)}
+                        </ul>
+                    </div>
+                )}
+                {formulaHasWarn && (
+                    <div className="rounded-[3px] border border-[#B9762F] bg-[#FEF9EE] px-3 py-2 text-[11px] text-[#5C6B6A]">
+                        <p className="font-semibold text-[#B9762F] mb-1">Catatan formula:</p>
+                        <ul className="list-disc list-inside space-y-0.5">
+                            {formulaWarnings.map((w, i) => <li key={i}>{w.message}</li>)}
+                        </ul>
+                    </div>
+                )}
 
                 {/* Tombol aksi */}
                 <div className="flex gap-2 pt-1 border-t border-[#D8DEDC]">

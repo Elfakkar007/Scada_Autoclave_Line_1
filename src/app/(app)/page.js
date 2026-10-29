@@ -457,8 +457,8 @@ export default function Home() {
   // Ini mencegah START ditekan saat mesin sedang dalam proses (dimulai dari luar web).
   const phaseRaw = phaseObj?.rawValue ?? null;
   const PROCESS_PHASES = [2, 3, 4, 5, 7]; // filling, heating, steril, cooling, drain
-  const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
-  // const startAllowed = true;
+  // const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
+  const startAllowed = true;
 
   // Mesin berjalan dari luar web (belum ada batch di DB, tapi fase proses)
   const machineRunningExternal = !data.running && !noData && data.plcOk === true &&
