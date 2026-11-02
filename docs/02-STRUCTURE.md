@@ -1,5 +1,9 @@
 # Struktur Folder Proyek
 
+## Change Log (terbaru di atas)
+
+- [2026-11-02] ADDED: Menambahkan entri pohon direktori untuk fitur Door Operate: `src/app/(app)/door-operate/` (halaman HMI pengendalian pintu autoclave), `src/app/api/plc-door/` (endpoint GET status dan POST aksi pintu), `src/lib/plcDoorCatalog.js`, `src/lib/plcDeadman.js` (di `src/lib/`), `context/SiemensS7-200_pintu_NANTI.csv` (di `context/`), dan `fase1/tests/plc_door_mock.mjs` (di `fase1/tests/`). Memperbarui deskripsi folder `components/` dan `lib/`.
+
 Dokumen ini menyajikan pohon direktori proyek `scada-sterilizer` beserta deskripsi fungsi faktual satu baris untuk setiap folder, berdasarkan verifikasi langsung terhadap berkas-berkas yang ada di dalamnya.
 
 ```text

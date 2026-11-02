@@ -88,6 +88,21 @@ app.prepare().then(async () => {
             startAlarmMonitor().catch((err) =>
                 console.error("[server] Alarm monitor gagal start:", err)
             );
+
+            // Door Operate: server baru hidup berarti tidak ada sesi tahan-rantai yang sah.
+            // Best-effort tulis M11.0/M11.1 = false agar rantai tidak tertinggal menyala dari
+            // sesi sebelum server mati. Tag belum diimpor / PLC belum siap = hanya peringatan.
+            import("./src/lib/plcWrite.js")
+                .then(({ writePlcTags }) =>
+                    writePlcTags([
+                        { tag: "CHAIN_FWD", value: false },
+                        { tag: "CHAIN_BWD", value: false },
+                    ])
+                )
+                .then((r) => {
+                    if (!r.ok) console.warn("[server] Reset rantai (M11.0/M11.1) tidak berhasil (tag belum diimpor atau PLC belum siap).");
+                })
+                .catch((err) => console.warn("[server] Reset rantai dilewati:", err.message));
         }, 10_000);
     });
 });

@@ -51,13 +51,14 @@ Daftar script yang terdaftar pada `package.json:5-10`:
 
 ## 4. Arsitektur Server Kustom (`server.js`)
 
-Aplikasi dijalankan menggunakan server HTTP berbasis Node.js `http.createServer` (`server.js:29`), bukan melalui `next start` standar. Server ini menjalankan:
+Aplikasi dijalankan menggunakan server HTTP berbasis Node.js `http.createServer` (`server.js:46`), bukan melalui `next start` standar. Server ini menjalankan:
 
-1. **Penanganan Permintaan HTTP**: Meneruskan request ke Next.js request handler (`server.js:30`).
-2. **Ekstraksi Client IP**: Menyediakan header `x-forwarded-for` dan resolusi alamat IP klien berdasarkan variabel lingkungan `TRUST_PROXY` (`server.js:25-27`).
-3. **Background Worker 1 — Trend Recorder**: Memanggil fungsi `recordTrendTick()` setiap 5000 ms (5 detik) untuk merekam data sensor PLC ke database tabel `batch_trend` (`server.js:46-48`).
-4. **Background Worker 2 — Alarm Monitor**: Memanggil fungsi `startAlarmMonitor()` yang memantau status alarm mesin setiap 1000 ms (1 detik) (`server.js:52-54`).
-5. **Proxy Middleware Konvensi Next.js 16**: Menggunakan `src/proxy.js` dengan ekspor fungsi `proxy(request)` untuk memeriksa sesi token JWT pada route yang dilindungi (`src/proxy.js:10-38`). Verifikasi izin granular per resource/level dilakukan pada server runtime melalui fungsi `requirePermission` / `requireAnyPermission` di masing-masing route handler, serta komponen `PermissionGate` pada sisi klien.
+1. **Penanganan Permintaan HTTP**: Meneruskan request ke Next.js request handler (`server.js:61`).
+2. **Ekstraksi Client IP**: Menyediakan header `x-client-ip` dari alamat koneksi TCP, atau dari entri pertama `x-forwarded-for` bila `TRUST_PROXY=true` (`server.js:53-59`).
+3. **Background Worker 1 — Trend Recorder**: Memanggil fungsi `recordTrendTick()` setiap 5000 ms (5 detik) untuk merekam data sensor PLC ke tabel `batch_trend` (`server.js:75-79`). Dimulai 10 detik setelah server siap.
+4. **Background Worker 2 — Alarm Monitor**: Memanggil fungsi `startAlarmMonitor()` yang memantau status alarm mesin setiap 1000 ms (1 detik) (`server.js:88-90`).
+5. **Blok Reset Rantai** (baru): Saat server start, secara *best-effort* menulis `CHAIN_FWD` / `CHAIN_BWD` = false ke PLC (`server.js:95-105`) untuk memastikan rantai pintu tidak tertinggal menyala dari sesi sebelum server mati.
+6. **Proxy Middleware Konvensi Next.js 16**: Menggunakan `src/proxy.js` dengan ekspor fungsi `proxy(request)` untuk memeriksa sesi token JWT pada route yang dilindungi. Verifikasi izin granular per resource/level dilakukan pada server runtime melalui fungsi `requirePermission` / `requireAnyPermission` di masing-masing route handler, serta komponen `PermissionGate` pada sisi klien.
 
 ---
 
@@ -84,5 +85,6 @@ Variabel lingkungan yang diakses langsung melalui `process.env.*` pada kode sumb
 
 ## Change Log
 
+- [2026-11-02] MODIFIED: Memperbarui Seksi 4 (Arsitektur `server.js`) — nomor baris disesuaikan dengan kode aktual (blok `createServer` ada di baris 46, IP di 53–59, trend recorder di 75–79, alarm monitor di 88–90); menambahkan **Blok Reset Rantai** (`server.js:95-105`) yang menulis `CHAIN_FWD`/`CHAIN_BWD` = false saat server start (bagian dari fitur Door Operate baru).
 - [2026-10-29] MODIFIED: Memperbarui catatan faktual variabel `JWT_SECRET` (tanpa fallback string dev di `auth.js` dan `proxy.js`), memperbarui lokasi pemanggilan `IOT_GATEWAY_*` yang kini juga diakses oleh pustaka baru `src/lib/plcAccess.js:26-38`, dan mencatat integrasi 4 modul HMI-web (`machine_params`, `calibration`, `plc_clock`, `manual_control`).
 - [2026-10-28] MODIFIED: Memperbarui versi pustaka dependensi `package.json` (`pg` ke `^8.23.0`, `jose` ke `^6.2.12`, `recharts` ke `^3.10.1`), baris pemanggilan `JWT_SECRET` (`src/lib/auth.js:19`), perilaku `COOKIE_SECURE` (`src/lib/auth.js:41`), serta menambahkan catatan arsitektur otorisasi granular runtime `requirePermission` dan `PermissionGate`.

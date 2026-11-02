@@ -28,6 +28,7 @@ flowchart TD
         R_Calib["src/app/(app)/calibration/page.js"]
         R_Clock["src/app/(app)/plc-clock/page.js"]
         R_Manual["src/app/(app)/manual/page.js"]
+        R_Door["src/app/(app)/door-operate/page.js ⚠UNTRACKED"]
     end
 
     subgraph Components["Komponen Antarmuka Pengguna (src/components)"]
@@ -60,6 +61,7 @@ flowchart TD
         API_PlcParams["plc-params/route.js"]
         API_PlcClock["plc-clock/route.js"]
         API_PlcManual["plc-manual/route.js"]
+        API_PlcDoor["plc-door/route.js ⚠UNTRACKED"]
         API_Roles["roles/route.js"]
         API_RolesId["roles/[id]/route.js"]
         API_RolesOptions["roles/options/route.js"]
@@ -75,6 +77,8 @@ flowchart TD
         L_PlcClock["plcClock.js"]
         L_PlcManualCat["plcManualCatalog.js"]
         L_PlcParamCat["plcParamCatalog.js"]
+        L_PlcDoorCat["plcDoorCatalog.js ⚠UNTRACKED"]
+        L_PlcDeadman["plcDeadman.js ⚠UNTRACKED"]
         L_Auth["auth.js (JWT jose & guards)"]
         L_Audit["auditLog.js"]
         L_Finalize["batchFinalize.js"]
@@ -90,6 +94,21 @@ flowchart TD
         L_OpLabel["operatorLabel.js"]
     end
 
+    R_Door --> C_PermGate
+    R_Door --> L_PlcDoorCat
+    R_Door --> L_PermCat
+    R_Door -..-> API_PlcDoor
+    R_Dash -..-> API_PlcDoor
+    API_PlcDoor --> L_PlcDoorCat
+    API_PlcDoor --> L_PlcDeadman
+    API_PlcDoor --> L_PlcAccess
+    API_PlcDoor --> L_PlcWrite
+    API_PlcDoor --> L_Auth
+    API_PlcDoor --> L_Audit
+    API_PlcDoor --> L_Db
+    L_PlcDeadman --> L_PlcDoorCat
+    L_PlcDeadman -.-> L_PlcAccess
+    L_PlcDeadman -.-> L_PlcWrite
     %% Relasi Rute ke Layout & Komponen
     R_Root --> R_App
     R_App --> C_Navbar
@@ -294,6 +313,7 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `README.md` | — | — |
 | `context/ROADMAP (12).md` | — | — |
 | `context/SiemensS7-200.csv` | — | — |
+| `context/SiemensS7-200_pintu_NANTI.csv` ⚠UNTRACKED | — | — |
 | `context/export_atv.awl` | — | — |
 | `eslint.config.mjs` | — | — |
 | `jsconfig.json` | — | — |
@@ -303,6 +323,7 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `postcss.config.mjs` | — | — |
 | `public/satoria-logo.png` | — | — |
 | `fase1/tests/matrix.mjs` | — | — |
+| `fase1/tests/plc_door_mock.mjs` ⚠UNTRACKED | `src/lib/plcDoorCatalog.js`<br>`src/lib/plcDeadman.js` | — |
 | `migrations/005_drop_legacy_role.sql` | — | — |
 | `migrations/005_drop_legacy_role_rollback.sql` | — | — |
 | `migrations/006_add_bottle_count.sql` | — | — |
@@ -311,12 +332,13 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `public/satoria-logo.png` | — | — |
 | `public/sounds/alarm.wav` | — | — |
 | `scripts/hash-password.js` | — | — |
-| `server.js` | `src/lib/trendRecorder.js`<br>`src/lib/alarmMonitor.js` | — |
+| `server.js` | `src/lib/trendRecorder.js` (dynamic import, baris 42)<br>`src/lib/alarmMonitor.js` (dynamic import, baris 44)<br>`src/lib/plcWrite.js` (dynamic import best-effort, baris 95) | — |
 | `src/app/(app)/alarm/page.js` | `src/lib/alarmEventLabels.js`<br>`src/components/DeletedUserBadge.js`<br>`src/components/PermissionGate.js` | — |
 | `src/app/(app)/audit-log/page.js` | `src/components/DeletedUserBadge.js` | — |
 | `src/app/(app)/calibration/page.js` | `src/components/PermissionGate.js`<br>`src/components/PlcParamEditor.js` | — |
 | `src/app/(app)/data-report/[batchNo]/page.js` | `src/components/DeletedUserBadge.js`<br>`src/components/PermissionGate.js` | — |
 | `src/app/(app)/data-report/page.js` | `src/components/DeletedUserBadge.js`<br>`src/components/PermissionGate.js` | — |
+| `src/app/(app)/door-operate/page.js` ⚠UNTRACKED | `src/lib/permissionCatalog.js`<br>`src/lib/plcDoorCatalog.js`<br>`src/components/PermissionGate.js` | — |
 | `src/app/(app)/formula/page.js` | `src/components/PermissionGate.js` | — |
 | `src/app/(app)/layout.js` | `src/app/globals.css`<br>`src/components/Navbar.js`<br>`src/components/AlarmCenter.js`<br>`src/components/ScreenLock.js` | — |
 | `src/app/(app)/machine-params/page.js` | `src/components/PermissionGate.js`<br>`src/components/PlcParamEditor.js` | — |
@@ -348,6 +370,7 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/app/api/formulas/[formulaNo]/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/recipeValidation.js`<br>`src/lib/recipeGuard.js` | — |
 | `src/app/api/formulas/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/recipeValidation.js` | — |
 | `src/app/api/plc-clock/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/plcWrite.js`<br>`src/lib/plcParamCatalog.js`<br>`src/lib/plcAccess.js`<br>`src/lib/plcClock.js` | — |
+| `src/app/api/plc-door/route.js` ⚠UNTRACKED | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/plcDoorCatalog.js`<br>`src/lib/plcAccess.js`<br>`src/lib/plcWrite.js`<br>`src/lib/plcDeadman.js` | — |
 | `src/app/api/plc-manual/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/plcManualCatalog.js`<br>`src/lib/plcAccess.js` | — |
 | `src/app/api/plc-params/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/plcParamCatalog.js`<br>`src/lib/plcAccess.js` | — |
 | `src/app/api/plc/reset/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/plc.js`<br>`src/lib/plcWrite.js`<br>`src/lib/auditLog.js` | — |
@@ -403,13 +426,15 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/lib/operatorLabel.js` | — | `src/app/print/data-report/[batchNo]/curve/page.js`<br>`src/app/print/data-report/[batchNo]/page.js` |
 | `src/lib/permissionCatalog.js` | — | `src/app/(app)/manual/page.js`<br>`src/app/(app)/plc-clock/page.js`<br>`src/app/(app)/roles/page.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/components/Navbar.js`<br>`src/components/PermissionGate.js`<br>`src/components/PlcParamEditor.js`<br>`src/lib/auth.js`<br>`src/lib/roleQueries.js` |
 | `src/lib/plc.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/status/route.js`<br>`src/lib/alarmMonitor.js`<br>`src/lib/trendRecorder.js` |
-| `src/lib/plcAccess.js` | `src/lib/db.js`<br>`src/lib/plcWrite.js`<br>`src/lib/recipeGuard.js`<br>`src/lib/plcParamCatalog.js` | `src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js` |
+| `src/lib/plcAccess.js` | `src/lib/db.js`<br>`src/lib/plcWrite.js`<br>`src/lib/recipeGuard.js`<br>`src/lib/plcParamCatalog.js` | `src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc-door/route.js` ⚠UNTRACKED |
 | `src/lib/plcClock.js` | — | `src/app/(app)/plc-clock/page.js`<br>`src/app/api/plc-clock/route.js` |
 | `src/lib/plcCommandAlert.js` | — | `src/app/(app)/page.js`<br>`src/components/StartDialog.js`<br>`src/lib/plcCommandAlert.test.mjs` |
 | `src/lib/plcCommandAlert.test.mjs` | `src/lib/plcCommandAlert.js` | — |
 | `src/lib/plcManualCatalog.js` | — | `src/app/(app)/manual/page.js`<br>`src/app/api/plc-manual/route.js` |
+| `src/lib/plcDoorCatalog.js` ⚠UNTRACKED | `src/lib/plcManualCatalog.js` (MANUAL_MODE_TAG) | `src/lib/plcDeadman.js`<br>`src/app/api/plc-door/route.js`<br>`src/app/(app)/door-operate/page.js` |
+| `src/lib/plcDeadman.js` ⚠UNTRACKED | `src/lib/plcDoorCatalog.js` (statis)<br>`src/lib/plcAccess.js` (dynamic import)<br>`src/lib/plcWrite.js` (dynamic import) | `src/app/api/plc-door/route.js` |
 | `src/lib/plcParamCatalog.js` | — | `src/app/api/plc-clock/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/components/PlcParamEditor.js`<br>`src/lib/plcAccess.js` |
-| `src/lib/plcWrite.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/lib/plcAccess.js` |
+| `src/lib/plcWrite.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/plc-door/route.js` ⚠UNTRACKED<br>`src/lib/plcAccess.js`<br>`src/lib/plcDeadman.js` ⚠UNTRACKED (dynamic import)<br>`server.js` (dynamic import baris 95) |
 | `src/lib/recipeGuard.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js`<br>`src/lib/alarmMonitor.js`<br>`src/lib/plcAccess.js` |
 | `src/lib/recipeSnapshot.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch-records/[batchNo]/route.js`<br>`src/lib/alarmMonitor.js` |
 | `src/lib/recipeValidation.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/formulas/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js` |
@@ -423,6 +448,8 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 
 ## Change Log
 
+- [2026-11-02] MODIFIED: Menghapus relasi 'R_Door --> C_PlcDialog' dan impor PlcDialog pada `door-operate/page.js` karena seluruh tombol pintu bekerja secara satu klik langsung tanpa modal dialog konfirmasi.
+- [2026-11-02] ADDED: Menambahkan node dan relasi impor untuk 6 file baru (fitur Door Operate): `src/lib/plcDoorCatalog.js`, `src/lib/plcDeadman.js`, `src/app/api/plc-door/route.js`, `src/app/(app)/door-operate/page.js`, `context/SiemensS7-200_pintu_NANTI.csv`, `fase1/tests/plc_door_mock.mjs`. Memperbarui entri `server.js` (tambahkan dynamic import `plcWrite.js` baris 95), `src/app/(app)/page.js` (tambahkan pemanggilan `/api/plc-door`), `src/components/Navbar.js` (menu door-operate), `src/lib/plcAccess.js` (dipakai oleh `api/plc-door/route.js`).
 - [2026-10-29] ADDED: Menambahkan pemetaan dependensi untuk 17 berkas baru: migrasi `006_add_bottle_count.sql` & rollback, rute HMI `calibration/`, `machine-params/`, `manual/`, `plc-clock/`, endpoint API `plc-clock/`, `plc-manual/`, `plc-params/`, komponen `SearchableCombobox.js`, `SignOffBlock.js`, `PlcDialog.js`, `PlcParamEditor.js`, serta pustaka `plcAccess.js`, `plcClock.js`, `plcManualCatalog.js`, dan `plcParamCatalog.js`.
 - [2026-10-29] MODIFIED: Memperbarui relasi impor internal untuk komponen yang diperbarui: `StartDialog.js` (meng-import `SearchableCombobox`), lembar cetak `print/alarm`, `print/data-report/[batchNo]`, dan `print/curve` (meng-import `SignOffBlock`), serta perluasan pemakaian `PermissionGate`, `permissionCatalog`, `recipeGuard`, `plcWrite`, `auditLog`, `auth`, dan `db`.
 - [2026-10-28] ADDED: Menambahkan pemetaan node dan hubungan impor internal untuk 16 berkas baru Fase 1: `fase1/tests/matrix.mjs`, migrasi SQL `005_drop_legacy_role.sql`, `005_drop_legacy_role_rollback.sql`, dump `backup_271026.sql`, rute `roles/page.js`, API handler `roles/route.js`, `roles/[id]/route.js`, `roles/options/route.js`, `users/[username]/delete/route.js`, komponen `DeletedUserBadge.js`, `PermissionGate.js`, serta pustaka `permissionCatalog.js`, `roleAdmin.js`, `roleQueries.js`, `userQueries.js`, dan `operatorLabel.js`.

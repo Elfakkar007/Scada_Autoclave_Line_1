@@ -419,9 +419,9 @@ Menyediakan tata letak dokumen yang diformat khusus untuk dicetak ke printer ker
 6. **Penghapusan Harness Uji Usang `fase1_integration.mjs`**:
    - Berkas: `fase1/tests/fase1_integration.mjs`.
    - Bukti: Harness integrasi lama yang masih mengasumsikan adanya kolom `users.role` telah dihapus dari repositori. Pengujian matriks perizinan kini menggunakan `fase1/tests/matrix.mjs`.
-7. **Bypass Pengujian Status Kesiapan Mesin pada Dashboard**:
-   - Berkas: `src/app/(app)/page.js:460`.
-   - Bukti: Variabel evaluasi kesiapan mesin `startAllowed` di-hardcode menjadi `const startAllowed = true;`, sementara baris logika asli `!noData && data.plcOk === true && phaseRaw === 1 && !data.running` dinonaktifkan dalam komentar. Pengecekan server-side di `/api/batch/start` tetap memvalidasi interlock dan fase mesin secara fail-closed, namun penguncian tombol pada antarmuka web ter-bypass saat pengujian.
+7. **Catatan Toggle Uji Kesiapan Mesin pada Dashboard**:
+   - Berkas: `src/app/(app)/page.js:492-494`.
+   - Bukti: Variabel evaluasi kesiapan mesin `startAllowed` di baris 492 (`const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`) berjalan aktif penuh (bukan bypass aktif). Komentar pengembang di baris 493–494 memuat `// Biarkan baris ini tetap ada untuk testing pop up start ya` dan `// const startAllowed = true;` yang sengaja dibiarkan pemilik untuk pengujian pop-up dialog START tanpa harus terhubung ke mesin fisik. Pengecekan server-side di `/api/batch/start` tetap memvalidasi interlock dan fase mesin secara fail-closed. Dianjurkan untuk membersihkan baris komentar ini sebelum rilis resmi produksi.
 
 ---
 
@@ -641,8 +641,252 @@ Menyediakan komponen lembar pengesahan tanda tangan fisik standar Good Manufactu
 
 ---
 
+## 26. Fitur Pengendalian Pintu Autoclave dari Web (Door Operate)
+
+### Deskripsi Faktual
+Menyediakan antarmuka HMI-web untuk mengendalikan pintu autoclave: pulsa Door Sealing (mengembangkan seal), pulsa Door Release (melepas seal), toggle Water Drain, toggle Door Unlock (bypass interlock tekanan), dan kontrol rantai Forward/Backward dengan mekanisme deadman (rantai berjalan hanya selama tombol ditahan, berhenti otomatis bila dilepas, tab ditutup, atau koneksi putus). Water Drain dan Door Unlock mati sendiri setelah 60 detik (auto-OFF timer). Semua perintah hanya diizinkan saat mesin idle (fase 0 atau 1). Keadaan rantai dan timer hidup di `globalThis.__plcDoorSafety` (singleton tahan duplikasi bundle Next.js).
+
+Seluruh operasi pintu (baik Door Release maupun Door Unlock) dieksekusi secara **satu klik langsung tanpa dialog konfirmasi dan tanpa kolom alasan** (baik di halaman Door Operate maupun tombol di Dashboard), menyelaraskan pengalaman pengguna dengan HMI fisik mesin pabrik. Setiap tindakan dicatat secara otomatis ke Audit Log dengan keterangan "menggunakan SCADA" (sebelumnya aksi di HMI mesin tidak memiliki rekam jejak audit).
+
+### Pagar per Aksi (`checkDoorCommand`)
+
+| Aksi | Kondisi yang Diperiksa Sebelum Menyalakan |
+|:---|:---|
+| `seal` | Fase ∈ {0,1}, tidak mode manual, kedua pintu tertutup (`clsFrnt && clsRear`), seal belum aktif, tidak ada Release aktif, tidak ada rantai bergerak |
+| `release` | Fase ∈ {0,1}, tidak mode manual, seal aktif, P1 ≤ Safety Press (keduanya terbaca), tidak ada Sealing aktif |
+| `drain` | Fase ∈ {0,1}, tidak mode manual, seal sudah lepas, kedua pintu TIDAK tertutup |
+| `unlock` | Fase ∈ {0,1}, tidak mode manual, P1 ≤ Safety Press (keduanya terbaca) |
+| `fwd` (rantai maju) | Fase ∈ {0,1}, tidak mode manual, seal sudah lepas, pintu belakang tidak tertutup, arah bwd tidak aktif |
+| `bwd` (rantai mundur) | Fase ∈ {0,1}, tidak mode manual, seal sudah lepas, pintu depan tidak tertutup, arah fwd tidak aktif |
+
+Sumber: `src/lib/plcDoorCatalog.js:111–162`. Nilai null apa pun di state = tolak (fail-closed).
+
+### Jalur Izin Ganda & Keputusan Desain (POST /api/plc-door)
+
+- **Jalur utama**: `manual_control >= edit` — berlaku untuk semua aksi (`seal`, `release`, `drain`, `unlock`, `chain`).
+- **Jalur kedua (berlaku untuk SEMUA aksi)**: `dashboard >= edit` **DAN** `action.batch_control = edit` (hak yang sama dengan START/STOP).
+- **Penolakan**: Bila kedua jalur gagal, server mengembalikan error 403 dari jalur utama (`manual_control` edit).
+- **Akses Baca (GET)**: `GET /api/plc-door` memerlukan `manual_control >= view` (`src/app/api/plc-door/route.js:26`). Menu "Door Operate" di `src/components/Navbar.js:26` dikaitkan dengan resource `manual_control`.
+- **Evaluasi di UI**: Halaman `src/app/(app)/door-operate/page.js:172-173` menghitung `canEdit` dengan dua jalur yang sama:
+  ```js
+  const canEdit = hasLevel(perms, "manual_control", "edit")
+      || (hasLevel(perms, "dashboard", "edit") && hasLevel(perms, "action.batch_control", "edit"));
+  ```
+- **Keputusan Desain (Bukan Bug)**: Pemilik menetapkan parity (kesetaraan) penuh antara kontrol web dan HMI fisik mesin, tempat operator proses biasa mengoperasikan seluruh kontrol pintu. Pengetatan per-tombol (mis. pembatasan khusus Door Unlock) direncanakan di fase berikutnya melalui perizinan granular per-user.
+- **Batasan yang Diketahui**: Role kustom yang memiliki `dashboard` edit + `action.batch_control` edit tetapi `manual_control = none` tidak akan melihat menu/halaman Door Operate di Navbar dan pemanggilan `GET /api/plc-door` akan ditolak 403 (walaupun aksi POST diizinkan).
+- **Catatan Risiko Operasional**: Door Unlock dapat dijalankan oleh semua pemegang hak START/STOP (diterima pemilik; pagar fisik tekanan server P1 ≤ Safety Press tetap berlaku mutlak di backend).
+
+### Rantai Alur Kode
+
+1. **Halaman UI**: Pengguna mengakses `/door-operate` (`src/app/(app)/door-operate/page.js`) yang dibungkus `PermissionGate resource="manual_control" minLevel="view"` (baris 331).
+2. **Polling Status**: Halaman memanggil `GET /api/plc-door` setiap 1500 ms (baris 108–114). Respons mencakup keadaan pintu, seal, fase, mode manual, status rantai, dan sisa auto-OFF timer.
+3. **Aksi Seal/Release**: Pengguna menekan tombol Door Sealing atau Door Release satu klik langsung (tanpa modal/dialog alasan).
+4. **API POST**: Permintaan `POST /api/plc-door` (`src/app/api/plc-door/route.js:57`) diterima, melewati guard izin ganda, mengambil advisory locks `withPlcLocks`, memeriksa `checkMachineIdle(IDLE_PHASES_DOOR)`, membaca keadaan via `readDoorState()`, dan mengevaluasi `checkDoorCommand`.
+5. **Audit Fail-Closed**: Sebelum menulis PLC untuk perintah ON, `insertAudit` dicatat ke database — kegagalan DB membatalkan perintah.
+6. **Penulisan PLC**: Fungsi `perform()` mengirim pulsa `DOOR_SEAL_CMD` (1500 ms) atau `DOOR_RELEASE` (3000 ms) via `pulsePlcTag`, lalu memverifikasi status bit `DOOR_SEAL` baca-balik (`verifyRaw`).
+7. **Deadman Rantai**: Tombol Forward/Backward menggunakan `HoldButton` dengan pointer capture (`setPointerCapture`, baris 65). Loop async mengirim `{ action: "chain", mode: "run", dir }` setiap interval 250 ms. Server memanggil `safety.chainRun()` yang memperbarui timer deadman 1000 ms; bila tombol dilepas atau koneksi putus >1000 ms, server menulis false otomatis ke kedua arah (`M11.0` dan `M11.1`).
+8. **Auto-OFF**: Water Drain dan Door Unlock ON memasang timer `AUTO_OFF_MS = 60_000` ms via `safety.armAutoOff()`. Timer mati otomatis menulis false dan mencatat audit.
+9. **Dashboard Integration**: Panel kanan Dashboard (`src/app/(app)/page.js:793–835`) menyediakan tombol Door Sealing dan Door Release satu klik langsung tanpa dialog/alasan menggunakan state `doorBusy`, `doorMsg`, dan handler `sendDoor` (baris 385–410).
+
+### Format Deskripsi & Aksi Audit Trail
+
+Setiap perintah pintu dicatat dengan teks deskriptif spesifik mencantumkan aktor dan penanda `menggunakan SCADA`:
+
+| Aksi Audit | Peristiwa / Pemicu | Format Deskripsi Faktual di Kode | Payload `newValue` |
+|:---|:---|:---|:---|
+| `plc_door_command` | Perintah ON / Pulsa berhasil (Seal, Release, Drain, Unlock) | `"<Label> dijalankan oleh <username> menggunakan SCADA."` (`route.js:202`) | `{ command, value: true, via: "scada", p1, safetyPress }` |
+| `plc_door_command` | Perintah OFF manual berhasil (Drain, Unlock) | `"<Label> dimatikan oleh <username> menggunakan SCADA."` (`route.js:130`) | `{ command, value: false }` |
+| `plc_door_command` | Auto-OFF 60 detik berhasil (Drain, Unlock) | `"<Label> dimatikan otomatis oleh SCADA setelah 60 dtk."` (`route.js:181`) | `{ command, value: false, auto: true }` |
+| `plc_door_command_failed` | Perintah gagal kirim / verifikasi gagal | `"<Label>: <pesan error>"` atau `"<Label> dimatikan oleh ... (TIDAK terverifikasi)"` | `{ command, value: ... }` |
+| `plc_door_chain` | Mulai penahanan rantai (onStart, fail-closed) | `"Rantai <Forward\|Backward> dijalankan oleh <username> menggunakan SCADA (ditahan, berhenti otomatis bila dilepas)."` (`route.js:102`) | `{ direction, event: "start" }` |
+| `plc_door_chain` | Akhir penahanan rantai (onEnd, best-effort) | `"Rantai <Forward\|Backward> (SCADA) berhenti setelah <dtk> dtk (<alasan>)"` (`route.js:108`) | `{ direction, event: "end", durationMs, reason, offVerified }` |
+
+Sumber: `src/app/api/plc-door/route.js:99–109, 127–131, 178–182, 199–203, 211–215`.
+
+### Konstanta Kunci
+
+| Konstanta | Nilai | Keterangan |
+|:---|:---|:---|
+| `IDLE_PHASES_DOOR` | `[0, 1]` | Fase yang membolehkan perintah pintu |
+| `SEAL_PULSE_MS` | `1500` | Durasi pulsa Door Sealing (ms) |
+| `RELEASE_PULSE_MS` | `3000` | Durasi pulsa Door Release (ms) — **[TIDAK TERVERIFIKASI: tebakan durasi tahan tombol HMI, belum dikonfirmasi ke mesin fisik]** |
+| `DEADMAN_TIMEOUT_MS` | `1000` | Rantai mati bila sinyal "run" tidak datang dalam (ms) |
+| `AUTO_OFF_MS` | `60_000` | Water Drain dan Door Unlock mati otomatis setelah (ms) |
+
+Sumber: `src/lib/plcDoorCatalog.js:27–34`.
+
+### Keterbatasan yang Diketahui
+
+- **Server mati saat rantai bergerak**: Rantai terus jalan sampai syarat PLC memotong (seal aktif, pintu tertutup, sensor `I2.0`/`I1.7`). Tidak ada failsafe dari sisi web — perlindungan penuh membutuhkan timeout di ladder PLC (di luar lingkup web). `server.js` menyiasatinya dengan reset best-effort `CHAIN_FWD`/`CHAIN_BWD` saat startup (baris 92–105).
+- **Tag belum diimpor**: Tag `DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT` belum ada di KEPServerEX — harus impor `context/SiemensS7-200_pintu_NANTI.csv` dulu.
+
+### Bukti Kode
+- `src/lib/plcDoorCatalog.js:1-163`
+- `src/lib/plcDeadman.js:1-246`
+- `src/app/api/plc-door/route.js:1-236`
+- `src/app/(app)/door-operate/page.js:1-335`
+- `src/components/Navbar.js:26` (menu Door Operate)
+- `server.js:92-105` (reset rantai saat startup)
+
+---
+
+## 27. Matriks Hak Akses & Perizinan Seluruh Endpoint API (Audit 2026-11-02)
+
+Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status cakupan pengujian otomatis pada skrip harness `fase1/tests/matrix.mjs` untuk seluruh 37 berkas route handler backend (`src/app/api/**/route.js`):
+
+| Endpoint Route | Metode | Guard / Aturan Izin yang Diminta | Status Publik / Sensitif | Cakupan `matrix.mjs` |
+|:---|:---:|:---|:---|:---:|
+| `/api/auth/login` | POST | **TANPA GUARD** (publik disengaja, rate-limited) | Publik | Di luar E (otentikasi) |
+| `/api/auth/logout` | POST | **TANPA GUARD** (menghapus cookie session token) | Publik / Sesi | Di luar E (otentikasi) |
+| `/api/auth/users` | GET | **TANPA GUARD** (publik disengaja; daftar user aktif) | Publik (Dropdown Login) | Di luar E (pre-check host) |
+| `/api/auth/me` | GET | `getSessionFromCookies` (wajib cookie sesi JWT valid) | Terotentikasi (Sesi) | ❌ Belum tercakup |
+| `/api/auth/unlock` | POST | `getSessionFromCookies` + verifikasi password bcrypt | Terotentikasi (Sesi) | ❌ Belum tercakup |
+| `/api/status` | GET | `requireAnyPermission`: `dashboard >= view` ∨ `trend >= view` | Internal SCADA | ✅ Tercakup |
+| `/api/batch-records` | GET | `requireAnyPermission`: `data_report >= view` ∨ `trend >= view` | Laporan Batch | ✅ Tercakup |
+| `/api/batch-records/[batchNo]` | GET | `requireAnyPermission`: `data_report >= view` ∨ `trend >= view` | Laporan Batch | ✅ Tercakup |
+| `/api/batch-records/export` | GET | `requireAnyPermission`: `data_report >= view` | Ekspor Laporan | ✅ Tercakup |
+| `/api/alarms` | GET | `requireAnyPermission`: `alarm >= view` | Alarm | ✅ Tercakup |
+| `/api/alarms/active` | GET | `requireAuth` (semua user login aktif) | Banner & Audio Alarm | ✅ Tercakup |
+| `/api/alarms/event-types` | GET | `requireAnyPermission`: `alarm >= view` | Alarm Filter | ✅ Tercakup |
+| `/api/alarms/print-data` | GET | `requireAnyPermission`: `alarm >= view` | Cetak Alarm | ✅ Tercakup |
+| `/api/alarms/by-batch/[batchNo]`| GET | `requireAnyPermission`: `data_report >= view` | Laporan Batch Alarm | ✅ Tercakup |
+| `/api/formulas` | GET | `requireAnyPermission`: `formula >= view` ∨ `dashboard >= view` | Resep Formula | ✅ Tercakup |
+| `/api/formulas` | POST | `requirePermission`: `formula >= edit` | Resep Formula | ✅ Tercakup |
+| `/api/formulas/[formulaNo]` | GET | `requirePermission`: `formula >= view` | Resep Formula | ✅ Tercakup |
+| `/api/formulas/[formulaNo]` | PUT | `requirePermission`: `formula >= edit` | Resep Formula | ✅ Tercakup |
+| `/api/formulas/[formulaNo]` | DELETE | `requirePermission`: `formula >= edit` | Resep Formula | ✅ Tercakup |
+| `/api/products` | GET | `requireAnyPermission`: `products >= view` ∨ `dashboard >= view` | Master Produk | ✅ Tercakup |
+| `/api/products` | POST | `requirePermission`: `products >= edit` | Master Produk | ✅ Tercakup |
+| `/api/products/[id]` | GET | `requirePermission`: `products >= view` | Master Produk | ✅ Tercakup |
+| `/api/products/[id]` | PUT | `requirePermission`: `products >= edit` | Master Produk | ✅ Tercakup |
+| `/api/products/[id]` | DELETE | `requirePermission`: `products >= edit` | Master Produk | ✅ Tercakup |
+| `/api/product-specs` | GET | `requireAnyPermission`: `products >= view` ∨ `dashboard >= view` | Spesifikasi Produk | ✅ Tercakup |
+| `/api/product-specs` | POST | `requirePermission`: `products >= edit` | Spesifikasi Produk | ✅ Tercakup |
+| `/api/product-specs/[id]` | GET | `requirePermission`: `products >= view` | Spesifikasi Produk | ✅ Tercakup |
+| `/api/product-specs/[id]` | PUT | `requirePermission`: `products >= edit` | Spesifikasi Produk | ✅ Tercakup |
+| `/api/product-specs/[id]` | DELETE | `requirePermission`: `products >= edit` | Spesifikasi Produk | ✅ Tercakup |
+| `/api/audit-log` | GET | `requirePermission`: `audit_log >= view` | Audit Trail | ✅ Tercakup |
+| `/api/audit-log/filters` | GET | `requirePermission`: `audit_log >= view` | Audit Trail | ✅ Tercakup |
+| `/api/audit-log/export` | GET | `requirePermission`: `audit_log >= view` | Ekspor Audit | ✅ Tercakup |
+| `/api/users` | GET | `requirePermission`: `users >= view` | Manajemen Pengguna | ✅ Tercakup |
+| `/api/users` | POST | `requirePermission`: `users >= edit` | Manajemen Pengguna | ✅ Tercakup |
+| `/api/users/[username]` | PUT | `requirePermission`: `users >= edit` | Manajemen Pengguna | ✅ Tercakup |
+| `/api/users/[username]` | DELETE | `requirePermission`: `users >= edit` | Hapus-Lunak Pengguna | ✅ Tercakup |
+| `/api/users/[username]/delete` | POST | `requirePermission`: `users >= edit` | Hapus-Lunak Pengguna | ✅ Tercakup |
+| `/api/users/[username]/reset-password` | POST | `requirePermission`: `users >= edit` | Reset Sandi | ✅ Tercakup |
+| `/api/roles` | GET | `requirePermission`: `roles >= view` | Role Management | ✅ Tercakup |
+| `/api/roles` | POST | `requirePermission`: `roles >= edit` | Role Management | ✅ Tercakup |
+| `/api/roles/[id]` | GET | `requirePermission`: `roles >= view` | Role Management | ✅ Tercakup |
+| `/api/roles/[id]` | PUT | `requirePermission`: `roles >= edit` | Role Management | ✅ Tercakup |
+| `/api/roles/[id]` | DELETE | `requirePermission`: `roles >= edit` | Role Management | ✅ Tercakup |
+| `/api/roles/options` | GET | `requireAnyPermission`: `users >= view` ∨ `roles >= view` | Dropdown Peran | ✅ Tercakup |
+| `/api/batch/start` | POST | `dashboard >= edit` ∧ `action.batch_control = edit` | **KONTROL KRITIS** | ❌ Belum tercakup |
+| `/api/batch/stop` | POST | `dashboard >= edit` ∧ `action.batch_control = edit` | **KONTROL KRITIS** | ❌ Belum tercakup |
+| `/api/plc/reset` | POST | `dashboard >= edit` | **KONTROL KRITIS** | ❌ Belum tercakup |
+| `/api/plc-clock` | GET | `requirePermission`: `plc_clock >= view` | HMI Jam PLC | ❌ Belum tercakup |
+| `/api/plc-clock` | PUT | `requirePermission`: `plc_clock >= edit` | HMI Jam PLC | ❌ Belum tercakup |
+| `/api/plc-manual` | GET | `requirePermission`: `manual_control >= view` | HMI Kontrol Manual | ❌ Belum tercakup |
+| `/api/plc-manual` | POST | `requirePermission`: `manual_control >= edit` | HMI Kontrol Manual | ❌ Belum tercakup |
+| `/api/plc-params` | GET | Dinamis: `meta.resource >= view` (`machine_params` atau `calibration`) | HMI Parameter Mesin | ❌ Belum tercakup |
+| `/api/plc-params` | PUT | Dinamis: `meta.resource >= edit` + `writeAction` + `restrictedActions` | HMI Parameter Mesin | ❌ Belum tercakup |
+| `/api/plc-door` | GET | `requirePermission`: `manual_control >= view` | HMI Door Operate | ❌ Belum tercakup |
+| `/api/plc-door` | POST | **Jalur Ganda (Semua Aksi)**:<br>1. `manual_control >= edit`<br>2. `dashboard >= edit` ∧ `action.batch_control = edit` | **KONTROL KRITIS** | ❌ Belum tercakup |
+
+**Catatan Gap Pengujian**: Skrip `fase1/tests/matrix.mjs` dibuat pada Fase 1 RBAC dan belum diperbarui untuk menguji 9 endpoint gelombang HMI dan Door Operate (`/api/batch/start`, `/api/batch/stop`, `/api/plc/reset`, `/api/plc-clock`, `/api/plc-manual`, `/api/plc-params`, `/api/plc-door`, `/api/auth/me`, `/api/auth/unlock`). Pengujian otomatis untuk endpoint-endpoint ini wajib ditambahkan pada fase berikutnya.
+
+---
+
+## 28. Inventarisasi Aksi Audit Log & Pemetaan Label UI (Audit 2026-11-02)
+
+Terdapat **36 nama aksi unik** yang dicatat ke tabel database `audit_log` di seluruh aplikasi melalui modul `insertAudit`/`tryAudit` dan proses latar belakang. Pemeriksaan terhadap komponen UI (`src/app/(app)/audit-log/page.js`), lembar cetak (`src/app/print/audit-log/page.js`), dan direktori `src/lib/` menemukan bahwa **tidak ada kamus/modul translasi label tampilan audit** di repositori. Seluruh aksi audit dirender secara **mentah (raw string)** apa adanya dari database:
+
+| No | Nama Aksi Audit (`action`) | Entity Type | Berkas & Baris Pemanggil | Tampilan di UI Audit Log |
+|:---:|:---|:---|:---|:---:|
+| 1 | `login` | `user` | `src/app/api/auth/login/route.js:157` | Mentah (badge warna) |
+| 2 | `login_failed` | `user` | `src/app/api/auth/login/route.js:123, 138` | Mentah |
+| 3 | `login_blocked` | `user` | `src/app/api/auth/login/route.js:89` | Mentah |
+| 4 | `logout` | `user` | `src/app/api/auth/logout/route.js:13` | Mentah (badge warna) |
+| 5 | `unlock_screen` | `user` | `src/app/api/auth/unlock/route.js:69` | Mentah |
+| 6 | `unlock_screen_failed` | `user` | `src/app/api/auth/unlock/route.js:53` | Mentah |
+| 7 | `create_user` | `user` | `src/app/api/users/route.js:92` | Mentah (badge warna `create`) |
+| 8 | `update_user` | `user` | `src/app/api/users/[username]/route.js:75` | Mentah (badge warna `update`) |
+| 9 | `user_role_change` | `user` | `src/app/api/users/[username]/route.js:87` | Mentah |
+| 10 | `deactivate_user` | `user` | `src/app/api/users/[username]/route.js:144` | Mentah |
+| 11 | `delete_user` | `user` | `src/app/api/users/[username]/delete/route.js:74` | Mentah (badge warna `delete`) |
+| 12 | `reset_password` | `user` | `src/app/api/users/[username]/reset-password/route.js:44` | Mentah |
+| 13 | `role_create` | `role` | `src/app/api/roles/route.js:74` | Mentah |
+| 14 | `role_update` | `role` | `src/app/api/roles/[id]/route.js:78` | Mentah |
+| 15 | `role_permissions_update` | `role` | `src/app/api/roles/[id]/route.js:96` | Mentah |
+| 16 | `role_delete` | `role` | `src/app/api/roles/[id]/route.js:141` | Mentah |
+| 17 | `start_batch_critical` | `batch` | `src/app/api/batch/start/route.js:672` | Mentah |
+| 18 | `plc_setpoints_written` | `batch` | `src/app/api/batch/start/route.js:519` | Mentah |
+| 19 | `stop_requested` | `batch` | `src/app/api/batch/stop/route.js:49` | Mentah |
+| 20 | `stop_batch` | `batch` | `src/app/api/batch/stop/route.js:112` | Mentah (badge warna `stop_batch`) |
+| 21 | `batch_auto_finalize` | `batch` | `src/lib/trendRecorder.js:283` | Mentah |
+| 22 | `plc_reset_requested` | `plc` | `src/app/api/plc/reset/route.js:87` | Mentah |
+| 23 | `plc_clock_write_requested` | `plc` | `src/app/api/plc-clock/route.js:81` | Mentah |
+| 24 | `plc_clock_write_failed` | `plc` | `src/app/api/plc-clock/route.js:103, 137` | Mentah |
+| 25 | `plc_clock_written` | `plc` | `src/app/api/plc-clock/route.js:156` | Mentah |
+| 26 | `plc_manual_command` | `plc` | `src/app/api/plc-manual/route.js:97, 118, 157, 189` | Mentah |
+| 27 | `plc_manual_command_failed` | `plc` | `src/app/api/plc-manual/route.js:97, 118, 172, 199` | Mentah |
+| 28 | `plc_parameter_write_requested` | `plc` | `src/app/api/plc-params/route.js:147` | Mentah |
+| 29 | `plc_parameter_write_failed` | `plc` | `src/app/api/plc-params/route.js:168` | Mentah |
+| 30 | `plc_parameter_written` | `plc` | `src/app/api/plc-params/route.js:201` | Mentah |
+| 31 | `plc_calibration_write_requested` | `plc` | `src/app/api/plc-params/route.js:147` | Mentah |
+| 32 | `plc_calibration_write_failed` | `plc` | `src/app/api/plc-params/route.js:168` | Mentah |
+| 33 | `plc_calibration_written` | `plc` | `src/app/api/plc-params/route.js:201` | Mentah |
+| 34 | `plc_door_command` | `plc` | `src/app/api/plc-door/route.js:128, 179, 200` | Mentah |
+| 35 | `plc_door_command_failed` | `plc` | `src/app/api/plc-door/route.js:128, 179, 212` | Mentah |
+| 36 | `plc_door_chain` | `plc` | `src/app/api/plc-door/route.js:100, 106` | Mentah |
+
+---
+
+## 29. Komparasi Faktual Tag PLC: Kode Sumber vs Dokumen CSV (Audit 2026-11-02)
+
+Pemeriksaan komparatif dilakukan antara seluruh tag yang didefinisikan pada berkas CSV di `context/*.csv` terhadap pemakaian tag nyata di kode sumber (`src/lib/plc.js`, `plcManualCatalog.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcWrite.js`, `batch/start`, `batch/stop`, `plc/reset`, `server.js`):
+
+- Total tag pada `context/SiemensS7-200.csv`: **60 tag**
+- Total tag pada `context/SiemensS7-200_pintu_NANTI.csv`: **6 tag** (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`)
+- Total tag CSV gabungan: **66 tag**
+- Total tag aktif yang diakses kode sumber: **76 tag**
+
+### Tag yang Dipakai Kode Sumber Tapi TIDAK ADA di CSV Mana Pun (15 Tag)
+Seluruh 15 tag di bawah ini aktif di kode namun belum terdaftar di CSV repositori. Tag-tag ini wajib dibuatkan file impor KEPServerEX (misal: `SiemensS7-200_manual_NANTI.csv`) sebelum modul Kontrol Manual dan Parameter Mesin dapat berfungsi di pabrik:
+
+| Nama Tag di Kode | Alamat Register PLC | Lokasi Pemanggilan Kode Sumber | Deskripsi & Fungsi |
+|:---|:---:|:---|:---|
+| `MANUAL_OPER` | M5.0 | `src/lib/plcManualCatalog.js:16` | Bit aktivasi mode kontrol manual |
+| `MAN_STEAM_1` | M2.6 | `src/lib/plcManualCatalog.js:20` | Perintah manual katup Steam 1 |
+| `MAN_STEAM_2` | M2.7 | `src/lib/plcManualCatalog.js:21` | Perintah manual katup Steam 2 |
+| `MAN_WTR_DRAIN` | M2.5 | `src/lib/plcManualCatalog.js:23`, `plcDoorCatalog.js:42` | Perintah manual buang air / Door Operate drain |
+| `MAN_COOLING_1` | M10.0 | `src/lib/plcManualCatalog.js:24` | Perintah manual air pendingin 1 |
+| `MAN_COOLING_2` | M10.1 | `src/lib/plcManualCatalog.js:25` | Perintah manual air pendingin 2 |
+| `MAN_STEAM_EXHS`| M10.2 | `src/lib/plcManualCatalog.js:26` | Perintah manual katup buang uap (exhaust) |
+| `MAN_WTR_FILL` | M10.3 | `src/lib/plcManualCatalog.js:27` | Perintah manual pengisian air bejana |
+| `MAN_AIR_CMBR` | M10.4 | `src/lib/plcManualCatalog.js:28` | Perintah manual udara tekan chamber |
+| `MAN_WTR_PUMP` | M10.5 | `src/lib/plcManualCatalog.js:29` | Perintah manual pompa air pendingin |
+| `MAN_BUZZER` | M10.6 | `src/lib/plcManualCatalog.js:34` | Perintah manual pengujian buzzer alarm |
+| `DRAIN_TIME` | VW88 | `src/lib/plcParamCatalog.js:80` | Parameter waktu pembuangan air (detik) |
+| `SEL_PROG` | VW32 | `src/lib/plcParamCatalog.js:86` | Seleksi nomor program sterilisasi PLC |
+| `SEL_PRESU` | VW30 | `src/lib/plcParamCatalog.js:87` | Seleksi kanal sensor tekanan P1 (AIW12/AIW14) |
+| `CAL_L` | VW144 | `src/lib/plcParamCatalog.js:189` | Offset kalibrasi sensor konduktivitas |
+
+### Tag pada CSV yang TIDAK Dipakai di Kode Sumber (5 Tag)
+Tag-tag ini terdaftar pada `SiemensS7-200.csv` tetapi tidak pernah dibaca atau ditulis oleh kode backend/frontend SCADA:
+1. `ALRM_DOR`: Alarm pintu di CSV (aplikasi membaca alarm via bit individual `ALM_M8_*` dan `ALM_M10_*` di `alarmCatalog.js`).
+2. `ALRM_TEMP`: Alarm suhu di CSV (aplikasi menghitung letalitas F0 dan threshold sensor secara independen di web).
+3. `BUZZER`: Output buzzer fisik Q0.6 di CSV.
+4. `F0_VAL`: Register F0 bawaan ladder PLC (aplikasi menghitung nilai F0 sendiri via algoritma integrasi numerik di `src/lib/f0.js`).
+5. `WARNING_BUZ`: Bit warning buzzer M8.5 di CSV.
+
+---
+
 ## Change Log
 
+- [2026-11-02] ADDED: Menambahkan Seksi 27 (Matriks Hak Akses Seluruh 37 Endpoint API), Seksi 28 (Inventarisasi 36 Aksi Audit Log & Analisis Label UI), dan Seksi 29 (Komparasi Faktual Tag PLC: Kode Sumber vs CSV).
+- [2026-11-02] RESOLVED: Mengoreksi status `startAllowed` di Dashboard (`page.js:492-494`) bukan bypass aktif; baris logika asli aktif penuh mengevaluasi kesiapan mesin, baris `// const startAllowed = true;` hanyalah komentar toggle uji yang sengaja dibiarkan pemilik.
+- [2026-11-02] ADDED: Menambahkan dokumentasi Fitur 26 (Pengendalian Pintu Autoclave dari Web / Door Operate) termasuk tabel pagar per aksi, jalur izin ganda, rantai alur kode, tabel audit, konstanta kunci, dan keterbatasan yang diketahui.
+- [2026-11-02] MODIFIED: Memperbarui Seksi 3 (Fitur Dashboard) — blok DOOR panel kanan sekarang adalah tombol Door Sealing + Door Release (bukan "Read only").
 - [2026-10-29] ADDED: Menambahkan dokumentasi Fitur 20 (Pengaturan Parameter Mesin PLC), Fitur 21 (Kalibrasi Offset Sensor PLC), Fitur 22 (Pemantauan & Sinkronisasi Jam RTC PLC), Fitur 23 (Kontrol Manual Aktuator PLC), Fitur 24 (Pencatatan Jumlah Botol / Bottle Count Tracking), dan Fitur 25 (Blok Pengesahan Tanda Tangan Cetak / SignOffBlock). Menambahkan butir 7 pada Seksi 17 mengenai bypass pengujian `startAllowed = true` di Dashboard.
 - [2026-10-29] MODIFIED: Memperbarui alur Fitur 4 (Start Batch Sequence) dengan nilai kunci advisory `START_LOCK_KEY` yang benar (`7401001`), pencatatan `bottle_count`, integrasi `SearchableCombobox`, dan penataan form 2 kolom. Memperbarui Fitur 13 (Data Report & Ekspor), Fitur 16 (Print Layouts), dan Fitur 18 (RBAC) sejalan dengan implementasi nyata antarmuka HMI dan pencatatan jumlah botol.
 - [2026-10-28] ADDED: Menambahkan dokumentasi Fitur 18 (Manajemen Peran & Matriks Otorisasi Granular / RBAC) dan Fitur 19 (Hapus-Lunak Akun Pengguna & Penguncian Username). Menambahkan butir 4-6 pada Seksi 17 mengenai pembersihan kolom `users.role`, pembersihan payload `actor` mati pada permintaan STOP, dan penghapusan file uji usang `fase1_integration.mjs`.

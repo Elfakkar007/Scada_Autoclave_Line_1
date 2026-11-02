@@ -209,6 +209,10 @@ export default function Home() {
   // State untuk dialog START batch (menggantikan halaman /prepare)
   const [startDialogOpen, setStartDialogOpen] = useState(false);
 
+  // State untuk tombol Door Sealing / Door Release (satu section dengan START/STOP)
+  const [doorBusy, setDoorBusy] = useState(false);          // sedang mengirim perintah pintu?
+  const [doorMsg, setDoorMsg] = useState(null);             // { ok, text } atau null
+
   // Izin user: null = belum terbaca (default tolak), {} = terbaca tapi tidak ada izin
   const [perms, setPerms] = useState(null);
 
@@ -377,6 +381,34 @@ export default function Home() {
     }
   }
 
+  // Perintah pintu lewat /api/plc-door (pagar server: mesin idle, pintu, seal, tekanan, audit).
+  // Tombol di sini hanya merapikan tampilan; server yang menentukan boleh atau tidaknya.
+  async function sendDoor(body, okText) {
+    if (doorBusy) return false; // cegah double-click
+    setDoorBusy(true);
+    setDoorMsg(null);
+    try {
+      const res = await fetch("/api/plc-door", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.ok === false) {
+        setDoorMsg({ ok: false, text: json?.error ?? "Perintah pintu gagal." });
+        return false;
+      }
+      setDoorMsg({ ok: true, text: okText });
+      return true;
+    } catch (err) {
+      setDoorMsg({ ok: false, text: `Gagal mengirim request: ${err.message}` });
+      return false;
+    } finally {
+      setDoorBusy(false);
+      fetchData();
+    }
+  }
+
   // canControl: true hanya bila KEDUA izin terpenuhi — default tolak sampai /api/auth/me terbaca
   const canControl = hasLevel(perms, "dashboard", "edit") && hasLevel(perms, "action.batch_control", "edit");
   // canViewDashboard: false = tampilkan pesan "tidak punya akses" tanpa redirect
@@ -457,8 +489,9 @@ export default function Home() {
   // Ini mencegah START ditekan saat mesin sedang dalam proses (dimulai dari luar web).
   const phaseRaw = phaseObj?.rawValue ?? null;
   const PROCESS_PHASES = [2, 3, 4, 5, 7]; // filling, heating, steril, cooling, drain
-  // const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
-  const startAllowed = true;
+  const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
+  // Biarkan baris ini tetap ada untuk testing pop up start ya
+  // const startAllowed = true; 
 
   // Mesin berjalan dari luar web (belum ada batch di DB, tapi fase proses)
   const machineRunningExternal = !data.running && !noData && data.plcOk === true &&
@@ -481,6 +514,29 @@ export default function Home() {
       startBlockReason = "Mesin di fase END — gunakan tombol Reset di bawah.";
     } else {
       startBlockReason = `Fase mesin: ${data.phase?.label ?? "tidak diketahui"} — START tidak bisa dilakukan sekarang.`;
+    }
+  }
+
+  // ── Door Sealing / Door Release di dashboard ────────────────────────────────
+  // Izin: sama dengan START/STOP (dashboard edit + action.batch_control) ATAU manual_control edit.
+  // Server menerima salah satu jalur itu untuk aksi seal/release.
+  const canDoor = canControl || hasLevel(perms, "manual_control", "edit");
+  const sealOn = !!data.door?.seal;
+  // Fase 0 = idle (pintu/seal belum siap), 1 = siap (kedua pintu tertutup dan seal aktif).
+  const sealAllowed = !noData && data.plcOk === true && phaseRaw === 0 && !sealOn && !data.running;
+  const releaseAllowed = !noData && data.plcOk === true && phaseRaw === 1 && sealOn && !data.running;
+  let doorBlockReason = null;
+  if (!sealAllowed && !releaseAllowed) {
+    if (noData) {
+      doorBlockReason = "PLC tidak terhubung — kondisi pintu tidak bisa diverifikasi.";
+    } else if (data.running || PROCESS_PHASES.includes(phaseRaw)) {
+      doorBlockReason = "Mesin sedang dalam proses — perintah pintu dikunci.";
+    } else if (phaseRaw === 6) {
+      doorBlockReason = "Mesin di fase END — tekan Reset dulu sebelum Door Release.";
+    } else if (phaseRaw === null) {
+      doorBlockReason = "Fase mesin tidak terbaca — perintah pintu dikunci.";
+    } else {
+      doorBlockReason = "Perintah pintu tidak tersedia pada keadaan mesin saat ini.";
     }
   }
 
@@ -733,15 +789,46 @@ export default function Home() {
                 <p className="text-[11px] text-[#5C6B6A] leading-snug px-1">{startBlockReason}</p>
               )}
 
-              {/* DOOR: read only, bukan tombol */}
-              <div
-                role="status"
-                className="flex items-center justify-between px-2 py-1.5 rounded-[3px] border border-dashed border-[#B8C0BE] text-[13px] text-[#5C6B6A] cursor-default select-none"
-              >
-                <span className="font-semibold">DOOR</span>
-                <span className="text-[11px]">
-                  Read only: {noData ? "NO DATA" : data.door?.bypass ? "Bypass" : data.door?.seal ? "Sealed" : "Released"}
-                </span>
+              {/* ── DOOR: Door Sealing + Door Release (permintaan QA), satu section dengan START/STOP ── */}
+              <div className="rounded-[3px] border border-[#D8DEDC] bg-white p-1.5 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between px-0.5 text-[13px]">
+                  <span className="font-semibold">DOOR</span>
+                  <span className="text-[11px] text-[#5C6B6A]">
+                    {noData ? "NO DATA" : data.door?.bypass ? "Bypass" : sealOn ? "Sealed" : "Released"}
+                  </span>
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => sendDoor({ action: "seal" }, "Seal pintu aktif dan terverifikasi.")}
+                    disabled={!canDoor || !sealAllowed || doorBusy}
+                    title={!canDoor ? "Anda tidak punya izin untuk aksi ini" : (doorBlockReason ?? undefined)}
+                    className="flex-1 px-2 py-1.5 rounded-[3px] bg-[#1C6E74] hover:bg-[#175B60] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[12px] font-semibold transition-colors"
+                  >
+                    {doorBusy ? "Memproses…" : "Door Sealing"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sendDoor({ action: "release" }, "Seal pintu dilepas dan terverifikasi.")}
+                    disabled={!canDoor || !releaseAllowed || doorBusy}
+                    title={!canDoor ? "Anda tidak punya izin untuk aksi ini" : (doorBlockReason ?? undefined)}
+                    className="flex-1 px-2 py-1.5 rounded-[3px] bg-[#B9762F] hover:bg-[#9F6527] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[12px] font-semibold transition-colors"
+                  >
+                    Door Release
+                  </button>
+                </div>
+
+                {!canDoor && perms !== null && (
+                  <p className="text-[11px] text-[#A23B2E] leading-snug px-0.5">Anda tidak punya izin untuk mengoperasikan pintu.</p>
+                )}
+                {canDoor && doorBlockReason && (
+                  <p className="text-[11px] text-[#5C6B6A] leading-snug px-0.5">{doorBlockReason}</p>
+                )}
+                {doorMsg && (
+                  <p className={`text-[11px] leading-snug px-0.5 ${doorMsg.ok ? "text-[#4F7A52]" : "text-[#A23B2E]"}`}>
+                    {doorMsg.text}
+                  </p>
+                )}
               </div>
 
               <button

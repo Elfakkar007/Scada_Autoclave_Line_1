@@ -23,6 +23,7 @@ const machineMenu = [
     { href: "/calibration", label: "Kalibrasi", resource: "calibration" },
     { href: "/plc-clock", label: "Jam PLC", resource: "plc_clock" },
     { href: "/manual", label: "Kontrol Manual", resource: "manual_control" },
+    { href: "/door-operate", label: "Door Operate", resource: "manual_control" },
 ];
 
 const adminMenu = [
