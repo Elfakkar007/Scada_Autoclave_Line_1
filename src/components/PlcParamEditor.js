@@ -125,11 +125,21 @@ function ConfirmDialog({ title, pending, reason, onReason, saving, error, done, 
 }
 
 // ── Satu baris field ──────────────────────────────────────────────────────────
-function FieldRow({ def, current, input, error, editable, onChange }) {
+// showSensorColumn: true untuk grup kalibrasi — kolom selalu tampil walau PLC offline.
+function FieldRow({ def, current, liveValue, showSensorColumn, input, error, editable, onChange }) {
     const isBool = def.kind === "bool";
     const shown = input ?? "";
+
+    const hasLiveVal = liveValue !== null && liveValue !== undefined;
+    const liveUnit = def.unit === "°C" ? "°C" : (def.unit === "kPa" ? "kPa" : "");
+    const liveFormatted = hasLiveVal
+        ? (typeof liveValue === "number"
+            ? (liveValue >= 0 ? "+" : "") + liveValue.toFixed(def.unit === "kPa" ? 0 : 1)
+            : String(liveValue))
+        : null;
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-[11rem_10rem_1fr] gap-x-4 gap-y-1 px-4 py-3 border-b border-scada-rule last:border-0 items-start">
+        <div className={`grid gap-x-4 gap-y-1 px-4 py-3 border-b border-scada-rule last:border-0 items-start ${showSensorColumn ? "grid-cols-1 md:grid-cols-[10rem_9rem_9rem_1fr]" : "grid-cols-1 md:grid-cols-[11rem_10rem_1fr]"}`}>
             <div>
                 <div className="text-xs uppercase text-scada-muted font-semibold">{def.label}</div>
                 <div className="mt-0.5 flex flex-wrap gap-1">
@@ -138,8 +148,20 @@ function FieldRow({ def, current, input, error, editable, onChange }) {
                     {def.recipeDriven && <span className="px-1.5 py-0.5 text-[10px] rounded bg-scada-water text-white">ditimpa resep</span>}
                 </div>
             </div>
+            {/* Kolom "Nilai Sensor" — selalu ada untuk grup kalibrasi, "—" bila PLC offline */}
+            {showSensorColumn && (
+                <div>
+                    <div className="text-[10px] uppercase text-scada-muted">Nilai Sensor</div>
+                    <div className="font-mono text-sm font-semibold text-scada-water">
+                        {liveFormatted !== null
+                            ? <>{liveFormatted} <span className="text-scada-muted font-normal">{liveUnit}</span></>
+                            : <span className="text-scada-muted font-normal">—</span>
+                        }
+                    </div>
+                </div>
+            )}
             <div>
-                <div className="text-[10px] uppercase text-scada-muted">Nilai PLC</div>
+                <div className="text-[10px] uppercase text-scada-muted">{showSensorColumn ? "Offset Kalibrasi" : "Nilai PLC"}</div>
                 <div className="font-mono text-sm font-semibold">
                     {formatValue(def, current)} {current !== null && current !== undefined && !isBool ? <span className="text-scada-muted font-normal">{def.unit}</span> : null}
                 </div>
@@ -212,6 +234,10 @@ function GroupPanel({ group, perms }) {
     const data = result?.data ?? null;
     const plcOk = data?.plcOk === true;
     const idle = data?.idle ?? null;
+    // liveValues: nilai sensor aktual (hanya ada untuk grup kalibrasi, dari API)
+    const liveValues = data?.liveValues ?? null;
+    // showSensorColumn: true untuk kalibrasi — kolom tampil selalu (walau PLC offline)
+    const showSensorColumn = group === "calibration";
 
     const baseEdit =
         hasLevel(perms, meta.resource, "edit") &&
@@ -311,6 +337,8 @@ function GroupPanel({ group, perms }) {
                         key={def.key}
                         def={def}
                         current={data?.values?.[def.key]?.value ?? null}
+                        liveValue={liveValues ? (liveValues[def.key] ?? null) : null}
+                        showSensorColumn={showSensorColumn}
                         input={inputs[def.key]}
                         error={errors[def.key]}
                         editable={canEditField(def) && writableNow}

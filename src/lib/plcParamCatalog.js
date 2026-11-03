@@ -47,6 +47,9 @@ export const PLC_FIELDS = {
         temp("tempSpace", "TEMP_SPACE", "Temp. Space", 0.1, 20, { recipeDriven: true, hint: RECIPE_NOTE }),
         { kind: "int", scale: 1, unit: "MIN", decimals: 0, min: 1, max: 500, key: "sterTime", tag: "STER_SET_TIME",
           label: "Ster. Time", recipeDriven: true, hint: RECIPE_NOTE },
+        { kind: "int", scale: 10, unit: "MIN", decimals: 1, min: 0, max: 99, key: "foValue", tag: "FO_VALUE",
+          label: "FO Value",
+          hint: "Nilai F0 target (VW220). Dipakai bila Control Select = F0. Pada mode TIME, parameter ini tidak memengaruhi proses." },
         kpa("alarmPress", "ALRM_PRES", "Alarm Press.", 100, 300, {
             restricted: SAFETY_ACTION, recipeDriven: true,
             hint: "P1 ≥ nilai ini membuka katup exhaust (Q1.5). " + RECIPE_NOTE,

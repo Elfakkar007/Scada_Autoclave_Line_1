@@ -31,6 +31,7 @@ export async function GET(request) {
         let plcError = null;
         const values = {};
         let idle = null;
+        let liveValues = null;
         try {
             const { values: raws } = await readPlcRaw(fields.map((f) => f.tag));
             for (const f of fields) {
@@ -38,12 +39,31 @@ export async function GET(request) {
                 values[f.key] = { raw, value: rawToValue(f, raw) };
             }
             idle = await checkMachineIdle(IDLE_PHASES_PARAMS);
+
+            // Untuk grup kalibrasi: baca juga nilai suhu/tekanan sensor aktual
+            // agar halaman web bisa menampilkan nilai seperti di HMI (suhu + offset).
+            if (group === "calibration") {
+                const LIVE_TAGS = {
+                    th: "TH", t1: "T1", t2: "T2", t3: "T3",
+                    t4: "T4", t5: "T5", t6: "T6", tm: "TM", tl: "TL",
+                    p1: "P1", p2: "P2",
+                };
+                const LIVE_SCALE_10 = new Set(["th","t1","t2","t3","t4","t5","t6","tm","tl"]);
+                const { values: liveRaws } = await readPlcRaw(Object.values(LIVE_TAGS));
+                liveValues = {};
+                for (const [key, tag] of Object.entries(LIVE_TAGS)) {
+                    const raw = liveRaws[tag] ?? null;
+                    liveValues[key] = raw !== null
+                        ? (LIVE_SCALE_10.has(key) ? raw / 10 : raw)
+                        : null;
+                }
+            }
         } catch (err) {
             console.error("[GET /api/plc-params] PLC tidak terbaca:", err.message);
             plcOk = false;
             plcError = "PLC tidak terbaca. Periksa koneksi KEPServerEX dan PLC.";
         }
-        return Response.json({ ok: true, group, plcOk, plcError, values, idle });
+        return Response.json({ ok: true, group, plcOk, plcError, values, idle, liveValues });
     } catch (error) {
         console.error("[GET /api/plc-params]", error);
         return Response.json({ ok: false, error: GENERIC_SERVER_ERROR }, { status: 500 });

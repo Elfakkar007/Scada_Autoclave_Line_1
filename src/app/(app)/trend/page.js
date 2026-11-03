@@ -149,6 +149,12 @@ function TrendContent() {
     const batch = batchDetail?.batch ?? null;
     const trend = batchDetail?.trend ?? [];
 
+    // Buka halaman cetak di tab baru dengan batch yang sedang dipilih
+    function handlePrint() {
+        if (!selectedBatchNo) return;
+        window.open(`/print/trend/${encodeURIComponent(selectedBatchNo)}`, "_blank");
+    }
+
     // Format data trend agar X-axis bisa dibaca
     const chartData = trend.map((row) => ({
         ...row,
@@ -158,11 +164,20 @@ function TrendContent() {
     return (
         <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
             {/* ── Header ── */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold tracking-tight">Trend</h1>
-                <p className="text-sm text-scada-muted mt-1">
-                    Grafik suhu &amp; tekanan per batch sterilisasi
-                </p>
+            <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">Trend</h1>
+                    <p className="text-sm text-scada-muted mt-1">
+                        Grafik suhu &amp; tekanan per batch sterilisasi
+                    </p>
+                </div>
+                <button
+                    onClick={handlePrint}
+                    disabled={!selectedBatchNo || loadingDetail}
+                    className="px-3 py-1.5 bg-scada-ink hover:bg-scada-muted disabled:opacity-50 text-white rounded text-xs font-semibold transition-colors"
+                >
+                    🖨 Cetak / PDF
+                </button>
             </div>
 
             {/* ── Error banner ── */}
