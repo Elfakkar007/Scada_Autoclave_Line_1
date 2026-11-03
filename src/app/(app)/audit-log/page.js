@@ -4,8 +4,19 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { hasLevel } from "@/lib/permissionCatalog";
 import DeletedUserBadge from "@/components/DeletedUserBadge";
+import { auditActionLabel, auditActionTone } from "@/lib/auditActionLabels";
 
 const LIMIT = 20;
+
+// Warna badge aksi menurut tone dari kamus label (src/lib/auditActionLabels.js).
+const TONE_CLASS = {
+    run: "bg-scada-run text-white",
+    water: "bg-scada-water text-white",
+    steam: "bg-scada-steam text-white",
+    stop: "bg-scada-stop text-white",
+    idle: "bg-scada-idle text-scada-ink",
+    plain: "bg-scada-bg text-scada-ink border border-scada-idle",
+};
 
 // ── Helper tanggal ────────────────────────────────────────────────────────────
 function todayWIB() {
@@ -22,10 +33,10 @@ function fmt(dateStr) {
     return new Date(dateStr).toLocaleString("id-ID");
 }
 
-function Badge({ value, colorClass = "bg-scada-bg text-scada-ink border border-scada-idle" }) {
+function Badge({ value, colorClass = "bg-scada-bg text-scada-ink border border-scada-idle", title }) {
     if (!value) return <span className="text-scada-muted">-</span>;
     return (
-        <span className={`inline-block px-2 py-0.5 ${colorClass} rounded text-xs font-mono`}>
+        <span title={title} className={`inline-block px-2 py-0.5 ${colorClass} rounded text-xs font-mono`}>
             {value}
         </span>
     );
@@ -202,16 +213,6 @@ export default function AuditLogPage() {
     const hasPrev = offset > 0;
     const hasNext = offset + LIMIT < total;
 
-    const ACTION_COLORS = {
-        create: "bg-scada-run text-white",
-        update: "bg-scada-water text-white",
-        delete: "bg-scada-stop text-white",
-        login: "bg-scada-bg text-scada-ink border border-scada-idle",
-        logout: "bg-scada-idle text-scada-ink",
-        start_batch: "bg-scada-steam text-white",
-        stop_batch: "bg-scada-stop text-white",
-    };
-
     const thClass = "px-3 py-3 text-left text-xs text-scada-muted uppercase tracking-wider font-semibold whitespace-nowrap";
     const tdClass = "px-3 py-3 text-sm text-scada-ink";
 
@@ -283,9 +284,11 @@ export default function AuditLogPage() {
                     className="bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors cursor-pointer"
                 >
                     <option value="">Semua Action</option>
-                    {filters.actions.map((a) => (
-                        <option key={a} value={a}>{a}</option>
-                    ))}
+                    {[...filters.actions]
+                        .sort((x, y) => auditActionLabel(x).localeCompare(auditActionLabel(y), "id"))
+                        .map((a) => (
+                            <option key={a} value={a}>{auditActionLabel(a)}</option>
+                        ))}
                 </select>
                 <select
                     value={entityType}
@@ -344,7 +347,7 @@ export default function AuditLogPage() {
                                         </td>
                                         <td className={tdClass}><Badge value={row.actorRole} /></td>
                                         <td className={tdClass}>
-                                            <Badge value={row.action} colorClass={ACTION_COLORS[row.action] ?? "bg-scada-bg text-scada-ink border border-scada-idle"} />
+                                            <Badge value={auditActionLabel(row.action)} colorClass={TONE_CLASS[auditActionTone(row.action)]} title={row.action} />
                                         </td>
                                         <td className={tdClass}>
                                             <div className="flex flex-col gap-0.5">

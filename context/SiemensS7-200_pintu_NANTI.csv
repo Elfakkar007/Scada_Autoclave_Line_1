@@ -1,7 +1,0 @@
-Tag Name,Address,Data Type,Respect Data Type,Client Access,Scan Rate,Scaling,Raw Low,Raw High,Scaled Low,Scaled High,Scaled Data Type,Clamp Low,Clamp High,Eng Units,Description,Negate Value
-"DOOR_SEAL_CMD","M1.2",Boolean,1,R/W,1000,,,,,,,,,,"perintah Door Sealing (HMI: DOOR_SEAL); tulis sebagai PULSA. Beda dengan DOOR_SEAL=Q0.5 (status)",
-"CHAIN_FWD","M11.0",Boolean,1,R/W,1000,,,,,,,,,,"perintah rantai maju (HMI: FORWARD); dibaca PLC sebagai level; web = deadman",
-"CHAIN_BWD","M11.1",Boolean,1,R/W,1000,,,,,,,,,,"perintah rantai mundur (HMI: REVERSE); dibaca PLC sebagai level; web = deadman",
-"CHAIN_FWD_OUT","Q3.4",Boolean,1,Read Only,1000,,,,,,,,,,"output aktual rantai maju",
-"CHAIN_BWD_OUT","Q3.5",Boolean,1,Read Only,1000,,,,,,,,,,"output aktual rantai mundur",
-"DOOR_REL_OUT","Q0.4",Boolean,1,Read Only,1000,,,,,,,,,,"output pelepasan seal (dugaan katup)",

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense } from "react";
 import { flushSync } from "react-dom";
+import { auditActionLabel } from "@/lib/auditActionLabels";
 
 function toWIBStr(date) {
     return new Date(date).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
@@ -197,7 +198,7 @@ function AuditLogPrintContent() {
                     <div style={{ fontSize: 9, marginTop: 2 }}>Dicetak oleh {user || "?"} pada {printedAt} | {total} baris</div>
                     {(search || action || entity) && (
                         <div style={{ fontSize: 9, color: "#555" }}>
-                            Filter: {[search && `cari="${search}"`, action && `aksi="${action}"`, entity && `entitas="${entity}"`].filter(Boolean).join(", ")}
+                            Filter: {[search && `cari="${search}"`, action && `aksi="${auditActionLabel(action)}"`, entity && `entitas="${entity}"`].filter(Boolean).join(", ")}
                         </div>
                     )}
                 </div>
@@ -222,7 +223,7 @@ function AuditLogPrintContent() {
                                     <td>{r.actorName || r.actor}</td>
                                     <td>{r.actor}</td>
                                     <td>{r.actorRole}</td>
-                                    <td>{r.action}</td>
+                                    <td>{auditActionLabel(r.action)}</td>
                                     <td>{r.entityType}</td>
                                     <td>{r.entityId}</td>
                                     <td>{r.source}</td>
