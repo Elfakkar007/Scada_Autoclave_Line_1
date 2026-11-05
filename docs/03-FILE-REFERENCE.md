@@ -1,18 +1,18 @@
 # Referensi File Teknis (File Reference)
 
-Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dalam proyek `scada-sterilizer` (total 135 file, 128 file di luar folder `docs/`). Seluruh deskripsi, nama fungsi, export, import, dan nomor baris diverifikasi langsung dari kode sumber tanpa praduga atau spekulasi.
+Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dalam proyek `scada-sterilizer` (total 150 file, 143 file di luar folder `docs/`, 7 file dokumentasi di `docs/`). Seluruh deskripsi, nama fungsi, export, import, dan nomor baris diverifikasi langsung dari kode sumber tanpa praduga atau spekulasi.
 
 ---
 
 ### `package.json`
 - **Tipe**: Config / Manifest
-- **Fungsi**: Mendefinisikan nama paket, versi, scripts build/dev, serta dependensi pustaka proyek Next.js dan driver PostgreSQL.
+- **Fungsi**: Mendefinisikan nama paket, versi, scripts build/dev, serta dependensi pustaka proyek Next.js, driver PostgreSQL, dan kompresi ZIP `fflate`.
 - **Export utama**: Tidak ada (berkas JSON manifest).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Menentukan runtime engine dan pustaka eksternal yang diinstal pada `node_modules`.
-- **Bukti**: `package.json:1-30`
-- **Catatan**: Tidak ada TODO/FIXME tertulis.
+- **Bukti**: `package.json:1-31`
+- **Catatan**: Menambahkan dependensi `fflate: ^0.8.3` untuk kebutuhan arsip streaming backup. Tidak ada TODO/FIXME tertulis.
 
 ---
 
@@ -66,12 +66,12 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `.gitignore`
 - **Tipe**: Config
-- **Fungsi**: Mengecualikan folder dependensi, build artifact Next.js, berkas log, dan environment variables lokal dari pelacakan Git.
+- **Fungsi**: Mengecualikan folder dependensi, build artifact Next.js, berkas log, direktori runtime data backup (`/backups/`), dan environment variables lokal dari pelacakan Git.
 - **Export utama**: Tidak ada (berkas teks Git ignore).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Mencegah commit direktori seperti `node_modules` dan `.next` ke repositori.
-- **Bukti**: `.gitignore:1-35`
+- **Efek samping / dependensi eksternal**: Mencegah commit direktori seperti `node_modules`, `.next`, dan `/backups/` ke repositori.
+- **Bukti**: `.gitignore:1-44`
 - **Catatan**: Tidak ada TODO/FIXME tertulis.
 
 ---
@@ -102,13 +102,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `server.js`
 - **Tipe**: Entry Point / Custom Server
-- **Fungsi**: Membuat server HTTP kustom port 3001, mengintegrasikan Next.js request handler, menjalankan background interval 5 detik untuk trend recorder, pemantau alarm, dan saat startup best-effort mereset `CHAIN_FWD`/`CHAIN_BWD` = false agar rantai tidak tertinggal menyala dari sesi sebelum server mati.
+- **Fungsi**: Membuat server HTTP kustom port 3001, mengintegrasikan Next.js request handler, menjalankan background interval 5 detik untuk trend recorder, pemantau alarm (1 detik), background scheduler backup data (cek tiap 60 detik), dan saat startup best-effort mereset `CHAIN_FWD`/`CHAIN_BWD` = false agar rantai tidak tertinggal menyala dari sesi sebelum server mati.
 - **Export utama**: Tidak ada (script eksekusi Node.js).
-- **Meng-import (internal)**: `src/lib/trendRecorder.js` (dynamic import, baris 42), `src/lib/alarmMonitor.js` (dynamic import, baris 44), `src/lib/plcWrite.js` (dynamic import best-effort, baris 95)
+- **Meng-import (internal)**: `src/lib/trendRecorder.js` (dynamic import, baris 42), `src/lib/alarmMonitor.js` (dynamic import, baris 44), `src/lib/backupService.js` (dynamic import, baris 94), `src/lib/plcWrite.js` (dynamic import best-effort, baris 101)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Membuka port jaringan HTTP (`server.js:67`), membaca env `PORT`, `HOSTNAME`, `TRUST_PROXY`, menjalankan `setInterval` latar belakang, menyuntikkan header `x-client-ip` tiap request (`server.js:59`).
-- **Bukti**: `server.js:1-108`
-- **Catatan**: Blok reset rantai (baris 92–105): pada 10 detik setelah server siap, mengimpor `plcWrite.js` via dynamic import dan menulis `CHAIN_FWD`/`CHAIN_BWD` = false secara best-effort. Kegagalan (tag belum diimpor, PLC belum siap) hanya menghasilkan `console.warn`, tidak menghentikan server. Pola CJS + dynamic import dipakai karena ESM interop (baris 10–19 komentar penjelasan).
+- **Bukti**: `server.js:1-114`
+- **Catatan**: Backup scheduler diinisialisasi pada baris 92–97 (nonaktif secara default, kegagalan inisialisasi tidak menjatuhkan server). Blok reset rantai (baris 99–111): pada 10 detik setelah server siap, mengimpor `plcWrite.js` via dynamic import dan menulis `CHAIN_FWD`/`CHAIN_BWD` = false secara best-effort. Kegagalan (tag belum diimpor, PLC belum siap) hanya menghasilkan `console.warn`, tidak menghentikan server. Pola CJS + dynamic import dipakai karena ESM interop (baris 10–19 komentar penjelasan).
 
 ---
 
@@ -136,15 +136,27 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `context/SiemensS7-200.csv`
-- **Tipe**: Data Referensi
-- **Fungsi**: Mendokumentasikan daftar 62 baris pemetaan tag PLC Siemens S7-200, alamat register memori (VW, Q, I, M), tipe data, dan deskripsi fungsinya.
-- **Export utama**: Tidak ada (berkas teks CSV referensi).
+### `context/SiemensS7-200.csv` [REMOVED]
+- **Tipe**: Data Referensi (Telah Dihapus)
+- **Fungsi**: Berkas CSV lama pemetaan 60 tag PLC Siemens S7-200. Telah dihapus pada commit `021d5e4` dan digantikan secara definitif oleh `context/tag_terbaru_kepsrvr.csv` (105 tag).
+- **Export utama**: Tidak ada (arsip).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Tidak ada (berkas referensi).
-- **Bukti**: `context/SiemensS7-200.csv:1-62`
-- **Catatan**: Menjadi dasar konstanta `TAG_MAP` pada `src/lib/plc.js`.
+- **Efek samping / dependensi eksternal**: Digantikan oleh `context/tag_terbaru_kepsrvr.csv`.
+- **Bukti**: Terhapus pada commit `021d5e4` (sebelumnya `context/SiemensS7-200.csv:1-62`).
+- **Catatan**: Status REMOVED — informasi dipertahankan untuk riwayat audit dokumentasi.
+
+---
+
+### `context/tag_terbaru_kepsrvr.csv`
+- **Tipe**: Data Referensi
+- **Fungsi**: Berkas master pemetaan tag KEPServerEX terbaru berisi 105 baris tag PLC Siemens S7-200 (VW, VD, Q, I, M) lengkap dengan alamat register memori, tipe data, scan rate, dan deskripsi fungsinya. Mengonsolidasi tag sensor dasar, alarm per bit, parameter mesin, offset kalibrasi (termasuk CAL_L pada VW322), dan tag kontrol pintu.
+- **Export utama**: Tidak ada (berkas teks CSV referensi).
+- **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
+- **Dipakai oleh**: Tidak di-import langsung oleh kode sumber (referensi impor konfigurasi channel/device pada KEPServerEX pabrik).
+- **Efek samping / dependensi eksternal**: Menjadi acuan validitas nama dan register tag pada `src/lib/plc.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, dan `plcManualCatalog.js`.
+- **Bukti**: `context/tag_terbaru_kepsrvr.csv:1-106` (1 baris header + 105 baris tag data).
+- **Catatan**: Tag register VW220 terdaftar dengan nama `"F0_VAL"` (huruf O diganti angka nol, singkatan VAL), sedangkan di `plcParamCatalog.js:50` didefinisikan sebagai `"FO_VALUE"`. Tag kontrol manual `MAN_*` belum tercakup dalam file ini.
 
 ---
 
@@ -534,13 +546,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/components/Navbar.js`
 - **Tipe**: Client Component / Navigasi
-- **Fungsi**: Merender bar navigasi atas aplikasi, indikator status online/offline PLC, jam digital, menu utama (Dashboard, Trend, Data Report, Alarm, Formula, Master Produk), menu mesin HMI (Parameter Mesin, Kalibrasi, Jam PLC, Kontrol Manual, **Door Operate**), menu administrasi (Audit Log, Kelola User, Role Management), identitas pengguna aktif, dan tombol logout.
+- **Fungsi**: Merender bar navigasi atas aplikasi, indikator status online/offline PLC, jam digital, menu utama (Dashboard, Trend, Data Report, Alarm, Formula, Master Produk), menu mesin HMI (Parameter Mesin, Kalibrasi, Jam PLC, Kontrol Manual, **Door Operate**), menu administrasi (Audit Log, Kelola User, Role Management, **Backup**), identitas pengguna aktif, dan tombol logout.
 - **Export utama**: `default` Navbar (fungsi komponen React)
 - **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`)
 - **Dipakai oleh**: `src/app/(app)/layout.js`
-- **Efek samping / dependensi eksternal**: Memanggil API `POST /api/auth/logout` saat tombol Logout diklik (`src/components/Navbar.js:87`), polling `/api/auth/me` setiap 60 detik (`src/components/Navbar.js:80`).
-- **Bukti**: `src/components/Navbar.js:1-162`
-- **Catatan**: Menu "Door Operate" ditambahkan ke `machineMenu` di baris 26, dengan `resource: "manual_control"`. Seluruh item menu disaring secara dinamis menggunakan `hasLevel(user?.permissions, item.resource, "view")` (`src/components/Navbar.js:92-95`). `eslint-disable-next-line @next/next/no-img-element` di baris 103.
+- **Efek samping / dependensi eksternal**: Memanggil API `POST /api/auth/logout` saat tombol Logout diklik (`src/components/Navbar.js:88`), polling `/api/auth/me` setiap 60 detik (`src/components/Navbar.js:81`).
+- **Bukti**: `src/components/Navbar.js:1-163`
+- **Catatan**: Menu "Door Operate" ditambahkan ke `machineMenu` di baris 26 (`resource: "manual_control"`), dan menu "Backup" ditambahkan ke `adminMenu` di baris 27 (`resource: "backup"`). Seluruh item menu disaring secara dinamis menggunakan `hasLevel(user?.permissions, item.resource, "view")` (`src/components/Navbar.js:93-96`). `eslint-disable-next-line @next/next/no-img-element` di baris 104.
 
 ---
 
@@ -660,13 +672,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/audit-log/page.js`
 - **Tipe**: Client Component / Halaman Audit Log
-- **Fungsi**: Menampilkan tabel rekam jejak audit sistem khusus administrator: filter aksi, entitas, tanggal, pencarian aktor, tombol ekspor file Excel XLSX, dan tombol cetak.
+- **Fungsi**: Menampilkan tabel rekam jejak audit sistem khusus administrator: filter aksi (diurutkan alfabetik ID dan diterjemahkan labelnya via `auditActionLabels`), entitas, tanggal, pencarian aktor, tombol ekspor file Excel XLSX, dan tombol cetak.
 - **Export utama**: `default` AuditLogPage (fungsi komponen React)
-- **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/components/DeletedUserBadge.js`, `src/lib/auditActionLabels.js` (`auditActionLabel`, `auditActionTone`)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Memanggil API `GET /api/audit-log`, `GET /api/audit-log/filters`, dan mengunduh berkas binary dari `/api/audit-log/export` (`src/app/(app)/audit-log/page.js:80-150`).
-- **Bukti**: `src/app/(app)/audit-log/page.js:1-398`
-- **Catatan**: Memeriksa role `admin` pada mount; jika bukan admin dialihkan ke `/` (`src/app/(app)/audit-log/page.js:65`).
+- **Bukti**: `src/app/(app)/audit-log/page.js:1-405`
+- **Catatan**: Memeriksa izin `hasLevel(perms, "audit_log", "view")` pada mount; jika tidak memiliki izin dialihkan ke `/` (`src/app/(app)/audit-log/page.js:87-92`). Menampilkan badge aksi dengan tone warna terstandarisasi dan tooltip teks asli database.
 
 ---
 
@@ -720,13 +732,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/trend/page.js`
 - **Tipe**: Client Component / Halaman Visualisasi Trend
-- **Fungsi**: Menampilkan grafik kurva suhu 9 sensor dan tekanan (kPa) berbasis Recharts untuk batch yang dipilih dari dropdown, dengan dual Y-axis dan tooltip interaktif.
+- **Fungsi**: Menampilkan grafik kurva suhu 9 sensor dan tekanan (kPa) berbasis Recharts untuk batch yang dipilih dari dropdown, dengan dual Y-axis, tooltip interaktif, serta tombol "🖨 Cetak / PDF" yang membuka lembar cetak kurva mandiri di tab baru.
 - **Export utama**: `default` TrendPage (fungsi komponen React)
-- **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
+- **Meng-import (internal)**: `src/components/PermissionGate.js`, `src/components/DeletedUserBadge.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/status`, `GET /api/batch-records?limit=100`, dan `GET /api/batch-records/[batchNo]` (`src/app/(app)/trend/page.js:90-145`).
-- **Bukti**: `src/app/(app)/trend/page.js:1-334`
-- **Catatan**: Otomatis memilih batch yang sedang berjalan (`running`) sebagai pilihan default pada mount.
+- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/status`, `GET /api/batch-records?limit=100`, dan `GET /api/batch-records/[batchNo]` (`src/app/(app)/trend/page.js:96-147`), membuka rute `/print/trend/[batchNo]` via `window.open`.
+- **Bukti**: `src/app/(app)/trend/page.js:1-361`
+- **Catatan**: Dilindungi `PermissionGate resource="trend" minLevel="view"`. Otomatis memilih batch yang sedang berjalan (`running`) sebagai pilihan default pada mount. Tombol cetak disabled bila tidak ada batch yang dipilih atau data sedang dimuat.
 
 ---
 
@@ -816,13 +828,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/audit-log/export/route.js`
 - **Tipe**: API Route Handler
-- **Fungsi**: Mengekspor data audit log ke file spreadsheet Excel (`.xlsx`) atau array JSON (untuk halaman cetak) serta mencatat tindakan ekspor tersebut ke dalam audit log.
+- **Fungsi**: Mengekspor data audit log ke file spreadsheet Excel (`.xlsx`) atau array JSON (untuk halaman cetak) dengan translasi label aksi audit bahasa Indonesia dan kolom kode aksi mentah, serta mencatat tindakan ekspor tersebut ke dalam audit log.
 - **Export utama**: `GET` (fungsi handler HTTP)
-- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js`, `src/lib/dateRange.js`
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js`, `src/lib/dateRange.js`, `src/lib/auditActionLabels.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Menghasilkan binary buffer Excel melalui `exceljs` (`src/app/api/audit-log/export/route.js:122`), mencatat aktivitas ekspor ke `audit_log` (`src/app/api/audit-log/export/route.js:87`).
-- **Bukti**: `src/app/api/audit-log/export/route.js:1-180`
-- **Catatan**: Membatasi ekspor maksimal 50.000 baris data (`src/app/api/audit-log/export/route.js:6`).
+- **Efek samping / dependensi eksternal**: Menghasilkan binary buffer Excel melalui `exceljs` (`src/app/api/audit-log/export/route.js:123`), mencatat aktivitas ekspor ke `audit_log` (`src/app/api/audit-log/export/route.js:88`).
+- **Bukti**: `src/app/api/audit-log/export/route.js:1-183`
+- **Catatan**: Membatasi ekspor maksimal 50.000 baris data (`src/app/api/audit-log/export/route.js:7`). Menggunakan `auditActionLabel` untuk kolom "Aksi" dan menyediakan kolom "Kode Aksi" (`actionCode`) untuk auditabilitas.
 
 ---
 
@@ -1104,13 +1116,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/print/audit-log/page.js`
 - **Tipe**: Client Component / Halaman Cetak
-- **Fungsi**: Menampilkan format cetak laporan audit log aktivitas sistem dalam tata letak A4 landscape dengan header kolom lengkap.
+- **Fungsi**: Menampilkan format cetak laporan audit log aktivitas sistem dalam tata letak A4 landscape dengan header kolom lengkap dan translasi label aksi via `auditActionLabels`.
 - **Export utama**: `default` PrintAuditLogPage (fungsi komponen React)
-- **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
+- **Meng-import (internal)**: `src/lib/auditActionLabels.js` (`auditActionLabel`)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Memanggil API `GET /api/auth/me`, `GET /api/audit-log/export?format=json`, memodifikasi `document.title`, dan memicu dialog `window.print()` (`src/app/print/audit-log/page.js:80-143`).
-- **Bukti**: `src/app/print/audit-log/page.js:1-246`
-- **Catatan**: Dibungkus komponen React `Suspense` untuk pembacaan parameter URL pencarian.
+- **Bukti**: `src/app/print/audit-log/page.js:1-247`
+- **Catatan**: Dibungkus komponen React `Suspense` untuk pembacaan parameter URL pencarian. Label aksi pada filter pencarian dan kolom tabel diterjemahkan menggunakan `auditActionLabel`.
 
 ---
 
@@ -1128,13 +1140,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/print/data-report/[batchNo]/page.js`
 - **Tipe**: Client Component / Halaman Cetak
-- **Fungsi**: Menyajikan dokumen cetak terintegrasi 3 bagian: Bagian 1 Data Record proses (A4 portrait), Bagian 2 Temperature Pressure Curve berbasis Recharts (A4 portrait), dan Bagian 3 Log Alarm & Event batch (A4 landscape), dilengkapi informasi Jumlah Botol (Amount) dan blok tanda tangan pengesahan (SignOffBlock).
+- **Fungsi**: Menyajikan dokumen cetak terintegrasi 3 bagian: Bagian 1 Data Record proses (A4 portrait), Bagian 2 Temperature Pressure Curve berbasis Recharts (A4 portrait), dan Bagian 3 Log Alarm & Event batch (A4 landscape), dilengkapi informasi Jumlah Botol (Amount), baris pemisah fase proses konsisten, dan blok tanda tangan pengesahan (SignOffBlock).
 - **Export utama**: `default` PrintDataReport (fungsi komponen React)
 - **Meng-import (internal)**: `src/lib/alarmEventLabels.js`, `src/lib/operatorLabel.js`, `src/components/PermissionGate.js`, `src/components/SignOffBlock.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Memanggil API `GET /api/batch-records/[batchNo]` dan `GET /api/alarms/by-batch/[batchNo]`, memanipulasi CSS injection untuk penomoran halaman independen per bagian (`src/app/print/data-report/[batchNo]/page.js:130-185`).
-- **Bukti**: `src/app/print/data-report/[batchNo]/page.js:1-668`
-- **Catatan**: Header menyertakan field `Amount :` (`batch.bottleCount`). Menyematkan komponen `<SignOffBlock />` di akhir Bagian 1, Bagian 2, dan Bagian 3. Menggunakan CSS named pages (`@page sec-data`, `@page sec-curve`, `@page sec-alarm`).
+- **Bukti**: `src/app/print/data-report/[batchNo]/page.js:1-667`
+- **Catatan**: Header menyertakan field `Amount :` (`batch.bottleCount`). Tabel trend menyisipkan baris separator pergantian fase untuk setiap fase proses termasuk fase pertama (`lastPhase === undefined`) sehingga seluruh fase selalu memiliki header `▶ LABEL`. Menyematkan komponen `<SignOffBlock />` di akhir Bagian 1, Bagian 2, dan Bagian 3. Menggunakan CSS named pages (`@page sec-data`, `@page sec-curve`, `@page sec-alarm`).
 
 ---
 
@@ -1152,13 +1164,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `fase1/tests/matrix.mjs`
 - **Tipe**: Script Test / Harness
-- **Fungsi**: Menguji otomatis matriks hak akses seluruh endpoint API terhadap role akun uji (OPERATOR, MAINTAINER, QA, ADMIN, DASH) dan memverifikasi status HTTP 403 untuk aksi terlarang serta status valid untuk aksi yang diizinkan.
+- **Fungsi**: Menguji otomatis matriks hak akses seluruh endpoint API terhadap role akun uji (OPERATOR, MAINTAINER, QA, ADMIN, DASH) dan memverifikasi status HTTP 403 untuk aksi terlarang serta status valid untuk aksi yang diizinkan. Dilengkapi probe aman untuk endpoint PLC (`batch/start`, `plc-door`, `plc-manual`, `plc-clock`, `plc-params`) dengan body sengaja salah agar ditolak 400 oleh validasi setelah guard izin sebelum menyentuh PLC/DB, serta opsi `PROBE_MACHINE_DENY=yes` untuk menguji sisi-tolak `batch/stop` dan `plc/reset`.
 - **Export utama**: Tidak ada (script mandiri Node.js).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan `fetch`, `url`).
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Membutuhkan environment `CONFIRM_DEV=yes`, variabel kredensial akun uji `ACC_*`, dan melakukan HTTP request ke server dev lokal.
-- **Bukti**: `fase1/tests/matrix.mjs:1-239`
-- **Catatan**: Tidak menyentuh aksi mesin fisik (START/STOP/Reset).
+- **Bukti**: `fase1/tests/matrix.mjs:1-314`
+- **Catatan**: Aksi mesin fisik (`batch/stop`, `plc/reset`) dilewati secara default demi keamanan instalasi fisik kecuali `PROBE_MACHINE_DENY=yes` diaktifkan.
 
 ---
 
@@ -1296,13 +1308,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/permissionCatalog.js`
 - **Tipe**: Config / Util Otorisasi
-- **Fungsi**: Sumber kebenaran daftar resource izin sistem (13 halaman, 3 kunci aksi kritis), level izin (`none`, `view`, `edit`), serta fungsi pembantu verifikasi izin (`hasLevel`, `normalizePermissions`, `isLevelAllowed`).
+- **Fungsi**: Sumber kebenaran daftar resource izin sistem (14 halaman termasuk backup data, 3 kunci aksi kritis), level izin (`none`, `view`, `edit`), serta fungsi pembantu verifikasi izin (`hasLevel`, `normalizePermissions`, `isLevelAllowed`).
 - **Export utama**: `LEVELS`, `LEVEL_LABELS`, `RESOURCES`, `getResource`, `isKnownResource`, `isValidLevel`, `isLevelAllowed`, `hasLevel`, `normalizePermissions`
 - **Meng-import (internal)**: Tidak ada (dapat di-import di server maupun browser / "use client")
-- **Dipakai oleh**: `src/lib/auth.js`, `src/lib/roleQueries.js`, `src/components/PermissionGate.js`, `src/components/Navbar.js`, `src/app/(app)/roles/page.js`, `src/app/api/roles/route.js`, `src/app/api/roles/[id]/route.js`
+- **Dipakai oleh**: `src/lib/auth.js`, `src/lib/roleQueries.js`, `src/components/PermissionGate.js`, `src/components/Navbar.js`, `src/app/(app)/roles/page.js`, `src/app/(app)/backup/page.js`, `src/app/api/roles/route.js`, `src/app/api/roles/[id]/route.js`
 - **Efek samping / dependensi eksternal**: Tidak ada.
-- **Bukti**: `src/lib/permissionCatalog.js:1-84`
-- **Catatan**: Aman di-import di lingkungan browser karena tidak meng-import modul database `pg`.
+- **Bukti**: `src/lib/permissionCatalog.js:1-85`
+- **Catatan**: Aman di-import di lingkungan browser karena tidak meng-import modul database `pg`. Menambahkan resource `backup` (`levels: PAGE`).
 
 ---
 
@@ -1404,13 +1416,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/components/PlcParamEditor.js`
 - **Tipe**: Client Component / Editor Parameter HMI ("use client")
-- **Fungsi**: Menyediakan antarmuka interaktif pemantauan dan pengubahan parameter mesin PLC per grup (Setting 1, Setting 2, Coef, Calibration), integrasi pengecekan izin pengguna via `/api/auth/me`, dialog konfirmasi perubahan nilai lama vs baru dengan input alasan wajib, peringatan parameter keselamatan (`danger`), dan tabel hasil verifikasi baca-balik dari PLC.
+- **Fungsi**: Menyediakan antarmuka interaktif pemantauan dan pengubahan parameter mesin PLC per grup (Setting 1, Setting 2, Coef, Calibration), integrasi pengecekan izin pengguna via `/api/auth/me`, dialog konfirmasi perubahan nilai lama vs baru dengan input alasan wajib, peringatan parameter keselamatan (`danger`), kolom tambahan "Nilai Sensor" pada grup kalibrasi (`showSensorColumn`) yang menampilkan nilai aktual sensor (+42.7 °C) dari prop `liveValue` (atau "—" bila offline), dan tabel hasil verifikasi baca-balik dari PLC.
 - **Export utama**: `default PlcParamEditor`
 - **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/plcParamCatalog.js` (`PLC_GROUPS`, `PLC_FIELDS`, `formatValue`, `validateField`, `rawEquals`), `src/components/PlcDialog.js`
 - **Dipakai oleh**: `src/app/(app)/machine-params/page.js`, `src/app/(app)/calibration/page.js`
 - **Efek samping / dependensi eksternal**: Melakukan HTTP fetch ke `/api/auth/me`, `GET /api/plc-params?group=...`, dan `PUT /api/plc-params`.
-- **Bukti**: `src/components/PlcParamEditor.js:1-401`
-- **Catatan**: Menangani proteksi disable tombol saat mesin berstatus tidak idle atau saat pengguna tidak memiliki izin edit.
+- **Bukti**: `src/components/PlcParamEditor.js:1-429`
+- **Catatan**: Menangani proteksi disable tombol saat mesin berstatus tidak idle atau saat pengguna tidak memiliki izin edit. Pada grup kalibrasi, label kolom "Nilai PLC" otomatis berganti menjadi "Offset Kalibrasi".
 
 ---
 
@@ -1452,13 +1464,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/plcParamCatalog.js`
 - **Tipe**: Config / Katalog Parameter & Pagar Server PLC
-- **Fungsi**: Sumber kebenaran daftar field parameter PLC yang diizinkan dibaca/ditulis oleh HMI-web (`PLC_FIELDS`: `param1`, `param2`, `coef`, `calibration`), metadata skala/unit/batas min-max, grup resource (`PLC_GROUPS`), fase idle (`IDLE_PHASES_PARAMS = [0, 1, 6]`), kunci aksi keselamatan `SAFETY_ACTION = "action.write_safety_params"`, validasi rentang fisik (`validateField`), perbandingan presisi float32 (`rawEquals`), cross-check relasi suhu antar-field (`crossCheck`), dan formatting teks (`formatValue`).
+- **Fungsi**: Sumber kebenaran daftar field parameter PLC yang diizinkan dibaca/ditulis oleh HMI-web (`PLC_FIELDS`: `param1`, `param2`, `coef`, `calibration`), metadata skala/unit/batas min-max, penambahan parameter `foValue` (tag `FO_VALUE`, register VW220, skala 10, unit MIN, rentang 0-99) pada `param1`, grup resource (`PLC_GROUPS`), fase idle (`IDLE_PHASES_PARAMS = [0, 1, 6]`), kunci aksi keselamatan `SAFETY_ACTION = "action.write_safety_params"`, validasi rentang fisik (`validateField`), perbandingan presisi float32 (`rawEquals`), cross-check relasi suhu antar-field (`crossCheck`), dan formatting teks (`formatValue`).
 - **Export utama**: `SAFETY_ACTION`, `PLC_GROUPS`, `IDLE_PHASES_PARAMS`, `PLC_FIELDS`, `getFields`, `getField`, `rawToValue`, `rawEqualsKind`, `rawEquals`, `validateField`, `crossCheck`, `formatValue`
 - **Meng-import (internal)**: Tidak ada
 - **Dipakai oleh**: `src/lib/plcAccess.js`, `src/components/PlcParamEditor.js`, `src/app/api/plc-params/route.js`, `src/app/api/plc-clock/route.js`
 - **Efek samping / dependensi eksternal**: Tidak ada.
-- **Bukti**: `src/lib/plcParamCatalog.js:1-230`
-- **Catatan**: Menjadi batas pagar keamanan server terhadap tag R/W di KEPServerEX agar penulisan di luar field katalog ditolak secara mutlak.
+- **Bukti**: `src/lib/plcParamCatalog.js:1-233`
+- **Catatan**: Menjadi batas pagar keamanan server terhadap tag R/W di KEPServerEX agar penulisan di luar field katalog ditolak secara mutlak. Catatan ketidaksesuaian: nama tag di `tag_terbaru_kepsrvr.csv` adalah `"F0_VAL"`, sedangkan di file ini `"FO_VALUE"`.
 
 ---
 
@@ -1488,13 +1500,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/plc-params/route.js`
 - **Tipe**: API Route Handler (Server-Only)
-- **Fungsi**: Mengembalikan pembacaan nilai PLC saat ini beserta status kesiapan mesin untuk grup parameter yang diminta (`GET`), serta memperbarui nilai parameter mesin atau offset kalibrasi PLC (`PUT`).
+- **Fungsi**: Mengembalikan pembacaan nilai PLC saat ini beserta status kesiapan mesin untuk grup parameter yang diminta, serta deret nilai sensor suhu dan tekanan aktual (`liveValues`) untuk grup kalibrasi (`GET`), serta memperbarui nilai parameter mesin atau offset kalibrasi PLC (`PUT`).
 - **Export utama**: `GET`, `PUT`
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/auditLog.js` (`insertAudit`, `tryAudit`), `src/lib/plcParamCatalog.js`, `src/lib/plcAccess.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (dipanggil via fetch oleh `src/components/PlcParamEditor.js`)
 - **Efek samping / dependensi eksternal**: Dilindungi izin granular bertingkat (`machine_params` atau `calibration`, ditambah `action.write_calibration` dan `action.write_safety_params` untuk field keselamatan). Mengeksekusi penulisan dengan `withPlcLocks` dan verifikasi baca-balik.
-- **Bukti**: `src/app/api/plc-params/route.js:1-223`
-- **Catatan**: Mewajibkan isian teks alasan perubahan (minimal 3 karakter) yang dicatat ke tabel `audit_log`.
+- **Bukti**: `src/app/api/plc-params/route.js:1-243`
+- **Catatan**: Mewajibkan isian teks alasan perubahan (minimal 3 karakter) yang dicatat ke tabel `audit_log`. Pada `group === "calibration"`, membaca tag `TH`, `T1`–`T6`, `TM`, `TL` (skala /10) dan `P1`, `P2` secara langsung via `readPlcRaw`.
 
 ---
 
@@ -1546,7 +1558,7 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `src/lib/plcDoorCatalog.js` ⚠ *[UNTRACKED — belum di-commit]*
+### `src/lib/plcDoorCatalog.js`
 - **Tipe**: Config / Katalog Pintu PLC (aman klien & server)
 - **Fungsi**: Katalog pagar, konstanta waktu, dan tag perintah untuk fitur Door Operate. Mendefinisikan fase idle yang diizinkan (`IDLE_PHASES_DOOR = [0, 1]`), waktu pulsa (`SEAL_PULSE_MS = 1500`, `RELEASE_PULSE_MS = 3000` — tebakan), deadman timeout (`DEADMAN_TIMEOUT_MS = 1000`), auto-OFF timer (`AUTO_OFF_MS = 60_000`), daftar tag perintah (`DOOR_CMD_TAGS`), tag wajib (`REQUIRED_TAGS`), tag opsional (`OPTIONAL_TAGS`), serta fungsi `buildDoorState`, `pressureSafe`, dan `checkDoorCommand`.
 - **Export utama**: `IDLE_PHASES_DOOR`, `SEAL_PULSE_MS`, `RELEASE_PULSE_MS`, `DEADMAN_TIMEOUT_MS`, `AUTO_OFF_MS`, `DOOR_CMD_TAGS`, `REQUIRED_TAGS`, `OPTIONAL_TAGS`, `ALL_STATE_TAGS`, `buildDoorState`, `pressureSafe`, `checkDoorCommand`
@@ -1558,7 +1570,7 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `src/lib/plcDeadman.js` ⚠ *[UNTRACKED — belum di-commit]*
+### `src/lib/plcDeadman.js`
 - **Tipe**: Lib / Pengaman Waktu Door Operate (Server-Only)
 - **Fungsi**: Menyediakan pengaman waktu untuk fitur Door Operate: deadman rantai Forward/Backward (bit rantai mati sendiri bila tidak ada sinyal "run" dalam `DEADMAN_TIMEOUT_MS = 1000` ms) dan auto-OFF Water Drain / Door Unlock setelah `AUTO_OFF_MS = 60_000` ms. Seluruh operasi diserialkan via antrean Promise. Singleton produksi disimpan di `globalThis.__plcDoorSafety`.
 - **Export utama**: `readDoorState`, `createDoorSafety`, `getDoorSafety`
@@ -1570,7 +1582,7 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `src/app/api/plc-door/route.js` ⚠ *[UNTRACKED — belum di-commit]*
+### `src/app/api/plc-door/route.js`
 - **Tipe**: API Route Handler (Server-Only)
 - **Fungsi**: Mengembalikan status pintu, rantai, dan auto-OFF timer (`GET`), serta mengeksekusi aksi pintu: pulsa `seal`/`release`, toggle `drain`/`unlock` dengan auto-OFF, dan deadman `chain` Forward/Backward (`POST`).
 - **Export utama**: `GET`, `POST`
@@ -1587,7 +1599,7 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `src/app/(app)/door-operate/page.js` ⚠ *[UNTRACKED — belum di-commit]*
+### `src/app/(app)/door-operate/page.js`
 - **Tipe**: Client Component / Halaman Door Operate ("use client")
 - **Fungsi**: Menyajikan antarmuka pengendalian pintu autoclave dari web: tombol Door Sealing, Door Release, Water Drain (toggle), Forward/Backward rantai (hold-to-run dengan pointer capture), Door Unlock (toggle), panel status sensor, dan lampu indikator pintu/seal. Seluruh tombol satu klik langsung tanpa modal dialog konfirmasi atau kolom alasan.
 - **Export utama**: `default function DoorOperatePage`
@@ -1599,32 +1611,169 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `context/SiemensS7-200_pintu_NANTI.csv` ⚠ *[UNTRACKED — belum di-commit]*
-- **Tipe**: Data Referensi
-- **Fungsi**: Mendokumentasikan 6 tag PLC baru untuk fitur Door Operate yang perlu diimpor ke KEPServerEX sebelum fitur dapat digunakan.
-- **Export utama**: Tidak ada (berkas teks CSV referensi).
+### `context/SiemensS7-200_pintu_NANTI.csv` [REMOVED]
+- **Tipe**: Data Referensi (Telah Dihapus)
+- **Fungsi**: Berkas staging pemetaan 6 tag PLC baru untuk fitur Door Operate (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`). Telah dihapus pada commit `021d5e4` karena seluruh 6 tag telah digabungkan ke dalam `context/tag_terbaru_kepsrvr.csv`.
+- **Export utama**: Tidak ada (arsip).
 - **Meng-import (internal)**: Tidak ada
-- **Dipakai oleh**: Tidak di-import oleh file mana pun (referensi untuk konfigurasi KEPServerEX)
-- **Efek samping / dependensi eksternal**: Tidak ada (berkas referensi).
-- **Bukti**: `context/SiemensS7-200_pintu_NANTI.csv:1-7`
-- **Catatan**: Enam tag: `DOOR_SEAL_CMD` (M1.2, baru), `CHAIN_FWD` (M11.0, baru), `CHAIN_BWD` (M11.1, baru), `CHAIN_FWD_OUT` (Q3.4, baru), `CHAIN_BWD_OUT` (Q3.5, baru), `DOOR_REL_OUT` (Q0.4, baru). Tag `DOOR_RELEASE` (M1.3) dan `DOOR_LOCK` (M6.0) sudah ada di CSV utama. Nama file berakhiran `_NANTI` menandakan belum diimpor.
+- **Dipakai oleh**: Tidak di-import oleh file mana pun
+- **Efek samping / dependensi eksternal**: Digantikan oleh `context/tag_terbaru_kepsrvr.csv`.
+- **Bukti**: Terhapus pada commit `021d5e4` (sebelumnya `context/SiemensS7-200_pintu_NANTI.csv:1-7`).
+- **Catatan**: Status REMOVED — informasi dipertahankan untuk riwayat audit dokumentasi.
 
 ---
 
-### `fase1/tests/plc_door_mock.mjs` ⚠ *[UNTRACKED — belum di-commit]*
+### `fase1/tests/plc_door_mock.mjs`
 - **Tipe**: Test / Unit Test Mock
 - **Fungsi**: Menguji 21 skenario pagar `checkDoorCommand` dan mekanisme deadman `createDoorSafety` tanpa membutuhkan gateway PLC nyata atau database (semua dependency di-inject sebagai mock).
 - **Export utama**: Tidak ada (script uji Node.js mandiri).
 - **Meng-import (internal)**: `src/lib/plcDoorCatalog.js`, `src/lib/plcDeadman.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (tidak tercakup dalam `fase1/tests/matrix.mjs`)
-- **Efek samping / dependensi eksternal**: Mencetak hasil uji ke stdout.
-- **Bukti**: `fase1/tests/plc_door_mock.mjs` (dijalankan, output: "Semua lolos (21 lolos)")
-- **Catatan**: Dijalankan secara mandiri dengan `node fase1/tests/plc_door_mock.mjs`. Tidak ada konfigurasi khusus yang dibutuhkan.
+- **Efek samping / dependensi eksternal**: Mencetak hasil uji ke stdout (21 pass).
+- **Bukti**: `fase1/tests/plc_door_mock.mjs:1-231` (dijalankan, output: "Semua lolos (21 lolos)")
+- **Catatan**: Dijalankan secara mandiri dengan `node fase1/tests/plc_door_mock.mjs`.
+
+---
+
+### `src/lib/auditActionLabels.js`
+- **Tipe**: Lib / Kamus Translasi Label Audit (Aman Klien & Server)
+- **Fungsi**: Kamus terpusat penerjemah kode mentah aksi audit (`action`) database ke label tampilan bahasa Indonesia ramah dan tone warna badge UI (`run`, `water`, `steam`, `stop`, `idle`, `plain`). Aksi yang belum terdaftar dikembalikan apa adanya (fail-safe).
+- **Export utama**: `AUDIT_ACTIONS`, `auditActionLabel(action)`, `auditActionTone(action)`
+- **Meng-import (internal)**: Tidak ada (hanya konstanta dan fungsi murni).
+- **Dipakai oleh**: `src/app/(app)/audit-log/page.js`, `src/app/print/audit-log/page.js`, `src/app/api/audit-log/export/route.js`, `src/lib/auditActionLabels.test.mjs`
+- **Efek samping / dependensi eksternal**: Tidak ada (fungsi murni).
+- **Bukti**: `src/lib/auditActionLabels.js:1-108`
+- **Catatan**: Memetakan 54 nama aksi unik sistem SCADA (termasuk aksi formula, produk, spesifikasi, batch, ekspor data, dan manajemen backup). Kode mentah di database tetap dipertahankan untuk kebutuhan filter, ekspor JSON, dan pencarian SQL.
+
+---
+
+### `src/lib/auditActionLabels.test.mjs`
+- **Tipe**: Test / Unit Test
+- **Fungsi**: Memverifikasi 171 skenario pemetaan label aksi audit (mencakup seluruh 54 aksi sistem), penentuan tone warna, penanganan nilai null/undefined/string kosong, serta fallback nilai tak dikenal pada modul `auditActionLabels.js`.
+- **Export utama**: Tidak ada (script pengujian Node.js).
+- **Meng-import (internal)**: `src/lib/auditActionLabels.js`
+- **Dipakai oleh**: Dijalankan mandiri via CLI (`node src/lib/auditActionLabels.test.mjs`).
+- **Efek samping / dependensi eksternal**: Mencetak hasil pengujian ke stdout (171 pass).
+- **Bukti**: `src/lib/auditActionLabels.test.mjs:1-43`
+- **Catatan**: Tidak ada dependensi database atau network.
+
+---
+
+### `src/app/print/trend/[batchNo]/page.js`
+- **Tipe**: Client Component / Halaman Cetak Kurva Trend Mandiri ("use client")
+- **Fungsi**: Menyajikan format cetak kurva grafik suhu 9 sensor dan tekanan per nomor batch satu halaman penuh standar A4 landscape, dilengkapi header ringkasan batch, garis bantu fase proses (heat/ster/cool), legend garis, footer durasi proses, blok tanda tangan pengesahan `SignOffBlock`, dan penomoran halaman otomatis.
+- **Export utama**: `default function PrintTrendPage`
+- **Meng-import (internal)**: `src/components/PermissionGate.js`, `src/components/SignOffBlock.js`
+- **Dipakai oleh**: Dibuka via tab baru dari tombol "🖨 Cetak / PDF" di `src/app/(app)/trend/page.js`.
+- **Efek samping / dependensi eksternal**: Mengambil data batch & deret sensor via `GET /api/batch-records/[batchNo]`, mengambil profil user via `GET /api/auth/me`, menggunakan Recharts (`LineChart`, `Line`, dll.), memanggil `window.print()`.
+- **Bukti**: `src/app/print/trend/[batchNo]/page.js:1-394`
+- **Catatan**: Dilindungi `PermissionGate resource="trend" minLevel="view"`. Tinggi grafik disesuaikan ke 360px dengan margin kompak agar seluruh konten (header, grafik, footer, dan `SignOffBlock`) muat tepat dalam 1 halaman A4 landscape tanpa terpotong. Peringatan ESLint `react-hooks/set-state-in-effect` telah diselesaikan dengan memanggil `Promise.resolve().then(() => setLoading(false))` pada baris 176.
+
+---
+
+### `fase1/tests/backup_check.mjs`
+- **Tipe**: Script Test / Validasi Database Baca-Saja
+- **Fungsi**: Memverifikasi secara end-to-end pembuatan arsip backup penuh terhadap database PostgreSQL sungguhan di folder sementara, memvalidasi integritas checksum SHA-256 tiap CSV dan manifest, mencocokkan jumlah baris ke database nyata (`batch_records`, `batch_trend`, `alarm_log`, `audit_log`), lalu membersihkan arsip sementara tanpa menulis data apa pun ke database.
+- **Export utama**: Tidak ada (script mandiri CLI).
+- **Meng-import (internal)**: `src/lib/backupArchive.js` (`createBackupArchive`, `verifyArchive`, `BACKUP_TABLES`)
+- **Dipakai oleh**: Dijalankan mandiri via CLI (`node fase1/tests/backup_check.mjs`).
+- **Efek samping / dependensi eksternal**: Membaca variabel `DATABASE_URL` dari env atau fallback dari `.env.local`, melakukan query `SELECT count(*)` ke database PostgreSQL, menulis file sementara di `tmpdir()`, mencetak perbandingan tabel ke stdout.
+- **Bukti**: `fase1/tests/backup_check.mjs:1-67`
+- **Catatan**: Script bersifat murni BACA-SAJA (read-only) terhadap database produksi/pengujian.
+
+---
+
+### `src/app/(app)/backup/page.js`
+- **Tipe**: Client Component / Halaman Administrasi Backup ("use client")
+- **Fungsi**: Menyajikan antarmuka manajemen backup data: formulir pembuatan backup manual (rentang tanggal tertentu atau seluruh data), konfigurasi backup otomatis terjadwal (toggle aktif, interval harian/mingguan/30 hari, jam eksekusi HH:MM, dan retensi generasi 1-10 file), indikator waktu jatuh tempo berikutnya dan hasil terakhir, serta tabel daftar arsip tersimpan dengan tautan unduhan langsung.
+- **Export utama**: `default function BackupPage`
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`)
+- **Dipakai oleh**: Rute `/backup` dalam route group `src/app/(app)/`
+- **Efek samping / dependensi eksternal**: Mengambil status backup via `GET /api/backup`, profil user via `GET /api/auth/me`, memicu backup manual via `POST /api/backup`, menyimpan konfigurasi via `PUT /api/backup`, dan mengunduh berkas arsip via `/api/backup/download`.
+- **Bukti**: `src/app/(app)/backup/page.js:1-283`
+- **Catatan**: Dilindungi izin granular `backup` (`view` untuk melihat status/daftar arsip, `edit` untuk membuat manual, mengubah jadwal, dan mengunduh file). Seluruh pembaruan state pada efek dibungkus di dalam callback promise.
+
+---
+
+### `src/app/api/backup/route.js`
+- **Tipe**: API Route Handler
+- **Fungsi**: Menyediakan endpoint GET untuk membaca status backup (pengaturan jadwal, waktu eksekusi berikutnya, status berjalan, dan daftar file arsip), PUT untuk memperbarui konfigurasi jadwal backup terjadwal, dan POST untuk mengeksekusi pembuatan backup manual.
+- **Export utama**: `GET`, `PUT`, `POST`
+- **Meng-import (internal)**: `src/lib/auth.js` (`requirePermission`), `src/lib/backupService.js` (`getStatus`, `updateSettings`, `runBackup`), `src/lib/backupSchedule.js` (`validateSettingsInput`, `parseRange`)
+- **Dipakai oleh**: `src/app/(app)/backup/page.js`
+- **Efek samping / dependensi eksternal**: Membaca cookie sesi, memeriksa otorisasi `backup` (`view` untuk GET, `edit` untuk PUT/POST), membaca/menulis file pengaturan `backup_settings.json`, menjalankan transaksi database baca-saja, dan mencatat jejak audit ke tabel `audit_log`.
+- **Bukti**: `src/app/api/backup/route.js:1-76`
+- **Catatan**: Mengembalikan status 409 bila ada backup lain yang sedang berjalan (kode error `BUSY`).
+
+---
+
+### `src/app/api/backup/download/route.js`
+- **Tipe**: API Route Handler
+- **Fungsi**: Menyediakan streaming pengunduhan file arsip ZIP backup dengan pengamanan ketat terhadap path traversal dan pencatatan audit download wajib sebelum transmisi file.
+- **Export utama**: `GET`
+- **Meng-import (internal)**: `src/lib/auth.js` (`requirePermission`), `src/lib/backupService.js` (`resolveBackupFile`, `auditDownload`)
+- **Dipakai oleh**: Tautan "Unduh" pada `src/app/(app)/backup/page.js`
+- **Efek samping / dependensi eksternal**: Memeriksa otorisasi `backup` level `edit`, memeriksa kecocokan nama file dengan ekspresi reguler ketat `SCHEDULED_RE` / `MANUAL_RE`, mencatat audit log `backup_downloaded` (transaksi wajib sukses sebelum streaming dimulai), dan streaming berkas ZIP dengan header `Content-Disposition: attachment`.
+- **Bukti**: `src/app/api/backup/download/route.js:1-37`
+- **Catatan**: Path absolut diproteksi penuh oleh `resolveBackupFile` sehingga tidak dapat ditembus oleh serangan directory traversal.
+
+---
+
+### `src/lib/backupSchedule.js`
+- **Tipe**: Lib / Logika Jadwal & Penamaan Murni (Universal)
+- **Fungsi**: Menyediakan konstanta pengaturan jadwal backup (`INTERVAL_OPTIONS`, `MIN_GENERATIONS`, `MAX_GENERATIONS`, `RETRY_AFTER_FAIL_MS`, `DEFAULT_SETTINGS`), fungsi normalisasi dan validasi input pengaturan, parser rentang tanggal, kalkulator waktu jatuh tempo (`computeNextDue`, `isDue`), pembuat stempel waktu WIB (`stampWIB`), ekspresi reguler nama file (`SCHEDULED_RE`, `MANUAL_RE`), fungsi format nama file (`scheduledFileName`, `manualFileName`), serta fungsi pemilah generasi usang (`pickOldest`).
+- **Export utama**: `INTERVAL_OPTIONS`, `MIN_GENERATIONS`, `MAX_GENERATIONS`, `RETRY_AFTER_FAIL_MS`, `DEFAULT_SETTINGS`, `SCHEDULED_RE`, `MANUAL_RE`, `intervalDays`, `normalizeSettings`, `validateSettingsInput`, `parseRange`, `computeNextDue`, `isDue`, `stampWIB`, `scheduledFileName`, `manualFileName`, `pickOldest`
+- **Meng-import (internal)**: `src/lib/dateRange.js` (`buildDateRangeFilter`)
+- **Dipakai oleh**: `src/lib/backupService.js`, `src/app/api/backup/route.js`, `src/lib/backup.test.mjs`
+- **Efek samping / dependensi eksternal**: Tidak ada (fungsi murni tanpa akses fs atau pg).
+- **Bukti**: `src/lib/backupSchedule.js:1-150`
+- **Catatan**: Menggunakan jam lokal PC server (WIB) untuk penamaan file dan evaluasi jadwal jatuh tempo.
+
+---
+
+### `src/lib/backupArchive.js`
+- **Tipe**: Lib / Generator & Verifikator Arsip ZIP (Server-Only)
+- **Fungsi**: Membaca struktur kolom dinamis dari `information_schema.columns`, menjalankan kueri data dalam transaksi tunggal `REPEATABLE READ READ ONLY`, melakukan streaming penulisan data ke berkas ZIP menggunakan `fflate` dengan keyset pagination (5000 baris per halaman), menghasilkan format CSV RFC 4180 dengan UTF-8 BOM dan CRLF, menghasilkan `manifest.json` yang memuat checksum SHA-256 per tabel, serta menyediakan verifikasi integritas arsip (`verifyArchive`) dan kalkulasi hash berkas (`hashFile`).
+- **Export utama**: `BACKUP_FORMAT_VERSION`, `BACKUP_TABLES`, `csvField`, `csvLine`, `selectExpr`, `createBackupArchive`, `hashFile`, `verifyArchive`
+- **Meng-import (internal)**: `src/lib/dateRange.js` (`buildDateRangeFilter`)
+- **Dipakai oleh**: `src/lib/backupService.js`, `fase1/tests/backup_check.mjs`, `src/lib/backup.test.mjs`
+- **Efek samping / dependensi eksternal**: Membaca database PostgreSQL via `pg`, menulis file ZIP via `node:fs` dan pustaka `fflate`, menghitung hash kriptografi via `node:crypto`.
+- **Bukti**: `src/lib/backupArchive.js:1-330`
+- **Catatan**: Empat tabel yang diarsip: `batch_records`, `batch_trend` (dengan join `batch_no`), `alarm_log`, dan `audit_log`. Tanggal disimpan dalam format UTC ISO-8601 dengan mikrodetik.
+
+---
+
+### `src/lib/backupService.js`
+- **Tipe**: Lib / Layanan Manajemen & Eksekutor Backup (Server-Only)
+- **Fungsi**: Mengelola folder backup (`BACKUP_DIR`), membaca/memperbarui file konfigurasi `backup_settings.json` secara atomik, mengelola kunci eksklusif file concurrency `.backup.lock` (dengan timeout stale 1 jam), menjalankan backup manual maupun terjadwal dengan verifikasi checksum pasca-pembuatan, merotasi berkas terjadwal lama, mencatat audit log aktivitas, dan menjalankan scheduler latar belakang berkala (`startBackupScheduler`).
+- **Export utama**: `backupRoot`, `readSettings`, `updateSettings`, `isRunning`, `listBackups`, `resolveBackupFile`, `getStatus`, `runBackup`, `auditDownload`, `startBackupScheduler`
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auditLog.js`, `src/lib/backupArchive.js`, `src/lib/backupSchedule.js`
+- **Dipakai oleh**: `server.js`, `src/app/api/backup/route.js`, `src/app/api/backup/download/route.js`
+- **Efek samping / dependensi eksternal**: Membaca `process.env.BACKUP_DIR`, membaca/menulis sistem berkas lokal via `node:fs/promises`, menjalankan query PostgreSQL, mencatat audit log ke database, menjalankan timer `setInterval` latar belakang pada proses Node.js.
+- **Bukti**: `src/lib/backupService.js:1-309`
+- **Catatan**: Di-import langsung oleh `server.js` (CommonJS / dynamic import) sehingga seluruh impor file internal menggunakan path relatif dengan ekstensi `.js`.
+
+---
+
+### `src/lib/backup.test.mjs`
+- **Tipe**: Test / Unit Test
+- **Fungsi**: Memverifikasi 120 skenario uji logika backup: escaping RFC 4180 CSV, ekspresi SELECT SQL aman, pembersihan pengaturan default/invalid, validasi input UI, parsing rentang tanggal, kalkulasi jadwal jatuh tempo, stempel waktu WIB, regex nama file terjadwal/manual, pemilahan generasi rotasi, pembuatan arsip dengan database tiruan (mock DB 0 hingga 12.345 baris), penolakan rentang tanggal salah, rollback transaksi saat galat kueri, dan deteksi pemalsuan checksum SHA-256 berkas arsip.
+- **Export utama**: Tidak ada (script pengujian Node.js).
+- **Meng-import (internal)**: `src/lib/backupSchedule.js`, `src/lib/backupArchive.js`
+- **Dipakai oleh**: Dijalankan mandiri via CLI (`node src/lib/backup.test.mjs`).
+- **Efek samping / dependensi eksternal**: Menulis berkas ZIP sementara di `tmpdir()` dan menghapusnya saat selesai. Mencetak hasil uji ke stdout (120 pass).
+- **Bukti**: `src/lib/backup.test.mjs:1-197`
+- **Catatan**: Pengujian berjalan cepat secara mandiri tanpa memerlukan koneksi database riil.
 
 ---
 
 ## Change Log
 
+- [2026-11-05] ADDED: Menambahkan dokumentasi teknis 8 berkas fitur Backup Data: `fase1/tests/backup_check.mjs`, `src/app/(app)/backup/page.js`, `src/app/api/backup/route.js`, `src/app/api/backup/download/route.js`, `src/lib/backupSchedule.js`, `src/lib/backupArchive.js`, `src/lib/backupService.js`, `src/lib/backup.test.mjs`.
+- [2026-11-05] MODIFIED: Memperbarui entri `package.json` (penambahan `fflate`), `.gitignore` (pengecualian `/backups/`), `server.js` (Background Worker 3: Backup Scheduler baris 92–97), `src/components/Navbar.js` (menu Backup baris 27), `src/lib/permissionCatalog.js` (penambahan resource `backup`), `src/lib/auditActionLabels.js` (perluasan ke 54 aksi), `src/lib/auditActionLabels.test.mjs` (171 unit test pass), `src/app/api/audit-log/export/route.js` (translasi aksi & kolom kode aksi), `src/app/print/data-report/[batchNo]/page.js` (separator fase pertama), dan `src/app/print/trend/[batchNo]/page.js` (penyelesaian peringatan linter).
+- [2026-11-03] ADDED: Menambahkan dokumentasi teknis 4 file baru: `context/tag_terbaru_kepsrvr.csv` (master 105 tag PLC), `src/lib/auditActionLabels.js` (kamus translasi 37 aksi audit), `src/lib/auditActionLabels.test.mjs` (117 unit test label audit), dan `src/app/print/trend/[batchNo]/page.js` (lembar cetak kurva trend mandiri A4 landscape).
+- [2026-11-03] REMOVED: Menandai `context/SiemensS7-200.csv` dan `context/SiemensS7-200_pintu_NANTI.csv` sebagai REMOVED setelah dihapus pada commit `021d5e4` dan digantikan oleh `context/tag_terbaru_kepsrvr.csv`.
+- [2026-11-03] MODIFIED: Memperbarui entri `src/app/(app)/trend/page.js` (penambahan `handlePrint` dan tombol Cetak/PDF), `src/lib/plcParamCatalog.js` (penambahan field `foValue` pada `param1`), `src/app/api/plc-params/route.js` (penambahan `liveValues` untuk kalibrasi), `src/components/PlcParamEditor.js` (penambahan kolom "Nilai Sensor" dan prop `liveValue`/`showSensorColumn`), `src/app/(app)/audit-log/page.js` dan `src/app/print/audit-log/page.js` (translasi aksi audit), serta `fase1/tests/matrix.mjs` (probe aman endpoint PLC). Menghapus label `UNTRACKED` pada file Door Operate yang telah di-commit.
 - [2026-11-02] ADDED: Menambahkan dokumentasi teknis 6 file baru (untracked, fitur Door Operate): `src/lib/plcDoorCatalog.js`, `src/lib/plcDeadman.js`, `src/app/api/plc-door/route.js`, `src/app/(app)/door-operate/page.js`, `context/SiemensS7-200_pintu_NANTI.csv`, `fase1/tests/plc_door_mock.mjs`.
 - [2026-11-02] MODIFIED: Memperbarui entri `server.js` (nomor baris bergeser ke 108 baris, tambahkan blok reset rantai M11.0/M11.1 di baris 92–105), `src/app/(app)/page.js` (bergeser ke 1025 baris; perbarui state Door, handler, gating; TEMUAN KRITIS `startAllowed = true` masih ada di baris 501), `src/components/Navbar.js` (bergeser ke 162 baris; menu door-operate di baris 26), `src/lib/recipeGuard.js` (koreksi nilai `START_LOCK_KEY`).
 - [2026-10-29] ADDED: Menambahkan dokumentasi teknis 17 file baru di codebase: `migrations/006_add_bottle_count.sql`, `migrations/006_add_bottle_count_rollback.sql`, `src/components/SearchableCombobox.js`, `src/components/SignOffBlock.js`, `src/components/PlcDialog.js`, `src/components/PlcParamEditor.js`, `src/lib/plcAccess.js`, `src/lib/plcClock.js`, `src/lib/plcManualCatalog.js`, `src/lib/plcParamCatalog.js`, `src/app/api/plc-clock/route.js`, `src/app/api/plc-manual/route.js`, `src/app/api/plc-params/route.js`, `src/app/(app)/machine-params/page.js`, `src/app/(app)/calibration/page.js`, `src/app/(app)/plc-clock/page.js`, dan `src/app/(app)/manual/page.js`.

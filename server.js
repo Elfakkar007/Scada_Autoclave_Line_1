@@ -89,6 +89,12 @@ app.prepare().then(async () => {
                 console.error("[server] Alarm monitor gagal start:", err)
             );
 
+            // Backup terjadwal: cek tiap menit apakah jadwal (pengaturan di menu Backup) sudah jatuh tempo.
+            // Nonaktif secara default; inisialisasi gagal tidak boleh menjatuhkan server.
+            import("./src/lib/backupService.js")
+                .then(({ startBackupScheduler }) => startBackupScheduler())
+                .catch((err) => console.error("[server] Backup scheduler gagal start:", err));
+
             // Door Operate: server baru hidup berarti tidak ada sesi tahan-rantai yang sah.
             // Best-effort tulis M11.0/M11.1 = false agar rantai tidak tertinggal menyala dari
             // sesi sebelum server mati. Tag belum diimpor / PLC belum siap = hanya peringatan.

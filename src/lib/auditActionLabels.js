@@ -66,6 +66,34 @@ export const AUDIT_ACTIONS = {
     plc_door_command: A("Kontrol pintu", "water"),
     plc_door_command_failed: A("Kontrol pintu gagal", "stop"),
     plc_door_chain: A("Rantai pintu", "water"),
+
+    // ── Formula (nama aksi generik; di DB hanya dipakai entity_type = formula) ──
+    create: A("Buat formula", "run"),
+    update: A("Ubah formula", "water"),
+    delete: A("Hapus formula", "stop"),
+
+    // ── Produk dan spesifikasi (INSERT mentah di route products / product-specs) ──
+    create_product_name: A("Buat nama produk", "run"),
+    update_product_name: A("Ubah nama produk", "water"),
+    delete_product_name: A("Hapus nama produk", "stop"),
+    create_product_spec: A("Buat spesifikasi produk", "run"),
+    update_product_spec: A("Ubah spesifikasi produk", "water"),
+    delete_product_spec: A("Hapus spesifikasi produk", "stop"),
+
+    // ── Batch: aksi yang tercatat di DB tetapi tidak ada di inventaris awal ──
+    start_batch: A("Batch dimulai", "steam"), // ditulis setelah rekaman batch dibuat; START kritis = start_batch_critical
+    start_batch_rejected: A("START batch ditolak", "stop"),
+    batch_adopted: A("Batch diadopsi", "idle"),
+
+    // ── Ekspor data (ditulis lewat INSERT mentah di route ekspor) ──
+    export_audit_log: A("Ekspor audit log", "idle"),
+    export_batch_records: A("Ekspor data batch", "idle"),
+
+    // ── Backup data ──
+    backup_created: A("Backup dibuat", "run"),
+    backup_failed: A("Backup gagal", "stop"),
+    backup_settings_update: A("Ubah pengaturan backup", "water"),
+    backup_downloaded: A("Unduh backup", "steam"),
 };
 
 /** Label tampilan; aksi tak dikenal dikembalikan apa adanya. */

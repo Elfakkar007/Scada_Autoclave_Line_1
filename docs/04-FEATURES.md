@@ -342,27 +342,30 @@ Menyediakan pelacakan kepatuhan terhadap seluruh perubahan sistem SCADA: mencata
 1. **Halaman UI**: `src/app/(app)/audit-log/page.js:80` memanggil `GET /api/audit-log/route.js` dan `GET /api/audit-log/filters/route.js`.
 2. **Query Database**: Handler `src/app/api/audit-log/route.js:52` menjalankan query SQL dinamis pada tabel `audit_log` dengan pembatasan hak akses via `requirePermission(cookieStore, "audit_log", "view")`.
 3. **Ekspor Excel**: Tombol "Export Excel" memanggil `GET /api/audit-log/export?format=xlsx` (`src/app/api/audit-log/export/route.js:52`). Handler menghasilkan file spreadsheet Excel 11 kolom melalui pustaka `exceljs` dan mencatat aktivitas ekspor tersebut kembali ke tabel `audit_log`.
+4. **Translasi Label Aksi UI**: Seluruh 37 aksi teknis diterjemahkan ke bahasa Indonesia dan diberikan warna visual terstandarisasi menggunakan fungsi pembantu `auditActionLabel(action)` dan `auditActionTone(action)` dari `src/lib/auditActionLabels.js:72-80` baik pada tabel web (`src/app/(app)/audit-log/page.js:203`) maupun lembar cetak (`src/app/print/audit-log/page.js:154`).
 
 ### Bukti Kode
-- `src/app/(app)/audit-log/page.js:75-160`
+- `src/app/(app)/audit-log/page.js:75-215`
 - `src/app/api/audit-log/route.js:6-85`
 - `src/app/api/audit-log/export/route.js:52-175`
+- `src/lib/auditActionLabels.js:1-80`
 
 ---
 
 ## 15. Fitur Visualisasi Trend & Grafik Dinamis Recharts
 
 ### Deskripsi Faktual
-Menampilkan grafik multi-sensor interaktif suhu (9 sensor) dan tekanan (kPa) untuk batch sterilisasi yang dipilih pengguna dari dropdown.
+Menampilkan grafik multi-sensor interaktif suhu (9 sensor) dan tekanan (kPa) untuk batch sterilisasi yang dipilih pengguna dari dropdown, serta menyediakan tombol cetak mandiri untuk mencetak grafik kurva langsung ke lembar A4 landscape.
 
 ### Rantai Alur Kode
 1. **Inisialisasi Halaman**: `src/app/(app)/trend/page.js:88` memanggil paralel `GET /api/status` dan `GET /api/batch-records?limit=100`. Jika ada batch `running`, batch tersebut otomatis terpilih; jika tidak, batch terbaru di list yang terpilih.
 2. **Pengambilan Data Trend**: Perubahan pilihan batch memicu fetch ke `GET /api/batch-records/[batchNo]` (`src/app/(app)/trend/page.js:134`).
 3. **Rendering Grafik**: Komponen merender `ComposedChart` Recharts dengan sumbu Y kiri domain 0-150°C dan sumbu Y kanan domain 0-320 kPa (`src/app/(app)/trend/page.js:246-311`).
+4. **Pencetakan Kurva Mandiri**: Tombol "🖨 Cetak / PDF" (`src/app/(app)/trend/page.js:213-221`) memicu fungsi `handlePrint` (`src/app/(app)/trend/page.js:158-163`) yang membuka rute cetak mandiri `/print/trend/${encodeURIComponent(selectedBatchNo)}` di tab baru peramban.
 
 ### Bukti Kode
-- `src/app/(app)/trend/page.js:88-155`
-- `src/app/(app)/trend/page.js:246-312`
+- `src/app/(app)/trend/page.js:88-165`
+- `src/app/(app)/trend/page.js:213-315`
 
 ---
 
@@ -375,8 +378,8 @@ Menyediakan tata letak dokumen yang diformat khusus untuk dicetak ke printer ker
 1. **Cetak Laporan Gabungan Data Report**:
    - Rute: `src/app/print/data-report/[batchNo]/page.js`.
    - Mengambil data dari `GET /api/batch-records/[batchNo]` dan `GET /api/alarms/by-batch/[batchNo]` (`src/app/print/data-report/[batchNo]/page.js:130`). Header menampilkan `Amount :` (`batch.bottleCount`).
-   - Merender 3 seksi: Data Record tabel trend (A4 portrait), Kurva grafik Recharts lebar 680px (A4 portrait), dan Log Alarm batch (A4 landscape) dengan penomoran halaman yang diatur via CSS named pages. Menyematkan `<SignOffBlock />` di setiap akhir seksi.
-2. **Cetak Kurva Penuh**:
+   - Merender 3 seksi: Data Record tabel trend (A4 portrait), Kurva grafik Recharts lebar 680px (A4 portrait), dan Log Alarm batch (A4 landscape) dengan penomoran halaman yang diatur via CSS named pages. Tabel trend menyisipkan baris pemisah fase proses secara konsisten untuk setiap fase termasuk fase pertama (`lastPhase === undefined`) sehingga seluruh fase selalu diawali header `▶ LABEL`. Menyematkan `<SignOffBlock />` di setiap akhir seksi.
+2. **Cetak Kurva Penuh (Data Report)**:
    - Rute: `src/app/print/data-report/[batchNo]/curve/page.js`.
    - Merender kurva suhu dan tekanan berorientasi A4 landscape dengan fixed width 940px tanpa animasi grafik (`src/app/print/data-report/[batchNo]/curve/page.js:250`), header `Amount :`, dan blok `<SignOffBlock />`.
 3. **Cetak Log Alarm**:
@@ -384,18 +387,24 @@ Menyediakan tata letak dokumen yang diformat khusus untuk dicetak ke printer ker
    - Mengambil seluruh baris filter dari `GET /api/alarms/print-data` dan merender tabel landscape A4 (`src/app/print/alarm/page.js:131`), diakhiri blok `<SignOffBlock />` dengan styling `.keep-together`.
 4. **Cetak Log Audit**:
    - Rute: `src/app/print/audit-log/page.js`.
-   - Mengambil data dari `GET /api/audit-log/export?format=json` dan merender tabel landscape A4 (`src/app/print/audit-log/page.js:135`).
+   - Mengambil data dari `GET /api/audit-log/export?format=json` dan merender tabel landscape A4 (`src/app/print/audit-log/page.js:135`) dengan translasi label aksi via `auditActionLabel`.
 5. **Cetak Daftar Batch**:
    - Rute: `src/app/print/batch-records/page.js`.
    - Mengambil data dari `GET /api/batch-records/export?format=json` dan merender tabel 23 kolom landscape A4 (`src/app/print/batch-records/page.js:53`).
+6. **Format Cetak Kurva Trend Mandiri (`/print/trend/[batchNo]`)**:
+   - Rute: `src/app/print/trend/[batchNo]/page.js`.
+   - Orientasi A4 landscape khusus dengan margin cetak `12mm 10mm` (`@page { size: A4 landscape; margin: 12mm 10mm; }`) dan penamaan otomatis judul dokumen (`document.title = ...`).
+   - Mengambil data batch tunggal via `GET /api/batch-records/[batchNo]` (`src/app/print/trend/[batchNo]/page.js:145`). Peringatan ESLint `react-hooks/set-state-in-effect` telah diselesaikan dengan memanggil `Promise.resolve().then(() => setLoading(false))` pada baris 176.
+   - Merender header dokumen bergaya thermal/dot-matrix ("TEMPERATURE PRESSURE CURVE"), tabel metadata batch 3 kolom (Batch No, Prod Name, Operator, Ster. Temp, Heat Begin/Time, Ster Begin/Time, Cool Begin/Time, Total Time), grafik kurva `LineChart` Recharts 940x360px dengan sumbu ganda (°C kiri domain 0-150, kPa kanan domain 0-320) dan garis putus-putus vertikal pembatas fase (`ReferenceLine` untuk Heat, Ster, Cool), serta blok tanda tangan `<SignOffBlock />` yang dibungkus `.signoff-container { break-inside: avoid; }` agar tidak terputus ke halaman baru.
 
 ### Bukti Kode
 - `src/components/SignOffBlock.js:1-43`
-- `src/app/print/data-report/[batchNo]/page.js:1-668`
+- `src/app/print/data-report/[batchNo]/page.js:1-667`
 - `src/app/print/data-report/[batchNo]/curve/page.js:1-320`
 - `src/app/print/alarm/page.js:1-248`
 - `src/app/print/audit-log/page.js:58-235`
 - `src/app/print/batch-records/page.js:24-170`
+- `src/app/print/trend/[batchNo]/page.js:1-394`
 
 ---
 
@@ -482,10 +491,10 @@ Menyediakan mekanisme penghapusan akun pengguna yang patuh terhadap integritas j
 ## 20. Fitur Pengaturan Parameter Mesin PLC (Machine Parameters)
 
 ### Deskripsi Faktual
-Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin sterilisasi autoclave yang tersimpan pada register PLC Siemens S7-200. Parameter dikelompokkan dalam 3 tab: Parameter Setting 1 (Ster. Temp, Control Temp, Temp. Space, Ster. Time, Alarm Press., Cool. Temp 1 & 2), Parameter Setting 2 (Safety Press., Regu. Press, Over. Temp, Drain Time, Exhau. Temp, Select Press), dan Pressure Coefficient (a1, b1, a2, b2, Heat/Ster/Cool Coeff). Seluruh operasi penulisan dilindungi oleh PostgreSQL advisory lock `PLC_WRITE_LOCK_KEY` (847291035) dan `START_LOCK_KEY`, validasi batas nilai fisik, cross-check logika antar-field, isian alasan wajib untuk audit trail, serta verifikasi baca-balik dari PLC hingga 4,5 detik. Parameter keselamatan kritis (`SAFETY_PRESS`, `ALRM_PRES`, `SEL_PRESU`) mewajibkan izin khusus `action.write_safety_params`.
+Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin sterilisasi autoclave yang tersimpan pada register PLC Siemens S7-200. Parameter dikelompokkan dalam 3 tab: Parameter Setting 1 (Ster. Temp, Control Temp, Temp. Space, Ster. Time, Alarm Press., Cool. Temp 1 & 2, serta FO Value), Parameter Setting 2 (Safety Press., Regu. Press, Over. Temp, Drain Time, Exhau. Temp, Select Press), dan Pressure Coefficient (a1, b1, a2, b2, Heat/Ster/Cool Coeff). Seluruh operasi penulisan dilindungi oleh PostgreSQL advisory lock `PLC_WRITE_LOCK_KEY` (847291035) dan `START_LOCK_KEY`, validasi batas nilai fisik, cross-check logika antar-field, isian alasan wajib untuk audit trail, serta verifikasi baca-balik dari PLC hingga 4,5 detik. Parameter keselamatan kritis (`SAFETY_PRESS`, `ALRM_PRES`, `SEL_PRESU`) mewajibkan izin khusus `action.write_safety_params`.
 
 ### Rantai Alur Kode
-1. **Halaman UI**: Pengguna mengakses `/machine-params` (`src/app/(app)/machine-params/page.js`) yang dibungkus `PermissionGate resource="machine_params" minLevel="view"`. Komponen `PlcParamEditor` memuat tab `["param1", "param2", "coef"]`.
+1. **Halaman UI**: Pengguna mengakses `/machine-params` (`src/app/(app)/machine-params/page.js`) yang dibungkus `PermissionGate resource="machine_params" minLevel="view"`. Komponen `PlcParamEditor` memuat tab `["param1", "param2", "coef"]`. Khusus Setting 1, memuat 8 parameter termasuk `foValue` (tag `FO_VALUE`, register VW220, skala 10, unit MIN, rentang 0–99).
 2. **Pembacaan Tag On-Demand**: `PlcParamEditor` memanggil `GET /api/plc-params?group=...` (`src/app/api/plc-params/route.js:19`).
 3. **Akses PLC Server-Side**: Handler memanggil `readPlcRaw` (`src/lib/plcAccess.js:48`) via REST API KEPServerEX `/iotgateway/read`, mengonversi raw ke nilai teknik via `rawToValue` (`src/lib/plcParamCatalog.js:133`), dan memeriksa status mesin via `checkMachineIdle(IDLE_PHASES_PARAMS)`.
 4. **Form Edit & Konfirmasi**: Pengguna dengan hak `machine_params >= edit` mengubah nilai, memicu dialog modal `PlcDialog` (`src/components/PlcParamEditor.js:58`) yang menampilkan perbandingan nilai lama vs baru, tanda bahaya merah untuk field keselamatan (`danger`), dan input teks alasan wajib minimal 3 karakter.
@@ -503,9 +512,9 @@ Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin steril
 
 ### Bukti Kode
 - `src/app/(app)/machine-params/page.js:1-16`
-- `src/components/PlcParamEditor.js:1-401`
+- `src/components/PlcParamEditor.js:1-415`
 - `src/components/PlcDialog.js:1-20`
-- `src/lib/plcParamCatalog.js:1-230`
+- `src/lib/plcParamCatalog.js:1-240`
 - `src/lib/plcAccess.js:1-185`
 - `src/app/api/plc-params/route.js:1-223`
 
@@ -514,11 +523,11 @@ Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin steril
 ## 21. Fitur Kalibrasi Offset Sensor PLC (Sensor Calibration)
 
 ### Deskripsi Faktual
-Menyediakan antarmuka HMI-web untuk melihat dan mengkalibrasi nilai offset bertanda pada sensor autoclave yang terhubung ke PLC: 9 sensor suhu (TH, T1, T2, T3, T4, T5, T6, TM, TL pada tag `CAL_TH` s.d. `CAL_TL`), 2 sensor tekanan bejana (P1 pada `CAL_P1` dan P2 pada `CAL_P2`), serta konduktivitas air (L pada `CAL_L`). Mengubah offset kalibrasi dilindungi guard ganda: pengguna wajib memiliki hak akses `calibration >= edit` dan izin aksi kritis `action.write_calibration = edit`. Penulisan tunduk pada serialisasi penguncian mesin, pemeriksaan fase idle, pencatatan jejak audit lengkap dengan alasan, serta verifikasi baca-balik real-time.
+Menyediakan antarmuka HMI-web untuk melihat nilai aktual sensor bersandingan dengan offset kalibrasi bertanda pada sensor autoclave yang terhubung ke PLC: 9 sensor suhu (TH, T1, T2, T3, T4, T5, T6, TM, TL pada tag `CAL_TH` s.d. `CAL_TL`), 2 sensor tekanan bejana (P1 pada `CAL_P1` dan P2 pada `CAL_P2`), serta konduktivitas air (L pada `CAL_L`). Antarmuka menampilkan kolom 'Nilai Sensor' secara live yang membaca suhu dan tekanan riil saat ini (atau '—' saat offline), berdampingan dengan kolom 'Offset Kalibrasi' sehingga operator memiliki visibilitas identik dengan layar fisik HMI Siemens SmartLine di mesin. Mengubah offset kalibrasi dilindungi guard ganda: pengguna wajib memiliki hak akses `calibration >= edit` dan izin aksi kritis `action.write_calibration = edit`. Penulisan tunduk pada serialisasi penguncian mesin, pemeriksaan fase idle, pencatatan jejak audit lengkap dengan alasan, serta verifikasi baca-balik real-time.
 
 ### Rantai Alur Kode
-1. **Halaman UI**: Pengguna mengakses `/calibration` (`src/app/(app)/calibration/page.js`) yang dibungkus `PermissionGate resource="calibration" minLevel="view"`. Komponen `PlcParamEditor` memuat grup `["calibration"]`.
-2. **Pembacaan Offset**: Handler `GET /api/plc-params?group=calibration` membaca tag `CAL_*` melalui `readPlcRaw` dan menampilkan nilai offset bertanda (misal `+0.5 °C` atau `-2 kPa`).
+1. **Halaman UI**: Pengguna mengakses `/calibration` (`src/app/(app)/calibration/page.js`) yang dibungkus `PermissionGate resource="calibration" minLevel="view"`. Komponen `PlcParamEditor` memuat grup `["calibration"]`. Pada grup kalibrasi, tabel mengaktifkan flag `showSensorColumn` yang merender kolom "Nilai Sensor" (angka biru tebal) di sebelah kolom "Offset Kalibrasi" (`src/components/PlcParamEditor.js:154-158, 303-315`).
+2. **Pembacaan Offset & Nilai Sensor Live**: Handler `GET /api/plc-params?group=calibration` membaca tag `CAL_*` melalui `readPlcRaw` dan secara bersamaan membaca snapshot sensor aktual (`TH`, `T1`–`T6`, `TM`, `TL`, `P1`, `P2`) melalui `readPlcSnapshot` (`src/app/api/plc-params/route.js:33-43`), mengembalikan objek `{ success: true, values, liveValues, idle, rawPhase }`.
 3. **Pemberian Nilai Baru**: Pengguna memasukkan offset baru pada input desimal. Rentang offset suhu dibatasi -10 s.d. +10 °C, tekanan -50 s.d. +50 kPa, dan konduktivitas -500 s.d. +500 unit raw (`src/lib/plcParamCatalog.js:112-119`).
 4. **Validasi Hak Aksi Kritis**: Permintaan `PUT /api/plc-params` memeriksa izin `action.write_calibration >= edit` (`src/app/api/plc-params/route.js:69`). Jika ditolak, mengembalikan status 403 Forbidden.
 5. **Penulisan Terkunci & Audit**: Handler memperoleh kunci advisory `withPlcLocks`, memastikan fase idle `[0, 1, 6]`, mencatat jejak audit `plc_calibration_write_attempt`, menulis ke KEPServerEX, dan memverifikasi baca-balik tag `CAL_*`.
@@ -526,9 +535,10 @@ Menyediakan antarmuka HMI-web untuk melihat dan mengkalibrasi nilai offset berta
 
 ### Bukti Kode
 - `src/app/(app)/calibration/page.js:1-16`
-- `src/lib/plcParamCatalog.js:111-120`
+- `src/components/PlcParamEditor.js:154-158, 303-315`
+- `src/lib/plcParamCatalog.js:111-135, 180-210`
 - `src/lib/plcAccess.js:89-185`
-- `src/app/api/plc-params/route.js:57-223`
+- `src/app/api/plc-params/route.js:15-70, 71-223`
 
 ---
 
@@ -732,7 +742,7 @@ Sumber: `src/lib/plcDoorCatalog.js:27–34`.
 
 ## 27. Matriks Hak Akses & Perizinan Seluruh Endpoint API (Audit 2026-11-02)
 
-Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status cakupan pengujian otomatis pada skrip harness `fase1/tests/matrix.mjs` untuk seluruh 37 berkas route handler backend (`src/app/api/**/route.js`):
+Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status cakupan pengujian otomatis pada skrip harness `fase1/tests/matrix.mjs` untuk seluruh 40 berkas route handler backend (`src/app/api/**/route.js`):
 
 | Endpoint Route | Metode | Guard / Aturan Izin yang Diminta | Status Publik / Sensitif | Cakupan `matrix.mjs` |
 |:---|:---:|:---|:---|:---:|
@@ -791,67 +801,92 @@ Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status ca
 | `/api/plc-params` | PUT | Dinamis: `meta.resource >= edit` + `writeAction` + `restrictedActions` | HMI Parameter Mesin | ❌ Belum tercakup |
 | `/api/plc-door` | GET | `requirePermission`: `manual_control >= view` | HMI Door Operate | ❌ Belum tercakup |
 | `/api/plc-door` | POST | **Jalur Ganda (Semua Aksi)**:<br>1. `manual_control >= edit`<br>2. `dashboard >= edit` ∧ `action.batch_control = edit` | **KONTROL KRITIS** | ❌ Belum tercakup |
+| `/api/backup` | GET | `requirePermission`: `backup >= view` | Layanan Backup | ❌ Belum tercakup |
+| `/api/backup` | PUT | `requirePermission`: `backup >= edit` | Konfigurasi Backup | ❌ Belum tercakup |
+| `/api/backup` | POST | `requirePermission`: `backup >= edit` | Eksekusi Backup | ❌ Belum tercakup |
+| `/api/backup/download` | GET | `requirePermission`: `backup >= edit` | Unduhan Backup | ❌ Belum tercakup |
 
-**Catatan Gap Pengujian**: Skrip `fase1/tests/matrix.mjs` dibuat pada Fase 1 RBAC dan belum diperbarui untuk menguji 9 endpoint gelombang HMI dan Door Operate (`/api/batch/start`, `/api/batch/stop`, `/api/plc/reset`, `/api/plc-clock`, `/api/plc-manual`, `/api/plc-params`, `/api/plc-door`, `/api/auth/me`, `/api/auth/unlock`). Pengujian otomatis untuk endpoint-endpoint ini wajib ditambahkan pada fase berikutnya.
-
----
-
-## 28. Inventarisasi Aksi Audit Log & Pemetaan Label UI (Audit 2026-11-02)
-
-Terdapat **36 nama aksi unik** yang dicatat ke tabel database `audit_log` di seluruh aplikasi melalui modul `insertAudit`/`tryAudit` dan proses latar belakang. Pemeriksaan terhadap komponen UI (`src/app/(app)/audit-log/page.js`), lembar cetak (`src/app/print/audit-log/page.js`), dan direktori `src/lib/` menemukan bahwa **tidak ada kamus/modul translasi label tampilan audit** di repositori. Seluruh aksi audit dirender secara **mentah (raw string)** apa adanya dari database:
-
-| No | Nama Aksi Audit (`action`) | Entity Type | Berkas & Baris Pemanggil | Tampilan di UI Audit Log |
-|:---:|:---|:---|:---|:---:|
-| 1 | `login` | `user` | `src/app/api/auth/login/route.js:157` | Mentah (badge warna) |
-| 2 | `login_failed` | `user` | `src/app/api/auth/login/route.js:123, 138` | Mentah |
-| 3 | `login_blocked` | `user` | `src/app/api/auth/login/route.js:89` | Mentah |
-| 4 | `logout` | `user` | `src/app/api/auth/logout/route.js:13` | Mentah (badge warna) |
-| 5 | `unlock_screen` | `user` | `src/app/api/auth/unlock/route.js:69` | Mentah |
-| 6 | `unlock_screen_failed` | `user` | `src/app/api/auth/unlock/route.js:53` | Mentah |
-| 7 | `create_user` | `user` | `src/app/api/users/route.js:92` | Mentah (badge warna `create`) |
-| 8 | `update_user` | `user` | `src/app/api/users/[username]/route.js:75` | Mentah (badge warna `update`) |
-| 9 | `user_role_change` | `user` | `src/app/api/users/[username]/route.js:87` | Mentah |
-| 10 | `deactivate_user` | `user` | `src/app/api/users/[username]/route.js:144` | Mentah |
-| 11 | `delete_user` | `user` | `src/app/api/users/[username]/delete/route.js:74` | Mentah (badge warna `delete`) |
-| 12 | `reset_password` | `user` | `src/app/api/users/[username]/reset-password/route.js:44` | Mentah |
-| 13 | `role_create` | `role` | `src/app/api/roles/route.js:74` | Mentah |
-| 14 | `role_update` | `role` | `src/app/api/roles/[id]/route.js:78` | Mentah |
-| 15 | `role_permissions_update` | `role` | `src/app/api/roles/[id]/route.js:96` | Mentah |
-| 16 | `role_delete` | `role` | `src/app/api/roles/[id]/route.js:141` | Mentah |
-| 17 | `start_batch_critical` | `batch` | `src/app/api/batch/start/route.js:672` | Mentah |
-| 18 | `plc_setpoints_written` | `batch` | `src/app/api/batch/start/route.js:519` | Mentah |
-| 19 | `stop_requested` | `batch` | `src/app/api/batch/stop/route.js:49` | Mentah |
-| 20 | `stop_batch` | `batch` | `src/app/api/batch/stop/route.js:112` | Mentah (badge warna `stop_batch`) |
-| 21 | `batch_auto_finalize` | `batch` | `src/lib/trendRecorder.js:283` | Mentah |
-| 22 | `plc_reset_requested` | `plc` | `src/app/api/plc/reset/route.js:87` | Mentah |
-| 23 | `plc_clock_write_requested` | `plc` | `src/app/api/plc-clock/route.js:81` | Mentah |
-| 24 | `plc_clock_write_failed` | `plc` | `src/app/api/plc-clock/route.js:103, 137` | Mentah |
-| 25 | `plc_clock_written` | `plc` | `src/app/api/plc-clock/route.js:156` | Mentah |
-| 26 | `plc_manual_command` | `plc` | `src/app/api/plc-manual/route.js:97, 118, 157, 189` | Mentah |
-| 27 | `plc_manual_command_failed` | `plc` | `src/app/api/plc-manual/route.js:97, 118, 172, 199` | Mentah |
-| 28 | `plc_parameter_write_requested` | `plc` | `src/app/api/plc-params/route.js:147` | Mentah |
-| 29 | `plc_parameter_write_failed` | `plc` | `src/app/api/plc-params/route.js:168` | Mentah |
-| 30 | `plc_parameter_written` | `plc` | `src/app/api/plc-params/route.js:201` | Mentah |
-| 31 | `plc_calibration_write_requested` | `plc` | `src/app/api/plc-params/route.js:147` | Mentah |
-| 32 | `plc_calibration_write_failed` | `plc` | `src/app/api/plc-params/route.js:168` | Mentah |
-| 33 | `plc_calibration_written` | `plc` | `src/app/api/plc-params/route.js:201` | Mentah |
-| 34 | `plc_door_command` | `plc` | `src/app/api/plc-door/route.js:128, 179, 200` | Mentah |
-| 35 | `plc_door_command_failed` | `plc` | `src/app/api/plc-door/route.js:128, 179, 212` | Mentah |
-| 36 | `plc_door_chain` | `plc` | `src/app/api/plc-door/route.js:100, 106` | Mentah |
+**Catatan Cakupan Pengujian**: Skrip `fase1/tests/matrix.mjs` telah diperbarui dengan safe probe untuk endpoint PLC (`/api/plc-door`, `/api/plc-manual`, `/api/plc-clock`, `/api/plc-params`, `/api/batch/start`, serta penolakan mesin kondisional `/api/batch/stop` dan `/api/plc/reset` via bendera `PROBE_MACHINE_DENY=yes`). Hanya `POST /api/auth/unlock` (potensi memicu throttle login) dan field bertingkat `restricted` pada `/api/plc-params` yang belum tercakup probe otomatis.
 
 ---
 
-## 29. Komparasi Faktual Tag PLC: Kode Sumber vs Dokumen CSV (Audit 2026-11-02)
+## 28. Inventarisasi Aksi Audit Log & Pemetaan Label UI (Audit 2026-11-05)
 
-Pemeriksaan komparatif dilakukan antara seluruh tag yang didefinisikan pada berkas CSV di `context/*.csv` terhadap pemakaian tag nyata di kode sumber (`src/lib/plc.js`, `plcManualCatalog.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcWrite.js`, `batch/start`, `batch/stop`, `plc/reset`, `server.js`):
+Terdapat **55 nama aksi unik** yang dicatat ke tabel database `audit_log` di seluruh aplikasi melalui modul `insertAudit`/`tryAudit` dan proses latar belakang. Sejak implementasi modul `src/lib/auditActionLabels.js`, seluruh aksi audit memiliki label tampilan resmi berbahasa Indonesia dan pewarnaan badge yang terstandarisasi untuk antarmuka web (`src/app/(app)/audit-log/page.js:203`) dan lembar cetak (`src/app/print/audit-log/page.js:154`), sedangkan nilai string kode teknis mentah tetap dipertahankan pada level database PostgreSQL, rute API query, dan format ekspor data mentah:
 
-- Total tag pada `context/SiemensS7-200.csv`: **60 tag**
-- Total tag pada `context/SiemensS7-200_pintu_NANTI.csv`: **6 tag** (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`)
-- Total tag CSV gabungan: **66 tag**
-- Total tag aktif yang diakses kode sumber: **76 tag**
+| No | Nama Aksi Audit (`action`) | Entity Type | Berkas & Baris Pemanggil | Label Tampilan UI (Bahasa Indonesia) | Tone Badge UI |
+|:---:|:---|:---|:---|:---|:---:|
+| 1 | `login` | `user` | `src/app/api/auth/login/route.js:157` | Login | `plain` (netral) |
+| 2 | `login_failed` | `user` | `src/app/api/auth/login/route.js:123, 138` | Login gagal | `stop` (merah) |
+| 3 | `login_blocked` | `user` | `src/app/api/auth/login/route.js:89` | Login diblokir | `stop` (merah) |
+| 4 | `logout` | `user` | `src/app/api/auth/logout/route.js:13` | Logout | `idle` (abu-abu) |
+| 5 | `unlock_screen` | `user` | `src/app/api/auth/unlock/route.js:69` | Buka kunci layar | `plain` (netral) |
+| 6 | `unlock_screen_failed` | `user` | `src/app/api/auth/unlock/route.js:53` | Buka kunci layar gagal | `stop` (merah) |
+| 7 | `create_user` | `user` | `src/app/api/users/route.js:92` | Buat user | `run` (hijau) |
+| 8 | `update_user` | `user` | `src/app/api/users/[username]/route.js:75` | Ubah user | `water` (biru) |
+| 9 | `user_role_change` | `user` | `src/app/api/users/[username]/route.js:87` | Ubah role user | `water` (biru) |
+| 10 | `deactivate_user` | `user` | `src/app/api/users/[username]/route.js:144` | Ubah status aktif user | `water` (biru) |
+| 11 | `delete_user` | `user` | `src/app/api/users/[username]/delete/route.js:74` | Hapus user | `stop` (merah) |
+| 12 | `reset_password` | `user` | `src/app/api/users/[username]/reset-password/route.js:44` | Reset password | `steam` (oranye) |
+| 13 | `role_create` | `role` | `src/app/api/roles/route.js:74` | Buat role | `run` (hijau) |
+| 14 | `role_update` | `role` | `src/app/api/roles/[id]/route.js:78` | Ubah role | `water` (biru) |
+| 15 | `role_permissions_update` | `role` | `src/app/api/roles/[id]/route.js:96` | Ubah izin role | `water` (biru) |
+| 16 | `role_delete` | `role` | `src/app/api/roles/[id]/route.js:141` | Hapus role | `stop` (merah) |
+| 17 | `start_batch_critical` | `batch` | `src/app/api/batch/start/route.js:672` | START batch | `steam` (oranye) |
+| 18 | `plc_setpoints_written` | `batch` | `src/app/api/batch/start/route.js:519` | Setpoint resep ditulis ke PLC | `water` (biru) |
+| 19 | `stop_requested` | `batch` | `src/app/api/batch/stop/route.js:49` | STOP batch diminta | `idle` (abu-abu) |
+| 20 | `stop_batch` | `batch` | `src/app/api/batch/stop/route.js:112` | STOP batch | `stop` (merah) |
+| 21 | `batch_auto_finalize` | `batch` | `src/lib/trendRecorder.js:283` | Batch ditutup otomatis | `idle` (abu-abu) |
+| 22 | `plc_reset_requested` | `plc` | `src/app/api/plc/reset/route.js:87` | Reset PLC diminta | `idle` (abu-abu) |
+| 23 | `plc_reset_stop` | `plc` | `src/app/api/plc/reset/route.js:106` | Reset PLC (STOP dikirim) | `steam` (oranye) |
+| 24 | `plc_clock_write_requested` | `plc` | `src/app/api/plc-clock/route.js:81` | Set jam PLC diminta | `idle` (abu-abu) |
+| 25 | `plc_clock_written` | `plc` | `src/app/api/plc-clock/route.js:156` | Jam PLC diubah | `water` (biru) |
+| 26 | `plc_clock_write_failed` | `plc` | `src/app/api/plc-clock/route.js:103, 137` | Set jam PLC gagal | `stop` (merah) |
+| 27 | `plc_manual_command` | `plc` | `src/app/api/plc-manual/route.js:97, 118, 157, 189` | Kontrol manual | `water` (biru) |
+| 28 | `plc_manual_command_failed` | `plc` | `src/app/api/plc-manual/route.js:97, 118, 172, 199` | Kontrol manual gagal | `stop` (merah) |
+| 29 | `plc_parameter_write_requested` | `plc` | `src/app/api/plc-params/route.js:147` | Tulis parameter mesin diminta | `idle` (abu-abu) |
+| 30 | `plc_parameter_written` | `plc` | `src/app/api/plc-params/route.js:201` | Parameter mesin diubah | `water` (biru) |
+| 31 | `plc_parameter_write_failed` | `plc` | `src/app/api/plc-params/route.js:168` | Tulis parameter mesin gagal | `stop` (merah) |
+| 32 | `plc_calibration_write_requested` | `plc` | `src/app/api/plc-params/route.js:147` | Tulis kalibrasi diminta | `idle` (abu-abu) |
+| 33 | `plc_calibration_written` | `plc` | `src/app/api/plc-params/route.js:201` | Kalibrasi diubah | `water` (biru) |
+| 34 | `plc_calibration_write_failed` | `plc` | `src/app/api/plc-params/route.js:168` | Tulis kalibrasi gagal | `stop` (merah) |
+| 35 | `plc_door_command` | `plc` | `src/app/api/plc-door/route.js:128, 179, 200` | Kontrol pintu | `water` (biru) |
+| 36 | `plc_door_command_failed` | `plc` | `src/app/api/plc-door/route.js:128, 179, 212` | Kontrol pintu gagal | `stop` (merah) |
+| 37 | `plc_door_chain` | `plc` | `src/app/api/plc-door/route.js:100, 106` | Rantai pintu | `water` (biru) |
+| 38 | `create` | `formula` | `src/app/api/formulas/route.js:75` | Buat formula | `run` (hijau) |
+| 39 | `update` | `formula` | `src/app/api/formulas/[formulaNo]/route.js:77` | Ubah formula | `water` (biru) |
+| 40 | `delete` | `formula` | `src/app/api/formulas/[formulaNo]/route.js:125` | Hapus formula | `stop` (merah) |
+| 41 | `create_product_name` | `product` | `src/app/api/products/route.js:52` | Buat nama produk | `run` (hijau) |
+| 42 | `update_product_name` | `product` | `src/app/api/products/[id]/route.js:48` | Ubah nama produk | `water` (biru) |
+| 43 | `delete_product_name` | `product` | `src/app/api/products/[id]/route.js:84` | Hapus nama produk | `stop` (merah) |
+| 44 | `create_product_spec` | `spec` | `src/app/api/product-specs/route.js:52` | Buat spesifikasi produk | `run` (hijau) |
+| 45 | `update_product_spec` | `spec` | `src/app/api/product-specs/[id]/route.js:48` | Ubah spesifikasi produk | `water` (biru) |
+| 46 | `delete_product_spec` | `spec` | `src/app/api/product-specs/[id]/route.js:84` | Hapus spesifikasi produk | `stop` (merah) |
+| 47 | `start_batch` | `batch` | `src/app/api/batch/start/route.js:688` | Batch dimulai | `steam` (oranye) |
+| 48 | `start_batch_rejected` | `batch` | `src/app/api/batch/start/route.js:235, 417` | START batch ditolak | `stop` (merah) |
+| 49 | `batch_adopted` | `batch` | `src/lib/alarmMonitor.js:154` | Batch diadopsi | `idle` (abu-abu) |
+| 50 | `export_audit_log` | `audit_log` | `src/app/api/audit-log/export/route.js:88` | Ekspor audit log | `idle` (abu-abu) |
+| 51 | `export_batch_records` | `batch_records` | `src/app/api/batch-records/export/route.js:76` | Ekspor data batch | `idle` (abu-abu) |
+| 52 | `backup_created` | `backup` | `src/lib/backupService.js:238` | Backup dibuat | `run` (hijau) |
+| 53 | `backup_failed` | `backup` | `src/lib/backupService.js:260` | Backup gagal | `stop` (merah) |
+| 54 | `backup_settings_update` | `backup` | `src/lib/backupService.js:90` | Ubah pengaturan backup | `water` (biru) |
+| 55 | `backup_downloaded` | `backup` | `src/lib/backupService.js:277` | Unduh backup | `steam` (oranye) |
 
-### Tag yang Dipakai Kode Sumber Tapi TIDAK ADA di CSV Mana Pun (15 Tag)
-Seluruh 15 tag di bawah ini aktif di kode namun belum terdaftar di CSV repositori. Tag-tag ini wajib dibuatkan file impor KEPServerEX (misal: `SiemensS7-200_manual_NANTI.csv`) sebelum modul Kontrol Manual dan Parameter Mesin dapat berfungsi di pabrik:
+---
+
+## 29. Komparasi Faktual Tag PLC: Kode Sumber vs Dokumen CSV (Audit 2026-11-03)
+
+Pemeriksaan komparatif dilakukan antara seluruh tag yang didefinisikan pada berkas master CSV `context/tag_terbaru_kepsrvr.csv` terhadap pemanggilan tag nyata di kode sumber (`src/lib/plc.js`, `plcManualCatalog.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcWrite.js`, `batch/start`, `batch/stop`, `plc/reset`, `server.js`):
+
+- Total baris data tag pada `context/tag_terbaru_kepsrvr.csv`: **105 tag** (menggantikan berkas lama `SiemensS7-200.csv` 60 tag dan `SiemensS7-200_pintu_NANTI.csv` 6 tag yang telah dihapus).
+- Total tag aktif yang diakses kode sumber: **77 tag** (termasuk tag baru `foValue` / VW220).
+
+### Perkembangan Integrasi Tag CSV Terbaru:
+1. **Tag Pintu Autoclave**: Seluruh 6 tag pintu (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`) kini telah resmi terdaftar di `tag_terbaru_kepsrvr.csv`.
+2. **Tag Parameter Mesin**: Tiga tag parameter mesin yang sebelumnya belum terdaftar (`DRAIN_TIME` VW88, `SEL_PROG` VW32, `SEL_PRESU` VW30) kini telah terdaftar di `tag_terbaru_kepsrvr.csv`.
+
+### Tag yang Dipakai Kode Sumber Tapi MASIH TIDAK ADA di CSV (11 Tag Kontrol Manual)
+Seluruh 11 tag kontrol manual di bawah ini aktif di kode (`src/lib/plcManualCatalog.js`) namun belum dimasukkan ke master CSV `tag_terbaru_kepsrvr.csv`:
 
 | Nama Tag di Kode | Alamat Register PLC | Lokasi Pemanggilan Kode Sumber | Deskripsi & Fungsi |
 |:---|:---:|:---|:---|
@@ -866,23 +901,77 @@ Seluruh 15 tag di bawah ini aktif di kode namun belum terdaftar di CSV repositor
 | `MAN_AIR_CMBR` | M10.4 | `src/lib/plcManualCatalog.js:28` | Perintah manual udara tekan chamber |
 | `MAN_WTR_PUMP` | M10.5 | `src/lib/plcManualCatalog.js:29` | Perintah manual pompa air pendingin |
 | `MAN_BUZZER` | M10.6 | `src/lib/plcManualCatalog.js:34` | Perintah manual pengujian buzzer alarm |
-| `DRAIN_TIME` | VW88 | `src/lib/plcParamCatalog.js:80` | Parameter waktu pembuangan air (detik) |
-| `SEL_PROG` | VW32 | `src/lib/plcParamCatalog.js:86` | Seleksi nomor program sterilisasi PLC |
-| `SEL_PRESU` | VW30 | `src/lib/plcParamCatalog.js:87` | Seleksi kanal sensor tekanan P1 (AIW12/AIW14) |
-| `CAL_L` | VW144 | `src/lib/plcParamCatalog.js:189` | Offset kalibrasi sensor konduktivitas |
 
-### Tag pada CSV yang TIDAK Dipakai di Kode Sumber (5 Tag)
-Tag-tag ini terdaftar pada `SiemensS7-200.csv` tetapi tidak pernah dibaca atau ditulis oleh kode backend/frontend SCADA:
-1. `ALRM_DOR`: Alarm pintu di CSV (aplikasi membaca alarm via bit individual `ALM_M8_*` dan `ALM_M10_*` di `alarmCatalog.js`).
-2. `ALRM_TEMP`: Alarm suhu di CSV (aplikasi menghitung letalitas F0 dan threshold sensor secara independen di web).
-3. `BUZZER`: Output buzzer fisik Q0.6 di CSV.
-4. `F0_VAL`: Register F0 bawaan ladder PLC (aplikasi menghitung nilai F0 sendiri via algoritma integrasi numerik di `src/lib/f0.js`).
-5. `WARNING_BUZ`: Bit warning buzzer M8.5 di CSV.
+### Diskrepansi Alamat & Penamaan Tag Antara Kode vs CSV:
+1. **Perbedaan Penamaan Tag F0 (`FO_VALUE` vs `F0_VAL`)**:
+   - Di `src/lib/plcParamCatalog.js:50`, definisi field `foValue` menggunakan properti `tag: "FO_VALUE"` dengan alamat VW220.
+   - Namun di `context/tag_terbaru_kepsrvr.csv:55`, tag dengan alamat VW220 dinamai `"F0_VAL"` (huruf nol dan singkatan VAL).
+   - **Dampak Potensial**: Bila KEPServerEX menggunakan penamaan persis dari file CSV (`F0_VAL`), REST API pembacaan/penulisan parameter `foValue` akan mengembalikan error tag not found.
+2. **Perbedaan Alamat Register Offset Kalibrasi Konduktivitas (`CAL_L`)**:
+   - Di `src/lib/plcParamCatalog.js:189`, tag `CAL_L` dialamatkan ke register `VW144`.
+   - Namun di `context/tag_terbaru_kepsrvr.csv:20`, tag `CAL_L` dialamatkan ke register `VW322` ("offset kalibrasi L, bertanda, ditambahkan ke VW122").
+
+---
+
+## 30. Fitur Backup & Pengarsipan Data Sistem (Backup Service)
+
+### Deskripsi Faktual
+Menyediakan sistem backup dan pengarsipan data batch, kurva trend sensor, riwayat alarm, dan jejak audit ke dalam berkas arsip ZIP tunggal yang berisi 4 file CSV (RFC 4180 dengan UTF-8 BOM dan CRLF) serta satu berkas `manifest.json`. Fitur ini mendukung dua metode:
+1. **Backup Manual**: Pengguna berwenang dapat menentukan rentang tanggal tertentu atau mengosongkannya untuk mencakup seluruh data (arsip penuh vs parsial). Berkas manual disimpan di folder `<BACKUP_DIR>/manual/` dan tidak dihapus secara otomatis.
+2. **Backup Otomatis Terjadwal**: Berjalan di latar belakang server (`server.js`) setiap menit memeriksa jadwal jatuh tempo. Mendukung interval harian (1 hari), mingguan (7 hari), atau 30 hari pada jam yang ditentukan (HH:MM), dengan rotasi otomatis mempertahankan N generasi berkas terbaru (1–10 file). Berkas terjadwal disimpan di `<BACKUP_DIR>/terjadwal/`.
+
+Seluruh proses pembuatan arsip dilakukan dalam transaksi database tunggal `REPEATABLE READ READ ONLY` dengan pembacaan bertahap berbasis keyset (LIMIT 5000), dikompresi secara streaming menggunakan pustaka `fflate`, dan diverifikasi ulang integritasnya (mencocokkan hash SHA-256 setiap CSV ke manifest) sebelum berkas diresmikan. Sistem dilindungi oleh kunci eksklusif concurrency berkas `.backup.lock`, kontrol hak akses RBAC granular (`backup >= view` / `edit`), dan pencatatan audit log otomatis untuk setiap aktivitas pembuatan, kegagalan, perubahan konfigurasi, serta pengunduhan arsip.
+
+### Rantai Alur Kode
+1. **Halaman UI**: Pengguna mengakses `/backup` (`src/app/(app)/backup/page.js`). `useEffect` memanggil `GET /api/backup` dan `GET /api/auth/me`. Bila pengguna memiliki izin `backup >= edit`, formulir pembuatan manual, pengaturan jadwal, dan tombol "Unduh" diaktifkan.
+2. **Status & Pengaturan Jadwal**:
+   - `GET /api/backup`: Memeriksa izin `backup >= view`, memanggil `getStatus()` (`src/lib/backupService.js:161`) yang membaca `backup_settings.json`, menghitung waktu jatuh tempo `computeNextDue`, memeriksa status proses berjalan `isRunning()`, serta membaca daftar file di folder manual dan terjadwal.
+   - `PUT /api/backup`: Memeriksa izin `backup >= edit`, memvalidasi input via `validateSettingsInput` (`src/lib/backupSchedule.js:63`), mencatat audit `backup_settings_update` ke `audit_log`, lalu memperbarui berkas `backup_settings.json` secara atomik via file temporer.
+3. **Eksekusi Backup (Manual & Terjadwal)**:
+   - Permintaan manual dikirim via `POST /api/backup` (`body: { from, to }`), sedangkan backup terjadwal dipicu oleh scheduler interval 60 detik di `server.js:92-97` via `startBackupScheduler()` (`src/lib/backupService.js:287`).
+   - Handler memanggil `runBackup({ kind, range, actor, actorRole })`:
+     a. **Kunci Concurrency**: Memanggil `acquireLock()` yang membuat file `.backup.lock` secara eksklusif (`wx`). Jika sedang berjalan atau kunci belum berumur > 1 jam, melempar error `BUSY` (status HTTP 409 pada API).
+     b. **Penamaan File**: Format terjadwal `backup_terjadwal_YYYYMMDD-HHMMSS.zip` atau manual `backup_manual_{from}_{to}_dibuatYYYYMMDD-HHMMSS.zip` berbasis zona waktu WIB (`Asia/Jakarta`).
+     c. **Streaming & Transaksi**: Memanggil `createBackupArchive()` (`src/lib/backupArchive.js:155`):
+        - Menginisialisasi koneksi pool dan memulai transaksi `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`.
+        - Membaca daftar kolom dinamis setiap tabel dari `information_schema.columns` (schema `public`).
+        - Menulis CSV 4 tabel (`batch_records`, `batch_trend` yang di-join ke `batch_records` untuk field `batch_no`, `alarm_log`, dan `audit_log`) menggunakan keyset pagination `id > $1::bigint ORDER BY t.id ASC LIMIT 5000`.
+        - Menghitung hash SHA-256 secara streaming untuk setiap berkas CSV.
+        - Melakukan `COMMIT` transaksi.
+        - Menulis `manifest.json` yang memuat metadata versi format, jenis backup, pembuat, rentang tanggal, status kelengkapan (`complete`), daftar kolom, jumlah baris, rentang min/max id, dan SHA-256 masing-masing berkas CSV.
+     d. **Verifikasi Integritas Otomatis**: Memanggil `verifyArchive(tmpPath)` (`src/lib/backupArchive.js:286`) yang membaca ulang berkas ZIP dari disk secara streaming via `fflate.Unzip`, menghitung ulang SHA-256 setiap berkas CSV, dan mencocokkannya dengan `manifest.json`. Bila tidak cocok, proses dibatalkan dan berkas temporer dihapus.
+     e. **Rotasi Berkas**: Pada mode terjadwal, memanggil `rotateScheduled(generations)` (`src/lib/backupService.js:184`) yang menghapus file terjadwal terlama melebihi kuota retensi yang dikonfigurasi.
+     f. **Pencatatan Audit**: Memanggil `tryAudit` dengan aksi `backup_created` (mencatat ukuran file, SHA-256 berkas utuh, jumlah baris per tabel, dan flag kelengkapan) atau `backup_failed` saat terjadi galat.
+     g. **Pelepasan Kunci**: Menghapus file `.backup.lock` dalam blok `finally`.
+4. **Pengunduhan Berkas Arsip**:
+   - Tautan unduh mengarah ke `GET /api/backup/download?kind=...&name=...`.
+   - Handler memvalidasi izin `backup >= edit`.
+   - Memanggil `resolveBackupFile(kind, name)` yang memvalidasi nama file terhadap regex ketat `SCHEDULED_RE` / `MANUAL_RE` guna mencegah path traversal.
+   - Memanggil `auditDownload()` untuk mencatat aksi `backup_downloaded` ke `audit_log`. Catatan: fungsi ini wajib sukses sebelum transmisi file dimulai (fail-closed jika DB down).
+   - Mengembalikan response stream file ZIP dengan header `Content-Disposition: attachment; filename="..."` dan `Cache-Control: no-store`.
+
+### Bukti Kode
+- `src/lib/backupSchedule.js:1-150`
+- `src/lib/backupArchive.js:1-330`
+- `src/lib/backupService.js:1-309`
+- `src/lib/backup.test.mjs:1-197`
+- `fase1/tests/backup_check.mjs:1-67`
+- `src/app/api/backup/route.js:1-76`
+- `src/app/api/backup/download/route.js:1-37`
+- `src/app/(app)/backup/page.js:1-283`
+- `server.js:92-97`
 
 ---
 
 ## Change Log
 
+- [2026-11-05] ADDED: Menambahkan dokumentasi Fitur 30 (Fitur Backup & Pengarsipan Data Sistem / Backup Service) mencakup alur manual & terjadwal, format arsip ZIP RFC 4180 + manifest SHA-256, verifikasi integritas, rotasi generasi, dan pengamanan unduhan.
+- [2026-11-05] MODIFIED: Memperbarui Seksi 27 dengan penambahan 4 endpoint backup (`/api/backup` GET/PUT/POST dan `/api/backup/download` GET), memperbarui Seksi 28 dengan penambahan 18 aksi audit baru (total 55 aksi), serta memperbarui Fitur 16 terkait penanganan baris pemisah fase pertama print data report dan resolusi warning linting pada print trend.
+- [2026-11-03] ADDED: Menambahkan dokumentasi sub-fitur 16.5 Format Cetak Kurva Trend Mandiri (`/print/trend/[batchNo]`) pada Fitur 16 dan tombol pintas cetak mandiri pada Fitur 15.
+- [2026-11-03] MODIFIED: Memperbarui Fitur 14 dan Seksi 28 dengan kamus translasi 37 aksi audit berbahasa Indonesia dan penandaan warna badge via modul `src/lib/auditActionLabels.js`.
+- [2026-11-03] MODIFIED: Memperbarui Fitur 20 dengan penambahan parameter `foValue` (VW220, 0-99 MIN) pada grup Setting 1.
+- [2026-11-03] MODIFIED: Memperbarui Fitur 21 dengan penambahan pembacaan nilai sensor fisik secara live (`liveValues` di `/api/plc-params` dan kolom "Nilai Sensor" pada antarmuka `/calibration`).
+- [2026-11-03] MODIFIED: Memperbarui Seksi 29 (Komparasi Tag PLC) berdasarkan master CSV terbaru `context/tag_terbaru_kepsrvr.csv` (105 tag), mencatat integrasi tag pintu dan parameter, mendokumentasikan sisa 11 tag kontrol manual yang belum terdaftar di CSV, serta mengungkap diskrepansi penamaan `FO_VALUE` vs `F0_VAL` dan alamat register `CAL_L` (VW144 vs VW322).
 - [2026-11-02] ADDED: Menambahkan Seksi 27 (Matriks Hak Akses Seluruh 37 Endpoint API), Seksi 28 (Inventarisasi 36 Aksi Audit Log & Analisis Label UI), dan Seksi 29 (Komparasi Faktual Tag PLC: Kode Sumber vs CSV).
 - [2026-11-02] RESOLVED: Mengoreksi status `startAllowed` di Dashboard (`page.js:492-494`) bukan bypass aktif; baris logika asli aktif penuh mengevaluasi kesiapan mesin, baris `// const startAllowed = true;` hanyalah komentar toggle uji yang sengaja dibiarkan pemilik.
 - [2026-11-02] ADDED: Menambahkan dokumentasi Fitur 26 (Pengendalian Pintu Autoclave dari Web / Door Operate) termasuk tabel pagar per aksi, jalur izin ganda, rantai alur kode, tabel audit, konstanta kunci, dan keterbatasan yang diketahui.

@@ -4,7 +4,7 @@ import { AUDIT_ACTIONS, auditActionLabel, auditActionTone } from "./auditActionL
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) pass++; else { fail++; console.error("GAGAL:", msg); } };
 
-// Seluruh aksi yang dicatat kode (inventaris audit 2026-11-02 + plc_reset_stop dari INSERT mentah).
+// Seluruh aksi yang dicatat kode (inventaris audit 2026-11-02 + INSERT mentah: plc_reset_stop, export_*; + backup_*).
 const KODE = [
     "login", "login_failed", "login_blocked", "logout", "unlock_screen", "unlock_screen_failed",
     "create_user", "update_user", "user_role_change", "deactivate_user", "delete_user", "reset_password",
@@ -16,6 +16,11 @@ const KODE = [
     "plc_parameter_write_requested", "plc_parameter_write_failed", "plc_parameter_written",
     "plc_calibration_write_requested", "plc_calibration_write_failed", "plc_calibration_written",
     "plc_door_command", "plc_door_command_failed", "plc_door_chain",
+    "export_audit_log", "export_batch_records",
+    "backup_created", "backup_failed", "backup_settings_update", "backup_downloaded",
+    "create", "update", "delete", "create_product_name", "delete_product_name", "update_product_spec",
+    "start_batch", "batch_adopted",
+    "update_product_name", "create_product_spec", "delete_product_spec", "start_batch_rejected",
 ];
 const TONES = new Set(["run", "water", "steam", "stop", "idle", "plain"]);
 

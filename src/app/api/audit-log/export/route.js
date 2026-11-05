@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import pool from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { buildDateRangeFilter } from "@/lib/dateRange";
+import { auditActionLabel } from "@/lib/auditActionLabels";
 
 const MAX_ROWS = 50_000;
 
@@ -138,7 +139,8 @@ export async function GET(request) {
             { header: "Nama", key: "actorName", width: 24 },
             { header: "Username", key: "actor", width: 14 },
             { header: "Role", key: "actorRole", width: 12 },
-            { header: "Aksi", key: "action", width: 20 },
+            { header: "Aksi", key: "action", width: 26 },
+            { header: "Kode Aksi", key: "actionCode", width: 24 },
             { header: "Entitas", key: "entityType", width: 14 },
             { header: "ID Entitas", key: "entityId", width: 18 },
             { header: "Sumber", key: "source", width: 10 },
@@ -160,7 +162,8 @@ export async function GET(request) {
                 actorName: actorNameExport(r),
                 actor: r.actor ?? "",
                 actorRole: r.actor_role ?? "",
-                action: r.action ?? "",
+                action: auditActionLabel(r.action),
+                actionCode: r.action ?? "",
                 entityType: r.entity_type ?? "",
                 entityId: r.entity_id ?? "",
                 source: r.source ?? "",

@@ -170,7 +170,12 @@ function TrendPrintContent() {
             .then((j) => { if (j.ok) setUser(j.user?.fullName ?? j.user?.username ?? ""); })
             .catch(() => {});
 
-        if (!decoded) { setLoading(false); return; }
+        if (!decoded) {
+            // Gunakan Promise.resolve() agar setState tidak dipanggil synchronously
+            // di dalam body effect (menghindari lint error react-hooks/set-state-in-effect)
+            Promise.resolve().then(() => setLoading(false));
+            return;
+        }
 
         fetch(`/api/batch-records/${encodeURIComponent(decoded)}`)
             .then((r) => r.json())

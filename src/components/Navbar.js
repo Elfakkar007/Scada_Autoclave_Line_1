@@ -30,6 +30,7 @@ const adminMenu = [
     { href: "/audit-log", label: "Audit Log", resource: "audit_log" },
     { href: "/users", label: "Kelola User", resource: "users" },
     { href: "/roles", label: "Role Management", resource: "roles" },
+    { href: "/backup", label: "Backup", resource: "backup" },
 ];
 
 // Komponen di luar Navbar supaya tidak dibuat ulang tiap render.

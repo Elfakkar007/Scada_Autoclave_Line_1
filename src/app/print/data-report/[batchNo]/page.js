@@ -231,7 +231,9 @@ function PrintDataReportContent() {
     const coolX = findClosestLabel(batch.coolBegin);
 
     // ── Tabel trend: deteksi pergantian fase ──────────────────────────────────
-    // phaseCode dari tiap baris trend dipakai untuk menyisipkan baris separator
+    // phaseCode dari tiap baris trend dipakai untuk menyisipkan baris separator.
+    // Separator juga disisipkan untuk fase PERTAMA (termasuk Filling di awal batch)
+    // sehingga setiap fase selalu punya header ▶ LABEL di printout.
     function buildTrendRows() {
         const rows = [];
         let lastPhase = undefined;
@@ -239,10 +241,9 @@ function PrintDataReportContent() {
             const row = trend[i];
             const phase = row.phaseCode;
             if (phase !== undefined && phase !== null && phase !== lastPhase) {
-                if (lastPhase !== undefined) {
-                    // Baris separator pergantian fase
-                    rows.push({ _separator: true, phase });
-                }
+                // Selalu sisipkan separator saat fase berubah,
+                // termasuk fase pertama (lastPhase === undefined)
+                rows.push({ _separator: true, phase });
                 lastPhase = phase;
             }
             rows.push(row);

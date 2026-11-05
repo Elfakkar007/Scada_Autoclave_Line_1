@@ -44,7 +44,7 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
    - **Fakta Kode**: Komponen Lamp di web mengasumsikan nilai boolean `true` dari tag `CLS_FRNT`, `OPN_FRNT`, `CLS_REAR`, `OPN_REAR` memetakan lampu aktif. Polaritas sensor fisik mesin (apakah normally-open atau normally-closed) dan apakah status terbuka/tertutup menyala saat sinyal HIGH atau LOW belum diuji pada mesin fisik.
 
 8. **Arti dan Pemetaan Output Q0.4 (`DOOR_REL_OUT`) serta Sensor Rantai `I1.7`/`I2.0`**
-   - **Lokasi Kode**: `context/SiemensS7-200_pintu_NANTI.csv`, `src/lib/plcDoorCatalog.js:20-21, 55`
+   - **Lokasi Kode**: `context/tag_terbaru_kepsrvr.csv:104`, `src/lib/plcDoorCatalog.js:20-21, 55`
    - **Status**: `[TIDAK TERVERIFIKASI: CSV menyebut "dugaan katup", wiring fisik belum diverifikasi]`
    - **Fakta Kode**: Tag `DOOR_REL_OUT` dialamatkan ke `Q0.4`, namun deskripsi CSV menyatakan perkiraan sebagai katup solenoid pembuangan seal. Sinyal input limit sensor `I1.7` (sensor maju) dan `I2.0` (sensor mundur) memotong output rantai `Q3.4`/`Q3.5` pada ladder AWL, namun belum diverifikasi ke wiring terminal mesin fisik.
 
@@ -58,10 +58,10 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
     - **Status**: `[TIDAK TERVERIFIKASI: fitur Door Operate belum pernah diuji langsung ke mesin fisik pabrik]`
     - **Fakta Kode**: Logika pengaman web (deadman, auto-OFF, interlocking phase) telah lulus 21 uji mock (`fase1/tests/plc_door_mock.mjs`), namun interaksi fisik pergerakan mekanis kereta dorong, katup pembuangan air chamber `M2.5` (`MAN_WTR_DRAIN`), dan keandalan segel pintu belum pernah diuji pada autoclave fisik.
 
-11. **Status Impor Tag Door Operate dan Kontrol Manual ke KEPServerEX**
-    - **Lokasi Kode**: `context/SiemensS7-200_pintu_NANTI.csv` (6 tag pintu), `src/lib/plcManualCatalog.js` (tag manual)
-    - **Status**: `[TIDAK TERVERIFIKASI: tag belum terdaftar di KEPServerEX server pabrik]`
-    - **Fakta Kode**: Berkas CSV `SiemensS7-200_pintu_NANTI.csv` memuat 6 tag baru (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`). Penamaan file berakhiran `_NANTI` menandakan tag ini belum diimpor ke proyek aktif KEPServerEX di PC pabrik.
+11. **Status Impor Tag Kontrol Manual ke Master CSV KEPServerEX**
+    - **Lokasi Kode**: `src/lib/plcManualCatalog.js:16-34`, `context/tag_terbaru_kepsrvr.csv`
+    - **Status**: `[TIDAK TERVERIFIKASI: 11 tag manual belum terdaftar di KEPServerEX server pabrik]`
+    - **Fakta Kode**: Sebanyak 6 tag pintu dan 4 tag parameter mesin telah berhasil dimasukkan ke master CSV `tag_terbaru_kepsrvr.csv`. Namun 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1`, `MAN_STEAM_2`, `MAN_WTR_DRAIN`, `MAN_COOLING_1`, `MAN_COOLING_2`, `MAN_STEAM_EXHS`, `MAN_WTR_FILL`, `MAN_AIR_CMBR`, `MAN_WTR_PUMP`, `MAN_BUZZER`) masih belum terdaftar di berkas CSV tersebut.
 
 12. **Kebijakan Retensi Berkas Backup SQL (`migrations/backup_271026.sql`)**
     - **Lokasi Kode**: `migrations/backup_271026.sql`
@@ -82,6 +82,16 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
     - **Lokasi Kode**: `src/lib/plcManualCatalog.js:34`, `src/lib/plcParamCatalog.js:87`
     - **Status**: `[TIDAK TERVERIFIKASI: pemetaan tombol fisik HMI terhadap tag MAN_BUZZER (M10.6) dan interpretasi nilai 0/1 tag SEL_PRESU]`
     - **Fakta Kode**: Pada katalog kontrol manual terdapat catatan bahwa bit M10.6 belum diverifikasi pemetaannya terhadap tombol fisik mesin, dan pada katalog parameter terdapat catatan bahwa pemetaan nilai 0/1 tag `SEL_PRESU` (AIW12 vs AIW14) ke tampilan layar HMI fisik mesin belum diverifikasi di lapangan.
+
+16. **Diskrepansi Penamaan Tag F0 Antara Kode (`FO_VALUE`) vs CSV (`F0_VAL`)**
+    - **Lokasi Kode**: `src/lib/plcParamCatalog.js:50` vs `context/tag_terbaru_kepsrvr.csv:55`
+    - **Status**: `[TIDAK TERVERIFIKASI: nama tag resmi register VW220 pada proyek KEPServerEX di mesin pabrik]`
+    - **Fakta Kode**: Di kode `plcParamCatalog.js:50`, parameter `foValue` merujuk ke tag `"FO_VALUE"` (huruf O). Namun di `tag_terbaru_kepsrvr.csv:55`, tag beralamat VW220 dinamai `"F0_VAL"` (angka nol + VAL). Jika konfigurasi KEPServerEX fisik memakai nama `F0_VAL`, permintaan `GET /api/plc-params?group=param1` dan `PUT /api/plc-params` akan gagal membaca/menulis tag tersebut.
+
+17. **Diskrepansi Alamat Register Tag Offset Kalibrasi Konduktivitas (`CAL_L`)**
+    - **Lokasi Kode**: `src/lib/plcParamCatalog.js:189` vs `context/tag_terbaru_kepsrvr.csv:20`
+    - **Status**: `[TIDAK TERVERIFIKASI: alamat register PLC Siemens S7-200 aktual untuk offset kalibrasi konduktivitas L]`
+    - **Fakta Kode**: Di kode `src/lib/plcParamCatalog.js:189`, alamat register `CAL_L` tercatat `VW144`. Namun di `context/tag_terbaru_kepsrvr.csv:20`, tag `CAL_L` dialamatkan ke register `VW322` ("offset kalibrasi L, bertanda, ditambahkan ke VW122"). Perlu konfirmasi dari tim otomasi apakah offset L berada di VW144 atau VW322.
 
 ---
 
@@ -125,11 +135,17 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
    - `src/lib/alarmEpisodes.test.mjs`
    - `src/lib/alarmView.test.mjs`
    - `src/lib/plcCommandAlert.test.mjs`
+   - `src/lib/auditActionLabels.test.mjs`
+   - `src/lib/backup.test.mjs`
    - **Keterangan**: Berkas script pengujian Node.js yang dijalankan secara mandiri untuk memverifikasi logika modul tanpa di-bundle ke dalam antarmuka web.
 
 6. **Test Mock Door Operate**:
-   - `fase1/tests/plc_door_mock.mjs` ⚠ UNTRACKED
-   - **Keterangan**: Tidak tercakup dalam `fase1/tests/matrix.mjs`, tidak diimpor dari mana pun. Dijalankan langsung via `node fase1/tests/plc_door_mock.mjs`. Berisi 21 tes mock pagar (`checkDoorCommand`) dan mekanisme deadman (`createDoorSafety`). **[GAP: `/api/plc-door` belum tercakup dalam `matrix.mjs`]**
+   - `fase1/tests/plc_door_mock.mjs`
+   - **Keterangan**: Berkas pengujian mock terpisah yang dijalankan via `node fase1/tests/plc_door_mock.mjs`. Berisi 21 tes mock pagar (`checkDoorCommand`) dan mekanisme deadman (`createDoorSafety`). Seluruh 21 pengujian berhasil lolos (pass).
+
+7. **Test Pemeriksaan Database Backup**:
+   - `fase1/tests/backup_check.mjs`
+   - **Keterangan**: Berkas script pengujian baca-saja yang dijalankan via `node fase1/tests/backup_check.mjs` untuk memverifikasi pembuatan arsip backup terhadap PostgreSQL riil, membandingkan jumlah baris, dan memvalidasi checksum SHA-256. Bersifat non-destruktif (membersihkan arsip sementara setelah pengujian).
 
 ---
 
@@ -146,6 +162,8 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
    - **Keterangan**: Logika evaluasi kesiapan mesin di baris 492 (`const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`) berjalan normal dan aktif. Komentar pengembang di baris 493–494 (`// Biarkan baris ini tetap ada untuk testing pop up start ya` dan `// const startAllowed = true;`) sengaja dibiarkan pemilik untuk pengujian pop-up START saat tidak terhubung ke mesin fisik (bukan bypass aktif). Disarankan untuk tetap dibersihkan atau dikomentari permanen sebelum rilis produksi pabrik.
 5. **Eksekusi Migrasi 006 pada Server Produksi**:
    - Pastikan skrip `migrations/006_add_bottle_count.sql` dijalankan di database PostgreSQL server pabrik sehingga kolom `batch_records.bottle_count` terpasang resmi dan tidak lagi memicu fallback error 42703.
+6. **Kepastian Penamaan Tag F0 (`FO_VALUE` vs `F0_VAL`) dan Register `CAL_L` (VW144 vs VW322)**:
+   - Tim otomasi perlu mengonfirmasi apakah konfigurasi KEPServerEX di pabrik menggunakan nama tag `FO_VALUE` atau `F0_VAL`, serta apakah offset konduktivitas `CAL_L` dipetakan ke register VW144 atau VW322.
 
 ---
 
@@ -171,10 +189,28 @@ Poin-poin di bawah ini sebelumnya merupakan temuan kode mati, inkonsistensi, ata
 6. **Klarifikasi Evaluasi Kesiapan Mesin Dashboard (`startAllowed`)**
    - **Status**: `RESOLVED` (`src/app/(app)/page.js:492-494`)
    - **Keterangan**: Laporan sebelumnya menandai baris `startAllowed = true` sebagai bypass aktif / dead code (salah baca). Verifikasi kode membuktikan baris aktif di baris 492 mengevaluasi kesiapan mesin secara penuh (`!noData && data.plcOk === true && phaseRaw === 1 && !data.running`), sedangkan baris `// const startAllowed = true;` di baris 494 hanyalah komentar toggle uji yang sengaja dibiarkan pemilik untuk pengetesan modal START tanpa mesin.
+7. **Kamus Translasi & Standarisasi Warna Badge Aksi Audit Trail**
+   - **Status**: `RESOLVED` (`src/lib/auditActionLabels.js` & `src/lib/auditActionLabels.test.mjs`)
+   - **Keterangan**: Seluruh 37 aksi teknis database kini memiliki modul translasi resmi ke Bahasa Indonesia dan skema warna badge konsisten (`run`, `water`, `steam`, `stop`, `idle`, `plain`) yang terintegrasi pada antarmuka audit log web dan lembar cetak dokumen audit, diverifikasi dengan 117 unit test lolos.
+8. **Konsolidasi Master Tag CSV KEPServerEX**
+   - **Status**: `RESOLVED` (`context/tag_terbaru_kepsrvr.csv`)
+   - **Keterangan**: Dua berkas CSV lama (`context/SiemensS7-200.csv` dan `context/SiemensS7-200_pintu_NANTI.csv`) telah digantikan oleh satu berkas master CSV `tag_terbaru_kepsrvr.csv` (105 tag), mengintegrasikan seluruh 6 tag pintu autoclave dan parameter mesin.
+9. **Pelacakan Berkas Fitur Door Operate di Git**
+   - **Status**: `RESOLVED` (Commit `0993d97`)
+   - **Keterangan**: Sebanyak 5 berkas door operate (`door-operate/page.js`, `api/plc-door/route.js`, `plcDoorCatalog.js`, `plcDeadman.js`, `plc_door_mock.mjs`) yang sebelumnya berstatus untracked kini telah di-commit secara resmi ke branch `main`.
+10. **Perluasan Skrip Matriks RBAC untuk Endpoint PLC**
+    - **Status**: `RESOLVED` (`fase1/tests/matrix.mjs:16-35`)
+    - **Keterangan**: Skrip `matrix.mjs` kini menguji endpoint PLC (`/api/plc-door`, `/api/plc-manual`, `/api/plc-clock`, `/api/plc-params`, `/api/batch/start`, serta opsi `PROBE_MACHINE_DENY=yes` untuk `/api/batch/stop` dan `/api/plc/reset`) menggunakan mekanisme safe probe yang berhenti di layer validasi tanpa menggerakkan mesin fisik.
+11. **Peringatan Linting `react-hooks/set-state-in-effect` pada Halaman Cetak Trend Mandiri**
+    - **Status**: `RESOLVED` (`src/app/print/trend/[batchNo]/page.js:176`)
+    - **Keterangan**: Pemanggilan `setLoading(false)` langsung dalam body `useEffect` telah dibungkus menggunakan `Promise.resolve().then(() => setLoading(false))`. Pemeriksaan ESLint pada direktori `src/` kini menghasilkan 0 error dan 0 warning (lulus 100%).
+12. **Kamus Translasi Seluruh Aksi Audit Log Sistem (Perluasan ke 55 Aksi)**
+    - **Status**: `RESOLVED` (`src/lib/auditActionLabels.js` & `src/lib/auditActionLabels.test.mjs`)
+    - **Keterangan**: Sebanyak 18 aksi audit tambahan (mencakup formula, produk, spesifikasi, batch, ekspor data, dan layanan backup) telah resmi dipetakan ke dalam `AUDIT_ACTIONS` dengan label bahasa Indonesia dan warna badge terstandarisasi, diverifikasi dengan 171 unit test lolos 100%.
 
 ---
 
-## 6. Daftar Analisis Risiko Teknis & Keterbatasan Kode (Audit 2026-11-02)
+## 6. Daftar Analisis Risiko Teknis & Keterbatasan Kode (Audit 2026-11-05)
 
 Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, penanganan galat kosong, dan gap pengujian otomatis yang ditemukan pada audit kode:
 
@@ -188,11 +224,11 @@ Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, pe
 
 3. **Keterbatasan Pengaman Rantai Door Operate saat Server Mati**:
    - **Lokasi**: `src/lib/plcDeadman.js:14-17`, `server.js:92-105`
-   - **Risiko**: Mekanisme deadman rantai berjalan di memori Node.js (`setTimeout` 1000 ms). Bila proses server atau PC SCADA mati mendadak saat bit `M11.0` (Forward) atau `M11.1` (Backward) sedang bernilai `true`, server tidak dapat menulis `false`. Rantai fisik akan terus bergerak sampai sensor batas mesin (`I1.7`/`I2.0`) atau interlock PLC memotongnya. Penanganan saat ini: `server.js` menulis `false` secara best-effort saat startup (baris 92–105). Perlindungan mutlak membutuhkan timer internal pada ladder PLC.
+   - **Risiko**: Mekanisme deadman rantai berjalan di memori Node.js (`setTimeout` 1000 ms). Bila proses server atau PC SCADA mati mendadak saat bit `M11.0` (Forward) atau `M11.1` (Backward) sedang bernilai `true`, server tidak dapat menulis `false`. Rantai fisik akan terus bergerak sampai sensor batas mesin (`I1.7`/`I2.0`) atau interlock PLC memotongnya. Penanganan saat ini: `server.js` menulis `false` secara best-effort saat startup (baris 101–111). Perlindungan mutlak membutuhkan timer internal pada ladder PLC.
 
-4. **Ketiadaan Berkas CSV Resmi untuk 15 Tag Manual & Parameter Mesin**:
-   - **Lokasi**: `src/lib/plcManualCatalog.js`, `src/lib/plcParamCatalog.js`, `context/`
-   - **Risiko**: Sebanyak 15 tag yang dipakai di modul Kontrol Manual dan Parameter Mesin (`MANUAL_OPER`, `MAN_*`, `DRAIN_TIME`, `SEL_PROG`, `SEL_PRESU`, `CAL_L`) belum terdaftar pada berkas CSV di repositori (`SiemensS7-200_manual_NANTI.csv` belum ada). Fitur ini akan mengalami penolakan fail-closed di antarmuka jika tag tersebut belum diimpor manual ke proyek KEPServerEX pabrik.
+4. **Ketiadaan Berkas CSV Resmi untuk 11 Tag Kontrol Manual**:
+   - **Lokasi**: `src/lib/plcManualCatalog.js:16-34`, `context/tag_terbaru_kepsrvr.csv`
+   - **Risiko**: Sebanyak 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1`, `MAN_STEAM_2`, `MAN_WTR_DRAIN`, `MAN_COOLING_1`, `MAN_COOLING_2`, `MAN_STEAM_EXHS`, `MAN_WTR_FILL`, `MAN_AIR_CMBR`, `MAN_WTR_PUMP`, `MAN_BUZZER`) masih belum terdaftar pada master CSV `tag_terbaru_kepsrvr.csv`. Fitur kontrol manual akan mengalami galat tag not found jika tag-tag ini belum diimpor manual ke proyek KEPServerEX pabrik.
 
 5. **Catatan TODO Kritis Terbengkalai di Pustaka Inti**:
    - `src/lib/batchFinalize.js:22`: `// TODO: konfirmasikan ke QA apakah kode 5 (cooling) sudah cukup sebagai bukti sterilisasi selesai.`
@@ -205,18 +241,24 @@ Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, pe
 7. **Penelanan Galat Kosong (18 Blok `catch { }`)**:
    - Ditemukan 18 blok `catch` kosong tanpa logging di komponen frontend dan deadman (misal: `door-operate/page.js:100, 111`, `manual/page.js:55, 66`, `page.js:264`, `plc-clock/page.js:38, 49`). Galat jaringan pada polling berkala diabaikan agar antarmuka tidak berkedip banner error sementara koneksi tidak stabil.
 
-8. **Gap Pengujian Otomatis Matriks Otorisasi RBAC**:
-   - **Lokasi**: `fase1/tests/matrix.mjs:94-135`
-   - **Risiko**: Skrip otomasi `matrix.mjs` belum menguji 9 endpoint backend baru: `/api/batch/start`, `/api/batch/stop`, `/api/plc/reset`, `/api/plc-clock`, `/api/plc-manual`, `/api/plc-params`, `/api/plc-door`, `/api/auth/me`, dan `/api/auth/unlock`.
+8. **Pengecualian Uji Otomatis pada Skrip Matriks RBAC**:
+   - **Lokasi**: `fase1/tests/matrix.mjs:36-39`
+   - **Risiko**: Skrip `matrix.mjs` sengaja mengecualikan pengujian untuk `POST /api/auth/unlock` (agar tidak memicu pembatasan login throttle akibat ketiadaan password) dan field bertingkat `restricted` pada `PUT /api/plc-params` (memerlukan rentang nilai valid katalog untuk menguji penolakan izin `action.write_safety_params`).
+
+9. **[TERATASI] Peringatan Linting `react-hooks/set-state-in-effect` pada Halaman Cetak Trend**:
+   - **Status**: Telah diselesaikan pada `src/app/print/trend/[batchNo]/page.js:176` via `Promise.resolve().then(...)`. Hasil uji linter kini bersih 100% (0 error, 0 warning).
 
 ---
 
 ## Change Log
 
+- [2026-11-05] RESOLVED: Memindahkan isu peringatan linting `react-hooks/set-state-in-effect` pada halaman cetak trend dan kesenjangan translasi aksi audit ke Seksi 5 setelah diperbaiki penuh di kode.
+- [2026-11-05] ADDED: Menambahkan berkas pengujian mandiri `src/lib/backup.test.mjs` dan skrip validasi database baca-saja `fase1/tests/backup_check.mjs` pada Seksi 3.
+- [2026-11-03] ADDED: Menambahkan butir 16 (Diskrepansi Penamaan Tag F0: `FO_VALUE` vs `F0_VAL`) dan butir 17 (Diskrepansi Register `CAL_L`: VW144 vs VW322) pada Seksi 1. Menambahkan butir 6 (konfirmasi penamaan F0 dan register CAL_L) pada Seksi 4. Menambahkan butir 9 (peringatan linting pada print/trend/[batchNo]) pada Seksi 6.
+- [2026-11-03] RESOLVED: Menambahkan 4 item teratasi pada Seksi 5: translasi audit log via `auditActionLabels.js`, konsolidasi CSV ke `tag_terbaru_kepsrvr.csv`, pelacakan git berkas door-operate, dan perluasan safe probe PLC pada skrip pengujian `matrix.mjs`.
+- [2026-11-03] MODIFIED: Memperbarui butir 11 Seksi 1 dan butir 4 Seksi 6 (kini fokus pada sisa 11 tag kontrol manual yang belum ada di CSV master). Memperbarui butir 5 Seksi 3 (menambahkan `auditActionLabels.test.mjs`) dan butir 6 Seksi 3 (menghapus status untracked `plc_door_mock.mjs`). Memperbarui butir 8 Seksi 6 mengenai status probe `matrix.mjs`.
 - [2026-11-02] ADDED: Menambahkan Seksi 6 (Analisis Risiko Teknis & Keterbatasan Kode) mencakup evaluasi bypass interlock M6.0, komentar toggle startAllowed, failsafe deadman saat server down, ketiadaan CSV 15 tag manual/parameter, TODO terbengkalai, dan gap uji 9 endpoint di matrix.mjs.
-
 - [2026-11-02] RESOLVED: Mengoreksi klaim lama bahwa `startAllowed = true` adalah bypass aktif (salah baca). Logika evaluasi di `src/app/(app)/page.js:492` aktif penuh; baris 494 hanyalah komentar toggle uji yang sengaja dibiarkan pemilik. Memindahkan item dari Dead Code ke Resolved dan memperbarui Seksi 4 menjadi catatan netral.
-
 - [2026-11-02] MODIFIED: Memperbarui nomor baris dead code `startAllowed` dari `page.js:460` → `page.js:501` sesuai verifikasi kode terbaru (file bertambah ±163 baris). Menambahkan 5 item baru belum terverifikasi ke mesin (butir 9–13) terkait fitur Door Operate. Menambahkan berkas yatim baru `fase1/tests/plc_door_mock.mjs` ke Seksi 3. Memperbarui Seksi 4 butir 4 (nomor baris baru). Memperbarui Seksi 1 butir 4 (status AWL dan guard web).
 - [2026-10-29] ADDED: Menambahkan temuan bypass dashboard `startAllowed = true` di `src/app/(app)/page.js:460` pada seksi Dead Code, item unverified penerapan `migrations/006_add_bottle_count.sql` dan pemetaan tag HMI `MAN_BUZZER`/`SEL_PRESU`, berkas yatim migrasi 006, serta butir konfirmasi pra-produksi di seksi 4.
 - [2026-10-28] RESOLVED: Memindahkan isu kolom legacy `users.role`, dead payload `actor` pada STOP batch, ketidakakuratan teks dialog hapus user, audit log delete_user, dan berkas uji usang `fase1_integration.mjs` ke seksi teratasi (Resolved Items).
