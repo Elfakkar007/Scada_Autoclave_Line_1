@@ -203,6 +203,9 @@ async function runStart(request, session) {
         const alrmPres = Number(recipe.alarm_pres);
         const cool1Temp = Number(recipe.cooling_temp1);
         const cool2Temp = Number(recipe.cooling_temp2);
+        const foValSetting = recipe.fo_val_setting !== null && recipe.fo_val_setting !== undefined && !Number.isNaN(Number(recipe.fo_val_setting))
+            ? Number(recipe.fo_val_setting)
+            : null;
 
         // ── Snapshot resep (item 6) ─────────────────────────────────────────────
         // Dibangun dari baris `recipe` yang SAMA dengan yang ditulis ke PLC di bawah,
@@ -384,6 +387,9 @@ async function runStart(request, session) {
             { tag: "COOL1_TEMP", value: Math.round(cool1Temp * 10) },
             { tag: "COOL2_TEMP", value: Math.round(cool2Temp * 10) },
         ];
+        if (foValSetting !== null) {
+            setpointPairs.push({ tag: "F0_VAL", value: Math.round(foValSetting * 10) });
+        }
 
         const writeSetpointResult = await writePlcTags(setpointPairs);
         if (!writeSetpointResult.ok) {
@@ -412,15 +418,21 @@ async function runStart(request, session) {
             const verifyDeadline = Date.now() + VERIFY_TIMEOUT_MS;
 
             // Pasangan yang perlu diverifikasi (alrmPres dibandingkan persis === seperti sterSetTime)
-            const buildVerifyPairs = (sp) => [
-                { tag: "CTRL_TEMP", expected: ctrlTemp, got: sp?.ctrlTemp, exact: false },
-                { tag: "TEMP_SPACE", expected: spaceTemp, got: sp?.tempSpace, exact: false },
-                { tag: "STER_SET", expected: sterilTemp, got: sp?.sterSet, exact: false },
-                { tag: "STER_SET_TIME", expected: sterilTime, got: sp?.sterSetTime, exact: true },
-                { tag: "COOL1_TEMP", expected: cool1Temp, got: sp?.cool1Temp, exact: false },
-                { tag: "COOL2_TEMP", expected: cool2Temp, got: sp?.cool2Temp, exact: false },
-                { tag: "ALRM_PRES", expected: alrmPres, got: sp?.alrmPres, exact: true }, // kPa, perbandingan ===
-            ];
+            const buildVerifyPairs = (sp) => {
+                const pairs = [
+                    { tag: "CTRL_TEMP", expected: ctrlTemp, got: sp?.ctrlTemp, exact: false },
+                    { tag: "TEMP_SPACE", expected: spaceTemp, got: sp?.tempSpace, exact: false },
+                    { tag: "STER_SET", expected: sterilTemp, got: sp?.sterSet, exact: false },
+                    { tag: "STER_SET_TIME", expected: sterilTime, got: sp?.sterSetTime, exact: true },
+                    { tag: "COOL1_TEMP", expected: cool1Temp, got: sp?.cool1Temp, exact: false },
+                    { tag: "COOL2_TEMP", expected: cool2Temp, got: sp?.cool2Temp, exact: false },
+                    { tag: "ALRM_PRES", expected: alrmPres, got: sp?.alrmPres, exact: true }, // kPa, perbandingan ===
+                ];
+                if (foValSetting !== null) {
+                    pairs.push({ tag: "F0_VAL", expected: foValSetting, got: sp?.f0Val, exact: false });
+                }
+                return pairs;
+            };
 
             const hasMismatch = (pairs) => pairs.filter(({ expected, got, exact }) => {
                 if (got === null || got === undefined) return true;

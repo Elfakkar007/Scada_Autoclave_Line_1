@@ -47,8 +47,8 @@ export const PLC_FIELDS = {
         temp("tempSpace", "TEMP_SPACE", "Temp. Space", 0.1, 20, { recipeDriven: true, hint: RECIPE_NOTE }),
         { kind: "int", scale: 1, unit: "MIN", decimals: 0, min: 1, max: 500, key: "sterTime", tag: "STER_SET_TIME",
           label: "Ster. Time", recipeDriven: true, hint: RECIPE_NOTE },
-        { kind: "int", scale: 10, unit: "MIN", decimals: 1, min: 0, max: 99, key: "foValue", tag: "FO_VALUE",
-          label: "FO Value",
+        { kind: "int", scale: 10, unit: "MIN", decimals: 1, min: 0, max: 99, key: "foValue", tag: "F0_VAL",
+          label: "FO Value", recipeDriven: true,
           hint: "Nilai F0 target (VW220). Dipakai bila Control Select = F0. Pada mode TIME, parameter ini tidak memengaruhi proses." },
         kpa("alarmPress", "ALRM_PRES", "Alarm Press.", 100, 300, {
             restricted: SAFETY_ACTION, recipeDriven: true,
@@ -119,6 +119,8 @@ export const PLC_FIELDS = {
         kpa("p2", "CAL_P2", "P2", -50, 50, { hint: "Offset yang ditambahkan ke P2 (VW120)." }),
         { kind: "int", scale: 1, unit: "raw", decimals: 0, min: -500, max: 500, key: "l", tag: "CAL_L", label: "L",
           hint: "Offset konduktivitas dalam satuan mentah PLC (skala ke µS belum diverifikasi)." },
+        { kind: "int", scale: 1, unit: "raw", decimals: 0, min: -500, max: 500, key: "water", tag: "CAL_WATER", label: "WATER",
+          hint: "Offset level air dalam satuan mentah PLC (VW324, ditambahkan ke VW124)." },
     ],
 };
 

@@ -147,15 +147,18 @@ export async function checkMachineIdle(allowedPhases) {
  * Tulis lalu baca-balik sampai semua nilai cocok (maks ~4,5 dtk), seperti verifikasi setpoint START.
  *
  * @param {Array<{tag: string, raw: number|boolean, kind: "int"|"float"|"bool"}>} items
+ * @param {{ timeoutMs?: number, intervalMs?: number }} [verifyOpts]
+ *   Opsional: override timeout/interval verifikasi. Default cocok untuk setpoint (lambat berubah).
+ *   Untuk bit boolean sederhana (kontrol manual, door), pakai nilai lebih pendek, mis. {timeoutMs:1000, intervalMs:150}.
  * @returns {Promise<{ok: true, readBack: object} | {ok: false, stage: "write"|"verify", failed?: string[], mismatch?: Array, readBack?: object|null}>}
  */
-export async function writeAndVerify(items) {
+export async function writeAndVerify(items, verifyOpts) {
     const wr = await writePlcTags(items.map((i) => ({ tag: i.tag, value: i.raw })));
     if (!wr.ok) {
         console.error("[plcAccess] Gagal menulis ke PLC:", wr.results);
         return { ok: false, stage: "write", failed: wr.results.filter((r) => !r.success).map((r) => r.tag) };
     }
-    return verifyRaw(items);
+    return verifyRaw(items, verifyOpts);
 }
 
 /** Baca-balik saja (dipakai juga setelah pulsa). */
@@ -165,8 +168,9 @@ export async function verifyRaw(items, { timeoutMs = 4500, intervalMs = 500 } = 
     let lastValues = null;
     let mismatch = items;
 
-    while (Date.now() < deadline) {
-        await sleep(intervalMs);
+    // Baca dulu SEBELUM sleep pertama: PLC ladder merespons dalam satu scan (~10 ms),
+    // sehingga baca langsung sudah cukup dan tidak perlu menunggu intervalMs penuh.
+    do {
         try {
             const { values } = await readPlcRaw(tags);
             lastValues = values;
@@ -175,7 +179,9 @@ export async function verifyRaw(items, { timeoutMs = 4500, intervalMs = 500 } = 
         } catch (err) {
             console.warn("[plcAccess] Baca-balik gagal sesaat:", err.message);
         }
-    }
+        if (Date.now() < deadline) await sleep(intervalMs);
+    } while (Date.now() < deadline);
+
     return {
         ok: false,
         stage: "verify",

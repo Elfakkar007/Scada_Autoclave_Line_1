@@ -148,15 +148,14 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `context/tag_terbaru_kepsrvr.csv`
+### `context/tag_paling_baru.csv`
 - **Tipe**: Data Referensi
-- **Fungsi**: Berkas master pemetaan tag KEPServerEX terbaru berisi 105 baris tag PLC Siemens S7-200 (VW, VD, Q, I, M) lengkap dengan alamat register memori, tipe data, scan rate, dan deskripsi fungsinya. Mengonsolidasi tag sensor dasar, alarm per bit, parameter mesin, offset kalibrasi (termasuk CAL_L pada VW322), dan tag kontrol pintu.
+- **Fungsi**: Berkas master pemetaan tag KEPServerEX terbaru berisi 116 baris tag PLC Siemens S7-200 (VW, VD, Q, I, M, VB) lengkap dengan alamat register memori, tipe data, scan rate, dan deskripsi fungsinya. Mengonsolidasi seluruh tag sensor, alarm per bit & word, parameter mesin, offset kalibrasi (termasuk CAL_L VW322 dan CAL_WATER VW324), kontrol pintu, kontrol manual (`MAN_*`), dan jam RTC PLC (`R_*` & `S_*`).
 - **Export utama**: Tidak ada (berkas teks CSV referensi).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
-- **Dipakai oleh**: Tidak di-import langsung oleh kode sumber (referensi impor konfigurasi channel/device pada KEPServerEX pabrik).
-- **Efek samping / dependensi eksternal**: Menjadi acuan validitas nama dan register tag pada `src/lib/plc.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, dan `plcManualCatalog.js`.
-- **Bukti**: `context/tag_terbaru_kepsrvr.csv:1-106` (1 baris header + 105 baris tag data).
-- **Catatan**: Tag register VW220 terdaftar dengan nama `"F0_VAL"` (huruf O diganti angka nol, singkatan VAL), sedangkan di `plcParamCatalog.js:50` didefinisikan sebagai `"FO_VALUE"`. Tag kontrol manual `MAN_*` belum tercakup dalam file ini.
+- **Dipakai oleh**: Menjadi acuan validitas nama dan register tag pada `src/lib/plc.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcManualCatalog.js`, dan `plcClock.js`.
+- **Bukti**: `context/tag_paling_baru.csv:1-117` (1 baris header + 116 baris tag data).
+- **Catatan**: 116/116 tag kini 100% terpetakan dan terintegrasi ke seluruh lapisan web. Tag register VW220 resmi dinamai `"F0_VAL"` dan telah terhubung penuh ke backend snapshot PLC, verifikasi setpoint resep batch, halaman Parameter Mesin, serta tampilan F0 Target di Dashboard.
 
 ---
 

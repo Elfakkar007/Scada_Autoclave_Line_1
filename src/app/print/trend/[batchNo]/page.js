@@ -165,28 +165,35 @@ function TrendPrintContent() {
 
     // Fetch user + data batch
     useEffect(() => {
+        let cancelled = false;
+
         fetch("/api/auth/me")
             .then((r) => r.json())
-            .then((j) => { if (j.ok) setUser(j.user?.fullName ?? j.user?.username ?? ""); })
+            .then((j) => { if (!cancelled && j.ok) setUser(j.user?.fullName ?? j.user?.username ?? ""); })
             .catch(() => {});
 
-        if (!decoded) {
-            // Gunakan Promise.resolve() agar setState tidak dipanggil synchronously
-            // di dalam body effect (menghindari lint error react-hooks/set-state-in-effect)
-            Promise.resolve().then(() => setLoading(false));
-            return;
-        }
-
-        fetch(`/api/batch-records/${encodeURIComponent(decoded)}`)
-            .then((r) => r.json())
-            .then((json) => {
+        async function loadBatch() {
+            if (!decoded) {
+                setLoading(false);
+                return;
+            }
+            try {
+                const r = await fetch(`/api/batch-records/${encodeURIComponent(decoded)}`);
+                const json = await r.json();
+                if (cancelled) return;
                 if (json.ok === false) throw new Error(json.error ?? "Batch tidak ditemukan");
                 setBatch(json.batch ?? null);
                 setTrend(json.trend ?? []);
                 setPrintedAt(toWIBStr(new Date()));
-            })
-            .catch((e) => setError(e.message))
-            .finally(() => setLoading(false));
+            } catch (e) {
+                if (!cancelled) setError(e.message);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+        loadBatch();
+
+        return () => { cancelled = true; };
     }, [decoded]);
 
     // Cari label X terdekat untuk garis bantu fase

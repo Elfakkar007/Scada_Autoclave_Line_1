@@ -47,6 +47,8 @@ export async function GET(request) {
                     th: "TH", t1: "T1", t2: "T2", t3: "T3",
                     t4: "T4", t5: "T5", t6: "T6", tm: "TM", tl: "TL",
                     p1: "P1", p2: "P2",
+                    l: "L",
+                    water: "WATER",
                 };
                 const LIVE_SCALE_10 = new Set(["th","t1","t2","t3","t4","t5","t6","tm","tl"]);
                 const { values: liveRaws } = await readPlcRaw(Object.values(LIVE_TAGS));

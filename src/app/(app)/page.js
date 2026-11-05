@@ -522,9 +522,26 @@ export default function Home() {
   // Server menerima salah satu jalur itu untuk aksi seal/release.
   const canDoor = canControl || hasLevel(perms, "manual_control", "edit");
   const sealOn = !!data.door?.seal;
-  // Fase 0 = idle (pintu/seal belum siap), 1 = siap (kedua pintu tertutup dan seal aktif).
-  const sealAllowed = !noData && data.plcOk === true && phaseRaw === 0 && !sealOn && !data.running;
-  const releaseAllowed = !noData && data.plcOk === true && phaseRaw === 1 && sealOn && !data.running;
+  const isDoorClosed = (data.door?.clsFrnt === true && data.door?.clsRear === true) || phaseRaw === 1;
+  const p1Val = data.p1;
+  const safetyPressVal = data.limits?.safetyPress ?? data.safetyPress;
+  const pressureIsSafe = (p1Val !== null && p1Val !== undefined && safetyPressVal !== null && safetyPressVal !== undefined)
+    ? p1Val <= safetyPressVal
+    : true;
+  const releasePressureOk = !isDoorClosed || pressureIsSafe;
+  const isIdlePhase = phaseRaw === 0 || phaseRaw === 1;
+
+  // Door Sealing: butuh mesin idle, kedua pintu tertutup, seal belum aktif, tidak sedang running.
+  const doorsClosedForSeal = data.door?.clsFrnt === true && data.door?.clsRear === true;
+  const sealAllowed = !noData && data.plcOk === true && isIdlePhase && !sealOn && !data.running && doorsClosedForSeal;
+
+  // Door Release dibebaskan dari syarat "pintu harus tertutup" dan "seal harus aktif":
+  // - Bisa diklik saat pintu terbuka (fase 0, tekanan di chamber sudah pasti minus/atmosfir).
+  // - Bisa diklik saat pintu tertutup jika tekanan chamber aman (P1 <= Safety Press).
+  const releaseAllowed = !noData && data.plcOk === true && isIdlePhase && !data.running && releasePressureOk;
+  // Tombol OFF (MATIKAN) Door Release: boleh diklik kapan saja selama PLC terbaca dan tidak busy
+  const releaseOn = !noData && data.plcOk === true && !!data.door?.releaseCmd;
+
   let doorBlockReason = null;
   if (!sealAllowed && !releaseAllowed) {
     if (noData) {
@@ -535,6 +552,8 @@ export default function Home() {
       doorBlockReason = "Mesin di fase END — tekan Reset dulu sebelum Door Release.";
     } else if (phaseRaw === null) {
       doorBlockReason = "Fase mesin tidak terbaca — perintah pintu dikunci.";
+    } else if (isDoorClosed && !pressureIsSafe) {
+      doorBlockReason = `Tekanan chamber (${p1Val} kPa) melebihi batas aman (${safetyPressVal} kPa). Door Release dikunci.`;
     } else {
       doorBlockReason = "Perintah pintu tidak tersedia pada keadaan mesin saat ini.";
     }
@@ -732,6 +751,12 @@ export default function Home() {
                     <dt className="text-xs text-[#5C6B6A]">Formula</dt>
                     <dd className="font-semibold">{data.formulaNo}</dd>
                   </div>
+                  {data.setpoints?.f0Val !== null && data.setpoints?.f0Val !== undefined && (
+                    <div>
+                      <dt className="text-xs text-[#5C6B6A]">F0 Target</dt>
+                      <dd className="font-semibold">{data.setpoints.f0Val} min</dd>
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <dt className="text-xs text-[#5C6B6A]">Mulai</dt>
                     <dd>
@@ -802,19 +827,21 @@ export default function Home() {
                     type="button"
                     onClick={() => sendDoor({ action: "seal" }, "Seal pintu aktif dan terverifikasi.")}
                     disabled={!canDoor || !sealAllowed || doorBusy}
-                    title={!canDoor ? "Anda tidak punya izin untuk aksi ini" : (doorBlockReason ?? undefined)}
+                    title={!canDoor ? "Anda tidak punya izin untuk aksi ini" : (!doorsClosedForSeal ? "Kedua pintu harus tertutup untuk Door Sealing" : (doorBlockReason ?? undefined))}
                     className="flex-1 px-2 py-1.5 rounded-[3px] bg-[#1C6E74] hover:bg-[#175B60] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[12px] font-semibold transition-colors"
                   >
                     {doorBusy ? "Memproses…" : "Door Sealing"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => sendDoor({ action: "release" }, "Seal pintu dilepas dan terverifikasi.")}
-                    disabled={!canDoor || !releaseAllowed || doorBusy}
-                    title={!canDoor ? "Anda tidak punya izin untuk aksi ini" : (doorBlockReason ?? undefined)}
-                    className="flex-1 px-2 py-1.5 rounded-[3px] bg-[#B9762F] hover:bg-[#9F6527] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[12px] font-semibold transition-colors"
+                    onClick={() => releaseOn
+                      ? sendDoor({ action: "release", value: false }, "Door Release dinonaktifkan.")
+                      : sendDoor({ action: "release", value: true }, "Door Release aktif — seal lepas.")}
+                    disabled={releaseOn ? (!canDoor || !data.plcOk || doorBusy) : (!canDoor || !releaseAllowed || doorBusy)}
+                    title={!canDoor ? "Anda tidak punya izin untuk aksi ini" : (!releaseAllowed && !releaseOn && isDoorClosed && !pressureIsSafe ? `Tekanan chamber (${p1Val} kPa) melebihi batas aman (${safetyPressVal} kPa)` : (doorBlockReason ?? undefined))}
+                    className={`flex-1 px-2 py-1.5 rounded-[3px] disabled:opacity-40 disabled:cursor-not-allowed text-white text-[12px] font-semibold transition-colors ${releaseOn ? "bg-[#A23B2E] hover:bg-[#8B2E24]" : "bg-[#B9762F] hover:bg-[#9F6527]"}`}
                   >
-                    Door Release
+                    {releaseOn ? "Release: MATIKAN" : "Door Release"}
                   </button>
                 </div>
 

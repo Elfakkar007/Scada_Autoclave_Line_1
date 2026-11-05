@@ -10,9 +10,7 @@ const PHASE_LABEL = {
     4: "STERIL.", 5: "COOLING", 6: "END", 7: "DRAIN",
 };
 
-const HOLD_INTERVAL_MS = 250; // kirim "run" tiap ini selama tombol ditahan (server mematikan bila >1 dtk sepi)
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const HOLD_INTERVAL_MS = 100; // kirim "run" tiap ini selama tombol ditahan (server mematikan bila >1 dtk sepi)
 
 function postDoor(body, keepalive = false) {
     return fetch("/api/plc-door", {
@@ -101,7 +99,7 @@ function DoorContent() {
         return () => { cancelled = true; };
     }, []);
 
-    // Keadaan mesin di-poll tiap 1,5 detik
+    // Keadaan mesin di-poll tiap 500ms agar monitoring lebih real-time
     useEffect(() => {
         let cancelled = false;
         const load = () =>
@@ -110,7 +108,7 @@ function DoorContent() {
                 .then((json) => { if (!cancelled) setState(json); })
                 .catch(() => { });
         load();
-        const id = setInterval(load, 1500);
+        const id = setInterval(load, 500);
         return () => { cancelled = true; clearInterval(id); };
     }, []);
 
@@ -148,24 +146,42 @@ function DoorContent() {
         setHolding(dir);
         setMessage(null);
 
-        (async () => {
-            while (holdRef.current.token === token) {
-                let json;
-                try {
-                    const res = await postDoor({ action: "chain", mode: "run", dir });
-                    json = await res.json();
-                } catch {
-                    json = { ok: false, error: "Koneksi ke server terputus. Rantai dihentikan." };
-                }
-                if (holdRef.current.token !== token) break; // sudah dilepas; stop dikirim oleh endHold
+        // Fire-and-forget: tidak menunggu response sebelum mengirim tick berikutnya.
+        // Error berturut-turut (MAX_ERRORS kali) tetap menghentikan loop dengan aman.
+        // Deadman di server (DEADMAN_TIMEOUT_MS=1000ms) tetap aktif sebagai jaring pengaman.
+        let errorCount = 0;
+        const MAX_ERRORS = 3;
+
+        const tick = async () => {
+            if (holdRef.current.token !== token) return; // sudah dilepas
+            try {
+                const res = await postDoor({ action: "chain", mode: "run", dir });
+                const json = await res.json();
+                if (holdRef.current.token !== token) return; // dilepas saat await
                 if (!json.ok) {
-                    setMessage({ type: "error", text: json.error ?? "Perintah rantai gagal." });
-                    endHold();
-                    break;
+                    errorCount++;
+                    if (errorCount >= MAX_ERRORS) {
+                        setMessage({ type: "error", text: json.error ?? "Perintah rantai gagal." });
+                        endHold();
+                        return;
+                    }
+                } else {
+                    errorCount = 0; // reset bila berhasil
                 }
-                await sleep(HOLD_INTERVAL_MS);
+            } catch {
+                errorCount++;
+                if (errorCount >= MAX_ERRORS) {
+                    setMessage({ type: "error", text: "Koneksi ke server terputus. Rantai dihentikan." });
+                    endHold();
+                    return;
+                }
             }
-        })();
+            if (holdRef.current.token === token) {
+                setTimeout(tick, HOLD_INTERVAL_MS);
+            }
+        };
+
+        tick(); // mulai segera tanpa delay awal
     }, [endHold]);
 
     // Sama dengan server: manual_control edit ATAU hak START/STOP (dashboard edit + batch_control edit).
@@ -182,6 +198,8 @@ function DoorContent() {
     const refuse = { seal: why("seal"), release: why("release"), drain: why("drain"), unlock: why("unlock"), fwd: why("fwd"), bwd: why("bwd") };
     const drainOn = cmd.drain === true;
     const unlockOn = cmd.unlock === true;
+    // Door Release: toggle — cmd.release true = M1.3 aktif (menahan seal lepas)
+    const releaseOn = cmd.release === true;
     const p1High = plcOk && state.p1 !== null && state.safetyPress !== null && state.p1 > state.safetyPress;
     const chainStuck = plcOk && state.chain?.stuck === true;
     const secLeft = (ms) => (ms === null || ms === undefined ? null : Math.ceil(ms / 1000));
@@ -226,8 +244,17 @@ function DoorContent() {
                 </div>
             )}
             {chainStuck && (
-                <div className="mb-4 px-4 py-2 rounded bg-scada-stop text-white text-sm font-semibold">
-                    Rantai terakhir TIDAK terverifikasi mati di PLC. Periksa mesin; matikan CHAIN_FWD/CHAIN_BWD dari HMI atau KEPServerEX.
+                <div className="mb-4 px-4 py-2 rounded bg-scada-stop text-white text-sm font-semibold flex items-center justify-between gap-4">
+                    <span>Rantai terakhir TIDAK terverifikasi mati di PLC. Periksa mesin; matikan CHAIN_FWD/CHAIN_BWD dari HMI atau KEPServerEX.</span>
+                    <button
+                        onClick={async () => {
+                            // Kirim stop untuk memaksa ulang writeFalse; bila berhasil, chain.stuck akan jadi false
+                            await postDoor({ action: "chain", mode: "stop" });
+                        }}
+                        className="shrink-0 px-3 py-1 rounded bg-white text-scada-stop font-bold text-xs hover:bg-gray-100"
+                    >
+                        Coba Matikan
+                    </button>
                 </div>
             )}
             {message && (
@@ -284,10 +311,11 @@ function DoorContent() {
                     hint={refuse.seal && canEdit ? refuse.seal : "Pulsa singkat; seal aktif bila kedua pintu tertutup."}
                 />
                 <CmdButton
-                    label="Door Release" color="steam"
-                    disabled={!usable || !!refuse.release}
-                    onClick={() => send({ action: "release" })}
-                    hint={refuse.release && canEdit ? refuse.release : "Melepas seal. Ditolak bila P1 melebihi Safety Press."}
+                    label={releaseOn ? "Door Release: MATIKAN" : "Door Release"}
+                    color={releaseOn ? "stop" : "steam"}
+                    disabled={releaseOn ? !(canEdit && plcOk && !busy) : (!usable || !!refuse.release)}
+                    onClick={() => send({ action: "release", value: !releaseOn })}
+                    hint={!releaseOn && refuse.release && canEdit ? refuse.release : "Melepas seal. Bisa ditekan saat pintu terbuka atau saat P1 ≤ Safety Press."}
                 />
                 <CmdButton
                     label={drainOn ? `Water Drain: MATIKAN${secLeft(state?.autoOff?.drain) !== null ? ` (auto-OFF ${secLeft(state.autoOff.drain)} dtk)` : ""}` : "Water Drain"}

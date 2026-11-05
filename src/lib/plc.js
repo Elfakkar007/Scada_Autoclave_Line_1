@@ -67,8 +67,6 @@ const TAG_MAP = {
     // Sebelumnya tertukar — sudah dikoreksi per hasil pembacaan ladder logic.
     conductivity: "L",       // VW122 — conductivity
     level: "WATER",          // VW124 — level air
-    // F0_VAL (VW220) SENGAJA TIDAK DIBACA: tidak dipakai program PLC (tidak ada
-    // satu pun referensi di .awl), nilainya tidak bermakna. F0 dihitung di web.
     // Setpoint / resep aktif di PLC (bukan dari DB)
     ctrlTemp: "CTRL_TEMP",
     sterSet: "STER_SET",
@@ -77,6 +75,7 @@ const TAG_MAP = {
     cool1Temp: "COOL1_TEMP",
     cool2Temp: "COOL2_TEMP",
     alrmPres: "ALRM_PRES",
+    f0Val: "F0_VAL",         // VW220 (Short, skala 10 -> MIN)
     // Aktuator / valve (Boolean)
     steam1: "STEAM_1",
     steam2: "STEAM_2",
@@ -118,6 +117,11 @@ const TAG_MAP = {
     // M10.0 dan M10.4 SENGAJA TIDAK DIBACA: itu buzzer pemberitahuan "heating/cooling sudah
     // 5 menit" (30 detik sekali, terkonfirmasi dari pengamatan mesin + operator), bukan alarm.
     almM10_1: "ALM_M10_1", almM10_2: "ALM_M10_2", almM10_3: "ALM_M10_3",
+    // Buzzer & register alarm (diagnostik)
+    buzzer: "BUZZER",
+    alrmDor: "ALRM_DOR",
+    alrmTemp: "ALRM_TEMP",
+    warningBuz: "WARNING_BUZ",
     // Timer / durasi fase (detik)
     heatTime: "HEAT_TIME",     // VW600
     coolTime: "COOL_TIME",     // VW602
@@ -135,6 +139,7 @@ const SCALE_BY_10 = new Set([
     "t1", "t2", "t3", "t4", "t5", "t6", "th", "tm", "tl",
     "ctrlTemp", "sterSet", "tempSpace", "cool1Temp", "cool2Temp",
     "overTemp", // VW252 dibandingkan dengan VW102..VW114 (raw x10), jadi satuannya sama
+    "f0Val",    // VW220 target F0 (raw 100 = 10.0 min)
 ]);
 
 // Peta nomor fase dari PLC (tag PROCCES_TEXT, VW98) ke label UI
@@ -210,6 +215,7 @@ function getEmptySnapshot() {
         th: null, tm: null, tl: null,
         p1: null, p2: null,
         conductivity: null, level: null,
+        f0Val: null, buzzer: null, rawWords: null,
         valves: null, door: null, alarms: null, limits: null,
         runLamp: null, ctrlSel: null,
         setpoints: null, phase: null, timers: null,
@@ -370,6 +376,13 @@ export async function readPlcSnapshot() {
             p1: v.p1, p2: v.p2,
             conductivity: v.conductivity, // TODO: scaling belum dikonfirmasi (raw dari tag L/VW122)
             level: v.level,               // TODO: scaling belum dikonfirmasi (raw dari tag WATER/VW124)
+            f0Val: v.f0Val ?? null,       // target F0 dalam menit (VW220)
+            buzzer: bitOrNull(v.buzzer),  // status tag BUZZER (M10.6)
+            rawWords: {
+                alrmDor: v.alrmDor ?? null,
+                alrmTemp: v.alrmTemp ?? null,
+                warningBuz: v.warningBuz ?? null,
+            },
             valves: {
                 // bitOrNull: tag gagal-baca → null (unknown/abu-abu di diagram),
                 // bukan false (CLOSED). null SENGAJA tidak diubah jadi false.
@@ -384,6 +397,8 @@ export async function readPlcSnapshot() {
                 locked: !!v.doorLock,
                 bypass: !!v.doorLock, // alias eksplisit untuk logika guard Start
                 seal: !!v.doorSeal,
+                // releaseCmd: M1.3 — bit perintah Door Release. true = sedang aktif (menahan seal lepas).
+                releaseCmd: !!v.doorRelease,
                 clsFrnt: !!v.clsFrnt,
                 clsRear: !!v.clsRear,
                 opnFrnt: !!v.opnFrnt,
@@ -411,6 +426,7 @@ export async function readPlcSnapshot() {
                 cool1Temp: v.cool1Temp ?? null,  // °C (sudah dibagi 10)
                 cool2Temp: v.cool2Temp ?? null,  // °C (sudah dibagi 10)
                 alrmPres: v.alrmPres ?? null,  // kPa (tidak di-scale; dibandingkan langsung dengan P1 di PLC)
+                f0Val: v.f0Val ?? null,        // menit (sudah dibagi 10, VW220)
             },
             // phase: object {code, label, confirmed, rawValue}
             // Sumber utama PROCCES_TEXT (VW98). Bila null → unknown (tidak ditebak).

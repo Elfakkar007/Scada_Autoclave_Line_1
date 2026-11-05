@@ -10,6 +10,11 @@ import { readPlcRaw, withPlcLocks, checkMachineIdle, writeAndVerify } from "@/li
 
 const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
 
+// Bit boolean di PLC merespons dalam satu scan ladder (~10ms).
+// Verifikasi cepat cukup — tidak perlu tunggu 4,5 detik seperti setpoint suhu/tekanan.
+// Naikkan timeoutMs ke 1200 bila lapangan menemukan false-negative.
+const BOOL_VERIFY = { timeoutMs: 800, intervalMs: 100 };
+
 const OUTPUT_TAGS = MANUAL_ITEMS.map((i) => i.outTag).filter(Boolean);
 const CONTEXT_TAGS = ["PROCCES_TEXT", "CLS_FRNT", "CLS_REAR", "DOOR_SEAL", "WATR_INDICATOR", "P1", "SAFETY_PRESS"];
 const ALL_TAGS = [MANUAL_MODE_TAG, ...MANUAL_COMMAND_TAGS, ...OUTPUT_TAGS, ...CONTEXT_TAGS];
@@ -51,8 +56,24 @@ export async function GET() {
         if (errorResponse) return errorResponse;
 
         try {
-            const state = await readManualState();
-            const idle = await checkMachineIdle(IDLE_PHASES_MANUAL);
+            // readManualState sudah membaca PROCCES_TEXT; hitung idle dari sana
+            // daripada memanggil checkMachineIdle yang membaca PROCCES_TEXT sekali lagi
+            // lalu query DB terpisah (dua round-trip redundan tiap poll 500ms).
+            const [state, dbResult] = await Promise.all([
+                readManualState(),
+                pool.query("SELECT batch_no FROM batch_records WHERE status = 'running' LIMIT 1"),
+            ]);
+            const phase = state.phase;
+            let idle;
+            if (phase === null || phase === undefined) {
+                idle = { ok: false, phase: null, reason: "Fase mesin tidak terbaca dari PLC." };
+            } else if (!IDLE_PHASES_MANUAL.includes(phase)) {
+                idle = { ok: false, phase, reason: "Mesin sedang menjalankan proses (fase aktif). Tunggu sampai selesai atau tekan STOP di mesin." };
+            } else if (dbResult.rows.length > 0) {
+                idle = { ok: false, phase, reason: `Batch ${dbResult.rows[0].batch_no} masih berstatus berjalan. Selesaikan atau hentikan batch dulu.` };
+            } else {
+                idle = { ok: true, phase, reason: null };
+            }
             return Response.json({ ok: true, plcOk: true, ...state, idle });
         } catch (err) {
             console.error("[GET /api/plc-manual] PLC tidak terbaca:", err.message);
@@ -89,9 +110,9 @@ export async function POST(request) {
         // ── EXIT: tanpa kunci dan tanpa syarat fase — harus selalu bisa dipakai ──
         if (action === "exit") {
             // 1. Matikan semua perintah saat mode manual masih aktif (katup menutup)
-            const off = await writeAndVerify(allOff);
+            const off = await writeAndVerify(allOff, BOOL_VERIFY);
             // 2. Baru turunkan M5.0 (tepi turun → PLC mereset semua output proses)
-            const mode = await writeAndVerify([{ tag: MANUAL_MODE_TAG, raw: false, kind: "bool" }]);
+            const mode = await writeAndVerify([{ tag: MANUAL_MODE_TAG, raw: false, kind: "bool" }], BOOL_VERIFY);
             const ok = off.ok && mode.ok;
             await tryAudit({
                 ...actor, action: ok ? "plc_manual_command" : "plc_manual_command_failed",
@@ -113,7 +134,7 @@ export async function POST(request) {
         if (action === "set" && body.value === false) {
             const item = getManualItem(body.key);
             if (!item) return badRequest("Perintah tidak dikenal");
-            const w = await writeAndVerify([{ tag: item.cmdTag, raw: false, kind: "bool" }]);
+            const w = await writeAndVerify([{ tag: item.cmdTag, raw: false, kind: "bool" }], BOOL_VERIFY);
             await tryAudit({
                 ...actor, action: w.ok ? "plc_manual_command" : "plc_manual_command_failed",
                 newValue: { command: item.cmdTag, value: false },
@@ -163,11 +184,11 @@ export async function POST(request) {
                     return { status: 500, body: { ok: false, error: "Gagal mencatat audit sehingga mode manual tidak diaktifkan. Hubungi admin." } };
                 }
                 // Pastikan semua bit perintah 0 SEBELUM M5.0 dinaikkan (bit sisa akan langsung menyalakan output)
-                const off = await writeAndVerify(allOff);
+                const off = await writeAndVerify(allOff, BOOL_VERIFY);
                 if (!off.ok) {
                     return { status: 502, body: { ok: false, error: "Gagal memastikan semua perintah manual dalam keadaan mati. Mode manual tidak diaktifkan." } };
                 }
-                const on = await writeAndVerify([{ tag: MANUAL_MODE_TAG, raw: true, kind: "bool" }]);
+                const on = await writeAndVerify([{ tag: MANUAL_MODE_TAG, raw: true, kind: "bool" }], BOOL_VERIFY);
                 if (!on.ok) {
                     await tryAudit({ ...actor, action: "plc_manual_command_failed", newValue: { command: "enter" },
                         description: "Masuk mode manual tidak terverifikasi di PLC." }, "plc-manual");
@@ -194,7 +215,7 @@ export async function POST(request) {
                 console.error("[POST /api/plc-manual] Gagal catat audit, dibatalkan:", auditErr.message);
                 return { status: 500, body: { ok: false, error: "Gagal mencatat audit sehingga perintah tidak dikirim. Hubungi admin." } };
             }
-            const w = await writeAndVerify([{ tag: item.cmdTag, raw: true, kind: "bool" }]);
+            const w = await writeAndVerify([{ tag: item.cmdTag, raw: true, kind: "bool" }], BOOL_VERIFY);
             if (!w.ok) {
                 await tryAudit({ ...actor, action: "plc_manual_command_failed", newValue: { command: item.cmdTag, value: true },
                     description: `${item.label}: perintah ON tidak terverifikasi di PLC.` }, "plc-manual");

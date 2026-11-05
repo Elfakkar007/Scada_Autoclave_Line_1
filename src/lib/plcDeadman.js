@@ -48,8 +48,9 @@ export async function readDoorState(deps = realDeps) {
 export function createDoorSafety(deps = realDeps, opts = {}) {
     const deadmanMs = opts.deadmanTimeoutMs ?? DEADMAN_TIMEOUT_MS;
     const autoOffMs = opts.autoOffMs ?? AUTO_OFF_MS;
-    const chainVerify = opts.chainVerify ?? { timeoutMs: 1500, intervalMs: 250 }; // pendek: rantai sedang jalan
-    const offVerify = opts.offVerify ?? {};
+    const chainVerify = opts.chainVerify ?? { timeoutMs: 1500, intervalMs: 150 }; // pendek: rantai sedang jalan
+    // offVerify: baca langsung (do-while di verifyRaw baca sebelum sleep), 800ms cukup untuk 2–3 percobaan.
+    const offVerify = opts.offVerify ?? { timeoutMs: 800, intervalMs: 200 };
 
     const chain = { dir: null, timer: null, gen: 0, startedAt: 0, hooks: null, stuck: false };
     const autoOff = new Map(); // key → { timer, until, tag, hooks }
@@ -71,7 +72,7 @@ export function createDoorSafety(deps = realDeps, opts = {}) {
                 const wr = await deps.writeTags(pairs);
                 wrote = wr.ok === true;
             } catch { /* coba lagi */ }
-            if (!wrote && attempt < 3) await sleep(300);
+            if (!wrote && attempt < 3) await sleep(100);
         }
         let verified = false;
         try {
@@ -114,7 +115,7 @@ export function createDoorSafety(deps = realDeps, opts = {}) {
     }
 
     /**
-     * Tahan rantai satu arah. Dipanggil berulang (±300 ms) selama tombol ditekan.
+     * Tahan rantai satu arah. Dipanggil berulang (±100 ms) selama tombol ditekan.
      * hooks.onStart() dipanggil SEBELUM menulis (lempar error = batal, fail-closed);
      * hooks.onEnd(info) dipanggil saat sesi berakhir.
      * @returns {Promise<{ok: boolean, status: number, error?: string, active?: string}>}
@@ -123,7 +124,7 @@ export function createDoorSafety(deps = realDeps, opts = {}) {
         return serial(async () => {
             if (dir !== "fwd" && dir !== "bwd") return { ok: false, status: 400, error: "Arah tidak dikenal" };
 
-            // Sesi searah sedang jalan: cukup validasi cepat lalu perpanjang timer.
+            // Sesi searah sedang jalan: validasi cepat lalu perpanjang timer.
             if (chain.dir === dir) {
                 let state;
                 try {

@@ -131,13 +131,17 @@ export function checkDoorCommand(action, state) {
             if (c.release !== false) return "Door Release sedang aktif; tunggu selesai.";
             if (c.fwd !== false || c.bwd !== false) return "Rantai sedang bergerak. Hentikan dulu.";
             return null;
-        case "release":
-            if (d.seal !== true) return "Seal pintu tidak aktif, tidak ada yang perlu dilepas.";
-            if (!pressureSafe(state)) {
+        case "release": {
+            // Door Release dibebaskan dari syarat "pintu harus tertutup" dan "seal harus aktif":
+            // - Bila pintu terbuka (atau fase 0), tekanan chamber dijamin aman (atmosfir/minus) sehingga selalu boleh ditekan.
+            // - Bila kedua pintu tertutup (atau fase 1), pastikan tekanan chamber aman (P1 <= Safety Press) sebelum melepas seal.
+            const isClosed = (d.clsFrnt === true && d.clsRear === true) || state.phase === 1;
+            if (isClosed && !pressureSafe(state)) {
                 return "Tekanan chamber (P1) melebihi Safety Press atau tidak terbaca. Door Release ditolak.";
             }
             if (c.seal !== false) return "Perintah Door Sealing masih aktif; tunggu selesai.";
             return null;
+        }
         case "drain":
             if (d.seal !== false) return "Water Drain butuh seal pintu sudah lepas.";
             if (d.clsFrnt !== false || d.clsRear !== false) return "Water Drain hanya bila kedua pintu tidak tertutup.";

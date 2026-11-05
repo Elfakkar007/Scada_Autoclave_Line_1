@@ -83,15 +83,15 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
     - **Status**: `[TIDAK TERVERIFIKASI: pemetaan tombol fisik HMI terhadap tag MAN_BUZZER (M10.6) dan interpretasi nilai 0/1 tag SEL_PRESU]`
     - **Fakta Kode**: Pada katalog kontrol manual terdapat catatan bahwa bit M10.6 belum diverifikasi pemetaannya terhadap tombol fisik mesin, dan pada katalog parameter terdapat catatan bahwa pemetaan nilai 0/1 tag `SEL_PRESU` (AIW12 vs AIW14) ke tampilan layar HMI fisik mesin belum diverifikasi di lapangan.
 
-16. **Diskrepansi Penamaan Tag F0 Antara Kode (`FO_VALUE`) vs CSV (`F0_VAL`)**
-    - **Lokasi Kode**: `src/lib/plcParamCatalog.js:50` vs `context/tag_terbaru_kepsrvr.csv:55`
-    - **Status**: `[TIDAK TERVERIFIKASI: nama tag resmi register VW220 pada proyek KEPServerEX di mesin pabrik]`
-    - **Fakta Kode**: Di kode `plcParamCatalog.js:50`, parameter `foValue` merujuk ke tag `"FO_VALUE"` (huruf O). Namun di `tag_terbaru_kepsrvr.csv:55`, tag beralamat VW220 dinamai `"F0_VAL"` (angka nol + VAL). Jika konfigurasi KEPServerEX fisik memakai nama `F0_VAL`, permintaan `GET /api/plc-params?group=param1` dan `PUT /api/plc-params` akan gagal membaca/menulis tag tersebut.
+16. **[TERATASI] Penyesuaian Penamaan Tag F0 Resmi (`F0_VAL`)**
+    - **Lokasi Kode**: `src/lib/plcParamCatalog.js:50`, `src/lib/plc.js:78`, `src/app/api/batch/start/route.js:390`
+    - **Status**: `[TERATASI: tag register VW220 resmi dinamai F0_VAL sesuai context/tag_paling_baru.csv]`
+    - **Fakta Kode**: Tag beralamat register VW220 telah diselaraskan ke penamaan resmi `"F0_VAL"`. Telah dimasukkan ke `plcParamCatalog.js` (`foValue`), `plc.js` (`f0Val`, scaling x10 ke menit, `setpoints.f0Val`), serta `batch/start` untuk penulisan dan verifikasi setpoint resep.
 
-17. **Diskrepansi Alamat Register Tag Offset Kalibrasi Konduktivitas (`CAL_L`)**
-    - **Lokasi Kode**: `src/lib/plcParamCatalog.js:189` vs `context/tag_terbaru_kepsrvr.csv:20`
-    - **Status**: `[TIDAK TERVERIFIKASI: alamat register PLC Siemens S7-200 aktual untuk offset kalibrasi konduktivitas L]`
-    - **Fakta Kode**: Di kode `src/lib/plcParamCatalog.js:189`, alamat register `CAL_L` tercatat `VW144`. Namun di `context/tag_terbaru_kepsrvr.csv:20`, tag `CAL_L` dialamatkan ke register `VW322` ("offset kalibrasi L, bertanda, ditambahkan ke VW122"). Perlu konfirmasi dari tim otomasi apakah offset L berada di VW144 atau VW322.
+17. **[TERATASI] Pemetaan Tag Offset Kalibrasi Konduktivitas (`CAL_L`) dan Level Air (`CAL_WATER`)**
+    - **Lokasi Kode**: `src/lib/plcParamCatalog.js:120-122`, `src/app/api/plc-params/route.js:51`
+    - **Status**: `[TERATASI: register VW322 untuk CAL_L dan VW324 untuk CAL_WATER terkonfirmasi sesuai context/tag_paling_baru.csv]`
+    - **Fakta Kode**: Register `CAL_L` (VW322) dan `CAL_WATER` (VW324) telah masuk ke katalog kalibrasi `plcParamCatalog.js` serta pembacaan nilai sensor aktual `LIVE_TAGS` pada API `plc-params`.
 
 ---
 
@@ -162,8 +162,8 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
    - **Keterangan**: Logika evaluasi kesiapan mesin di baris 492 (`const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`) berjalan normal dan aktif. Komentar pengembang di baris 493–494 (`// Biarkan baris ini tetap ada untuk testing pop up start ya` dan `// const startAllowed = true;`) sengaja dibiarkan pemilik untuk pengujian pop-up START saat tidak terhubung ke mesin fisik (bukan bypass aktif). Disarankan untuk tetap dibersihkan atau dikomentari permanen sebelum rilis produksi pabrik.
 5. **Eksekusi Migrasi 006 pada Server Produksi**:
    - Pastikan skrip `migrations/006_add_bottle_count.sql` dijalankan di database PostgreSQL server pabrik sehingga kolom `batch_records.bottle_count` terpasang resmi dan tidak lagi memicu fallback error 42703.
-6. **Kepastian Penamaan Tag F0 (`FO_VALUE` vs `F0_VAL`) dan Register `CAL_L` (VW144 vs VW322)**:
-   - Tim otomasi perlu mengonfirmasi apakah konfigurasi KEPServerEX di pabrik menggunakan nama tag `FO_VALUE` atau `F0_VAL`, serta apakah offset konduktivitas `CAL_L` dipetakan ke register VW144 atau VW322.
+6. **[TERATASI] Kepastian Penamaan Tag F0 (`F0_VAL`) dan Register `CAL_L` (VW322) & `CAL_WATER` (VW324)**:
+   - Dikonfirmasi dari berkas `context/tag_paling_baru.csv` bahwa tag F0 beralamat VW220 adalah `F0_VAL`, `CAL_L` adalah VW322, dan `CAL_WATER` adalah VW324. Seluruh 116 tag pada CSV telah terpetakan penuh ke kode aplikasi.
 
 ---
 

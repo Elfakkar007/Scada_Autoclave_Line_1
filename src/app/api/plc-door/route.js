@@ -3,7 +3,7 @@ import pool from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { insertAudit, tryAudit } from "@/lib/auditLog";
 import {
-    DOOR_CMD_TAGS, IDLE_PHASES_DOOR, SEAL_PULSE_MS, RELEASE_PULSE_MS, checkDoorCommand,
+    DOOR_CMD_TAGS, IDLE_PHASES_DOOR, SEAL_PULSE_MS, checkDoorCommand,
 } from "@/lib/plcDoorCatalog";
 import {
     withPlcLocks, checkMachineIdle, writeAndVerify, verifyRaw,
@@ -14,6 +14,10 @@ import { readDoorState, getDoorSafety } from "@/lib/plcDeadman";
 const PLC_DOOR_ACTIONS = ["seal", "release", "drain", "unlock", "chain"];
 const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
 const PLC_DOWN = "PLC tidak terbaca. Periksa koneksi KEPServerEX dan PLC.";
+
+// Bit boolean di PLC merespons dalam satu scan ladder (~10ms).
+// Verifikasi cepat cukup — tidak perlu tunggu 4,5 detik seperti setpoint suhu/tekanan.
+const BOOL_VERIFY = { timeoutMs: 800, intervalMs: 100 };
 
 function badRequest(error) {
     return Response.json({ ok: false, error }, { status: 400 });
@@ -28,8 +32,23 @@ export async function GET() {
 
         const safety = getDoorSafety().status();
         try {
-            const state = await readDoorState();
-            const idle = await checkMachineIdle(IDLE_PHASES_DOOR);
+            // readDoorState sudah membaca PROCCES_TEXT bersama semua tag pintu dalam 1 round-trip.
+            // Hitung idle dari state tersebut + DB check paralel — hindari round-trip PLC kedua.
+            const [state, dbResult] = await Promise.all([
+                readDoorState(),
+                pool.query("SELECT batch_no FROM batch_records WHERE status = 'running' LIMIT 1"),
+            ]);
+            const phase = state.phase;
+            let idle;
+            if (phase === null || phase === undefined) {
+                idle = { ok: false, phase: null, reason: "Fase mesin tidak terbaca dari PLC." };
+            } else if (!IDLE_PHASES_DOOR.includes(phase)) {
+                idle = { ok: false, phase, reason: "Mesin sedang menjalankan proses (fase aktif). Tunggu sampai selesai atau tekan STOP di mesin." };
+            } else if (dbResult.rows.length > 0) {
+                idle = { ok: false, phase, reason: `Batch ${dbResult.rows[0].batch_no} masih berstatus berjalan. Selesaikan atau hentikan batch dulu.` };
+            } else {
+                idle = { ok: true, phase, reason: null };
+            }
             return Response.json({
                 ok: true, plcOk: true, ...state, idle,
                 chain: { dir: safety.chainDir, stuck: safety.chainStuck },
@@ -50,7 +69,7 @@ export async function GET() {
 // (hak yang sama dengan START/STOP), agar web setara HMI mesin.
 // Body:
 //   { action: "seal" }                                  pulsa Door Sealing
-//   { action: "release" }                               pulsa Door Release
+//   { action: "release", value: true|false }            toggle Door Release (ON=lepas seal, OFF=diam)
 //   { action: "drain",  value: true|false }             toggle Water Drain (auto-OFF 60 dtk)
 //   { action: "unlock", value: true|false }             toggle Door Unlock (auto-OFF 60 dtk)
 //   { action: "chain",  mode: "run"|"stop", dir: "fwd"|"bwd" }   deadman Forward/Backward
@@ -111,19 +130,19 @@ export async function POST(request) {
             return Response.json(r.ok ? { ok: true, active: r.active } : { ok: false, error: r.error }, { status: r.status });
         }
 
-        // ── OFF Water Drain / Door Unlock: tidak pernah ditolak aturan fase/pintu ──
-        if ((action === "drain" || action === "unlock") && body.value === false) {
+        // ── OFF Water Drain / Door Unlock / Door Release: tidak pernah ditolak aturan fase/pintu ──
+        if ((action === "drain" || action === "unlock" || action === "release") && body.value === false) {
             const tag = DOOR_CMD_TAGS[action];
-            const label = action === "drain" ? "Water Drain" : "Door Unlock";
+            const label = action === "drain" ? "Water Drain" : action === "unlock" ? "Door Unlock" : "Door Release";
             let w;
             try {
-                w = await writeAndVerify([{ tag, raw: false, kind: "bool" }]);
+                w = await writeAndVerify([{ tag, raw: false, kind: "bool" }], BOOL_VERIFY);
             } catch (err) {
                 console.error("[POST /api/plc-door] OFF gagal (gateway):", err.message);
                 return Response.json({ ok: false, error: `${PLC_DOWN} ${label} belum tentu mati; matikan dari HMI bila perlu.` }, { status: 502 });
             }
             // Timer auto-OFF tetap dibiarkan bila OFF gagal (jaring pengaman kedua).
-            if (w.ok) safety.disarmAutoOff(action);
+            if (w.ok && (action === "drain" || action === "unlock")) safety.disarmAutoOff(action);
             await tryAudit({
                 ...actor, action: w.ok ? "plc_door_command" : "plc_door_command_failed",
                 newValue: { command: tag, value: false },
@@ -137,6 +156,7 @@ export async function POST(request) {
 
         // ── Perintah yang MENYALAKAN sesuatu: kunci, mesin idle, pagar, audit sebelum menulis ──
         if ((action === "drain" || action === "unlock") && body.value !== true) return badRequest("value harus true atau false");
+        if (action === "release" && body.value !== true && body.value !== false) return badRequest("value harus true atau false");
 
         const spec = {
             seal: { label: "Door Sealing", tag: DOOR_CMD_TAGS.seal },
@@ -147,9 +167,8 @@ export async function POST(request) {
 
         /** Tulis perintah; { ok, error? }. Dipanggil setelah semua pagar dan audit lolos. */
         async function perform() {
-            if (action === "seal" || action === "release") {
-                const holdMs = action === "seal" ? SEAL_PULSE_MS : RELEASE_PULSE_MS;
-                const pulse = await pulsePlcTag(spec.tag, { holdMs });
+            if (action === "seal") {
+                const pulse = await pulsePlcTag(spec.tag, { holdMs: SEAL_PULSE_MS });
                 if (!pulse.ok) {
                     return {
                         ok: false,
@@ -158,21 +177,28 @@ export async function POST(request) {
                             : `Perintah ${spec.label} gagal dikirim ke PLC.`,
                     };
                 }
-                // Hasil nyata: seal harus aktif (sealing) / lepas (release).
-                const v = await verifyRaw([{ tag: "DOOR_SEAL", raw: action === "seal", kind: "bool" }]);
+                // Verifikasi hasil nyata: seal harus aktif setelah perintah sealing.
+                const v = await verifyRaw([{ tag: "DOOR_SEAL", raw: true, kind: "bool" }]);
                 if (!v.ok) {
-                    return {
-                        ok: false,
-                        error: action === "seal"
-                            ? "Seal belum aktif setelah perintah. Periksa pintu dan mesin."
-                            : "Seal belum lepas setelah perintah. Periksa tekanan dan mesin.",
-                    };
+                    return { ok: false, error: "Seal belum aktif setelah perintah. Periksa pintu dan mesin." };
+                }
+                return { ok: true };
+            }
+
+            if (action === "release") {
+                // Door Release M1.3 adalah TOGGLE seperti HMI: 1 kali tekan → aktif (lepas seal),
+                // 1 kali tekan lagi → nonaktif. Tidak menggunakan pulsa agar tampilan web konsisten
+                // dengan status bit nyata di PLC. M1.3 mengendalikan R Q0.5 (reset coil); Q0.5
+                // tetap ter-reset meski M1.3 kembali ke 0, jadi aman untuk toggle kapan saja.
+                const w = await writeAndVerify([{ tag: spec.tag, raw: true, kind: "bool" }], BOOL_VERIFY);
+                if (!w.ok) {
+                    return { ok: false, error: "Door Release tidak terverifikasi di PLC. Periksa mesin." };
                 }
                 return { ok: true };
             }
 
             // drain / unlock: tulis ON, baca-balik, lalu pasang auto-OFF
-            const w = await writeAndVerify([{ tag: spec.tag, raw: true, kind: "bool" }]);
+            const w = await writeAndVerify([{ tag: spec.tag, raw: true, kind: "bool" }], BOOL_VERIFY);
             if (!w.ok) return { ok: false, error: `${spec.label} tidak terverifikasi di PLC. Periksa mesin.` };
             safety.armAutoOff(action, spec.tag, {
                 onEnd: (info) => tryAudit({
@@ -198,8 +224,8 @@ export async function POST(request) {
                 try {
                     await insertAudit(pool, {
                         ...actor, action: "plc_door_command",
-                        newValue: { command: spec.tag, value: true, via: "scada", p1: state.p1, safetyPress: state.safetyPress },
-                        description: `${spec.label} dijalankan oleh ${session.username} menggunakan SCADA.`,
+                        newValue: { command: spec.tag, value: body.value ?? true, via: "scada", p1: state.p1, safetyPress: state.safetyPress },
+                        description: `${spec.label} ${action === "release" ? "AKTIF (ON)" : "dijalankan"} oleh ${session.username} menggunakan SCADA.`,
                     });
                 } catch (auditErr) {
                     console.error("[POST /api/plc-door] Gagal catat audit, dibatalkan:", auditErr.message);

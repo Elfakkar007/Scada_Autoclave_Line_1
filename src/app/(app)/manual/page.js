@@ -56,7 +56,7 @@ function ManualContent() {
         return () => { cancelled = true; };
     }, []);
 
-    // Keadaan mesin di-poll tiap 1,5 detik (lampu output aktual harus mengikuti PLC)
+    // Keadaan mesin di-poll tiap 500ms agar monitoring lebih real-time (lampu output aktual harus mengikuti PLC)
     useEffect(() => {
         let cancelled = false;
         const load = () =>
@@ -65,7 +65,7 @@ function ManualContent() {
                 .then((json) => { if (!cancelled) setState(json); })
                 .catch(() => { });
         load();
-        const id = setInterval(load, 1500);
+        const id = setInterval(load, 500);
         return () => { cancelled = true; clearInterval(id); };
     }, []);
 

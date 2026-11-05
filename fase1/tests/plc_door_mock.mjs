@@ -39,15 +39,19 @@ await t("seal: ditolak bila satu pintu terbuka / seal sudah aktif / release masi
     assert.ok(checkDoorCommand("seal", base({ CLS_FRNT: true, CLS_REAR: true, DOOR_RELEASE: true })));
     assert.ok(checkDoorCommand("seal", base({ CLS_FRNT: true, CLS_REAR: true, CHAIN_FWD: true })));
 });
-await t("release: butuh seal aktif, P1 <= Safety Press, dan M1.2 = 0", () => {
-    const ok = { CLS_FRNT: true, CLS_REAR: true, DOOR_SEAL: true, PROCCES_TEXT: 1, P1: 0 };
+await t("release: boleh saat pintu terbuka, dan bila pintu tertutup butuh P1 <= Safety Press", () => {
+    // Saat pintu terbuka (PROCCES_TEXT: 0, pintu belum tertutup), boleh ditekan walau seal belum aktif
+    assert.equal(checkDoorCommand("release", base({ CLS_FRNT: false, CLS_REAR: false, DOOR_SEAL: false, PROCCES_TEXT: 0 })), null);
+
+    // Saat pintu tertutup (PROCCES_TEXT: 1, kedua pintu tertutup), butuh P1 <= Safety Press
+    const ok = { CLS_FRNT: true, CLS_REAR: true, DOOR_SEAL: true, PROCCES_TEXT: 1, P1: 0, SAFETY_PRESS: 16 };
     assert.equal(checkDoorCommand("release", base(ok)), null);
     assert.equal(checkDoorCommand("release", base({ ...ok, P1: 16 })), null, "P1 = Safety Press masih boleh (<=)");
     assert.ok(checkDoorCommand("release", base({ ...ok, P1: 17 })), "P1 > Safety Press ditolak");
-    assert.ok(checkDoorCommand("release", base({ ...ok, DOOR_SEAL: false })));
+    assert.equal(checkDoorCommand("release", base({ ...ok, DOOR_SEAL: false })), null, "seal false tetap boleh");
     assert.ok(checkDoorCommand("release", base({ ...ok, DOOR_SEAL_CMD: true })), "M1.2 tertahan = ditolak");
 });
-await t("release/unlock: P1 atau Safety Press tak terbaca = DITOLAK (fail-closed)", () => {
+await t("release/unlock: saat pintu tertutup, P1 atau Safety Press tak terbaca = DITOLAK (fail-closed)", () => {
     const ok = { CLS_FRNT: true, CLS_REAR: true, DOOR_SEAL: true, PROCCES_TEXT: 1 };
     assert.ok(checkDoorCommand("release", base({ ...ok, P1: null })));
     assert.ok(checkDoorCommand("release", base({ ...ok, SAFETY_PRESS: null })));
