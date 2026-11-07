@@ -78,10 +78,10 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
     - **Status**: `[TIDAK TERVERIFIKASI: status penerapan migrasi 006 pada database PostgreSQL produksi]`
     - **Fakta Kode**: Kode backend secara eksplisit menyertakan blok penanganan fallback bila kolom `bottle_count` belum ada di tabel `batch_records` (PostgreSQL error code `42703`). Status eksekusi skrip migrasi ini di server hosting fisik pabrik belum dapat diverifikasi hanya dari kode sumber.
 
-15. **Pemetaan Tombol HMI Fisik untuk Buzzer M10.6 dan Kanal Tekanan P1 (SEL_PRESU)**
-    - **Lokasi Kode**: `src/lib/plcManualCatalog.js:34`, `src/lib/plcParamCatalog.js:87`
-    - **Status**: `[TIDAK TERVERIFIKASI: pemetaan tombol fisik HMI terhadap tag MAN_BUZZER (M10.6) dan interpretasi nilai 0/1 tag SEL_PRESU]`
-    - **Fakta Kode**: Pada katalog kontrol manual terdapat catatan bahwa bit M10.6 belum diverifikasi pemetaannya terhadap tombol fisik mesin, dan pada katalog parameter terdapat catatan bahwa pemetaan nilai 0/1 tag `SEL_PRESU` (AIW12 vs AIW14) ke tampilan layar HMI fisik mesin belum diverifikasi di lapangan.
+15. **Pemetaan Interpretasi Nilai 0/1 Tag Pilihan Tekanan P1 (SEL_PRESU)**
+    - **Lokasi Kode**: `src/lib/plcParamCatalog.js:87`
+    - **Status**: `[TIDAK TERVERIFIKASI: interpretasi nilai 0 vs 1 tag SEL_PRESU pada layar HMI fisik]`
+    - **Fakta Kode**: Tag `SEL_PRESU` (VW310) memilih input kanal analog tekanan P1 (AIW12 vs AIW14). Pemetaan apakah nilai 0 = kanal 1 dan 1 = kanal 2 (atau sebaliknya) pada HMI fisik mesin belum diverifikasi di lapangan. *(Catatan: Pemetaan buzzer M10.6 yang sebelumnya berada di butir ini telah terverifikasi langsung di lapangan menyalakan buzzer fisik mesin pabrik).*
 
 16. **[TERATASI] Penyesuaian Penamaan Tag F0 Resmi (`F0_VAL`)**
     - **Lokasi Kode**: `src/lib/plcParamCatalog.js:50`, `src/lib/plc.js:78`, `src/app/api/batch/start/route.js:390`
@@ -92,6 +92,16 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
     - **Lokasi Kode**: `src/lib/plcParamCatalog.js:120-122`, `src/app/api/plc-params/route.js:51`
     - **Status**: `[TERATASI: register VW322 untuk CAL_L dan VW324 untuk CAL_WATER terkonfirmasi sesuai context/tag_paling_baru.csv]`
     - **Fakta Kode**: Register `CAL_L` (VW322) dan `CAL_WATER` (VW324) telah masuk ke katalog kalibrasi `plcParamCatalog.js` serta pembacaan nilai sensor aktual `LIVE_TAGS` pada API `plc-params`.
+
+18. **Status Eksekusi Migrasi 007 (`migrations/007_hmi_overrides.sql`) di Database Produksi**
+    - **Lokasi Kode**: `src/app/api/auth/me/route.js:23`, `src/app/api/users/[username]/hmi-overrides/route.js:28`
+    - **Status**: `[TIDAK TERVERIFIKASI: status penerapan migrasi 007 pada database PostgreSQL produksi pabrik]`
+    - **Fakta Kode**: Query backend di rute `/api/auth/me` dan `/api/users/[username]/hmi-overrides` membaca kolom `u.hmi_overrides` dari tabel `users`. Bila migrasi `migrations/007_hmi_overrides.sql` belum dieksekusi di server hosting fisik pabrik, kueri database akan melempar error kolom tidak ditemukan (`42703: column u.hmi_overrides does not exist`).
+
+19. **Ketiadaan Pendaftaran Label Resmi untuk Aksi Audit `update_hmi_overrides`**
+    - **Lokasi Kode**: `src/app/api/users/[username]/hmi-overrides/route.js:77`, `src/lib/auditActionLabels.js:15-70`
+    - **Status**: `[TERVERIFIKASI DARI KODE: gap audit label UI]`
+    - **Fakta Kode**: Handler penyimpanan override HMI pengguna mencatat aksi `"update_hmi_overrides"` ke tabel `audit_log`, namun kamus translasi `AUDIT_ACTIONS` pada `src/lib/auditActionLabels.js` belum mendaftarkan aksi ini. Akibatnya, pada tampilan web dan lembar cetak log audit, label aksi menggunakan fallback string mentah `"update_hmi_overrides"` dengan tone badge netral (`idle`).
 
 ---
 
@@ -127,6 +137,7 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
 4. **Berkas Migrasi Skema SQL (Eksekusi Manual Database)**:
    - `migrations/005_drop_legacy_role.sql` & `005_drop_legacy_role_rollback.sql`
    - `migrations/006_add_bottle_count.sql` & `006_add_bottle_count_rollback.sql`
+   - `migrations/007_hmi_overrides.sql` & `007_hmi_overrides_rollback.sql`
    - `migrations/backup_271026.sql`
    - **Keterangan**: Berkas DDL SQL yang dieksekusi langsung oleh database administrator menggunakan klien PostgreSQL (`psql` atau pgAdmin), bukan melalui modul import aplikasi JavaScript.
 
@@ -164,6 +175,10 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
    - Pastikan skrip `migrations/006_add_bottle_count.sql` dijalankan di database PostgreSQL server pabrik sehingga kolom `batch_records.bottle_count` terpasang resmi dan tidak lagi memicu fallback error 42703.
 6. **[TERATASI] Kepastian Penamaan Tag F0 (`F0_VAL`) dan Register `CAL_L` (VW322) & `CAL_WATER` (VW324)**:
    - Dikonfirmasi dari berkas `context/tag_paling_baru.csv` bahwa tag F0 beralamat VW220 adalah `F0_VAL`, `CAL_L` adalah VW322, dan `CAL_WATER` adalah VW324. Seluruh 116 tag pada CSV telah terpetakan penuh ke kode aplikasi.
+7. **Eksekusi Migrasi 007 (`migrations/007_hmi_overrides.sql`) pada Server Produksi**:
+   - Pastikan skrip `migrations/007_hmi_overrides.sql` telah dijalankan di database PostgreSQL mesin pabrik (`ALTER TABLE users ADD COLUMN IF NOT EXISTS hmi_overrides JSONB DEFAULT NULL;`) agar fitur User HMI Overrides tidak mengalami kegagalan query kolom tidak ditemukan.
+8. **Pendaftaran Label Translasi Aksi Audit `update_hmi_overrides`**:
+   - Perlu penambahan entri kamus pada `src/lib/auditActionLabels.js` untuk aksi `update_hmi_overrides` (misal label: "Ubah Izin HMI User", tone: `water`) serta unit test di `auditActionLabels.test.mjs` agar antarmuka audit log web dan printout menampilkan label resmi berbahasa Indonesia dan bukan fallback string mentah.
 
 ---
 
@@ -210,6 +225,12 @@ Poin-poin di bawah ini sebelumnya merupakan temuan kode mati, inkonsistensi, ata
 13. **Integrasi 116 Tag Master PLC ke CSV Resmi (`context/tag_paling_baru.csv`)**
     - **Status**: `RESOLVED` (`context/tag_paling_baru.csv`)
     - **Keterangan**: Berkas CSV master terbaru telah menggantikan `context/tag_terbaru_kepsrvr.csv` (105 tag) menjadi `context/tag_paling_baru.csv` (116 tag). Seluruh 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1`, `MAN_STEAM_2`, `MAN_WTR_DRAIN`, `MAN_COOLING_1`, `MAN_COOLING_2`, `MAN_STEAM_EXHS`, `MAN_WTR_FILL`, `MAN_AIR_CMBR`, `MAN_WTR_PUMP`, `MAN_BUZZER`), offset kalibrasi level air bejana (`CAL_WATER` di VW324), serta standarisasi penamaan `F0_VAL` (VW220) dan register kalibrasi konduktivitas `CAL_L` (VW322) kini 100% terdaftar resmi dan sinkron dengan kode sumber.
+14. **Verifikasi Lapangan Fisik Buzzer M10.6 dan Motor Rantai M11.0/M11.1**
+    - **Status**: `RESOLVED (Konfirmasi Lapangan Pengguna 2026-11-07)`
+    - **Keterangan**: Pengujian operasional langsung oleh tim di mesin fisik autoclave pabrik mengonfirmasi bahwa penulisan bit perintah `MAN_BUZZER` (M10.6) via antarmuka Kontrol Manual web berhasil menyalakan buzzer alarm fisik secara nyata. Selain itu, penekanan hold tombol motor rantai (M11.0 / M11.1) terkonfirmasi membuat rantai fisik mesin berputar secara berkesinambungan dan berhenti otomatis saat tombol dilepas.
+15. **Resolusi Masalah ScreenLock Lolos Saat Refresh Halaman (F5)**
+    - **Status**: `RESOLVED` (`src/components/ScreenLock.js:90-118`, `src/app/login/page.js:192`)
+    - **Keterangan**: Masalah penguncian layar otomatis (7 menit inaktivitas) yang sebelumnya lolos bila halaman web di-refresh (F5) telah dituntaskan dengan menyimpan status penguncian dan waktu inaktivitas di `localStorage` browser (`scada_screen_locked = "true"`). Saat pengguna me-refresh halaman, komponen langsung mengunci layar seketika pada saat mount via hydration-safe timeout. Event `storage` juga menyinkronkan status penguncian/buka kunci secara instan ke seluruh tab browser SCADA yang terbuka.
 
 ---
 
@@ -255,6 +276,9 @@ Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, pe
 
 ## Change Log
 
+- [2026-11-07] RESOLVED: Memindahkan isu pemetaan buzzer M10.6 dan motor rantai M11.0/M11.1 ke Seksi 5 setelah verifikasi fisik di lapangan oleh user membuktikan buzzer berbunyi nyata dan rantai berputar kontinyu.
+- [2026-11-07] RESOLVED: Menambahkan item teratasi 15 pada Seksi 5 terkait penyelesaian bug ScreenLock lolos saat refresh F5 via penyimpanan persisten localStorage dan sinkronisasi multi-tab.
+- [2026-11-07] ADDED: Menambahkan butir 18 (Status eksekusi migrasi 007 di database produksi) dan butir 19 (Gap audit label `update_hmi_overrides` di `auditActionLabels.js`) pada Seksi 1. Menambahkan migrasi 007 pada Seksi 3, serta butir 7 dan 8 pada Seksi 4.
 - [2026-11-07] RESOLVED: Memindahkan isu 11 tag kontrol manual yang belum terdaftar di CSV ke Seksi 5 dan menandai butir 4 Seksi 6 sebagai teratasi setelah seluruh 116 tag PLC resmi dimasukkan ke master CSV context/tag_paling_baru.csv.
 - [2026-11-07] RESOLVED: Memindahkan isu diskrepansi register kalibrasi konduktivitas CAL_L (VW322 vs VW144) dan F0 target (F0_VAL VW220) ke status terselesaikan seiring pembaruan master tag CSV.
 

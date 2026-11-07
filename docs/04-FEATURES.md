@@ -32,19 +32,29 @@ Pengguna memilih akun dari dropdown nama pengguna aktif dan memasukkan password.
 ## 2. Fitur Pengunci Layar Otomatis & Buka Kunci (Screen Lock)
 
 ### Deskripsi Faktual
-Setelah 7 menit tanpa adanya interaksi fisik (pergerakan mouse atau penekanan tombol keyboard), antarmuka menampilkan overlay pengunci layar penuh untuk mengamankan konsol SCADA. Pengguna harus memasukkan kembali kata sandi akunnya untuk membuka kunci tanpa membatalkan proses yang sedang berjalan.
+Setelah 7 menit tanpa adanya interaksi fisik (pergerakan mouse, penekanan keyboard, sentuhan, atau scroll), antarmuka menampilkan overlay pengunci layar penuh untuk mengamankan konsol SCADA. Pengguna harus memasukkan kembali kata sandi akunnya untuk membuka kunci tanpa membatalkan proses yang sedang berjalan.
+
+Status penguncian layar kini bersifat **persisten tahan refresh halaman (F5) dan tersinkronisasi lintas-tab (multi-tab sync)** menggunakan `localStorage` browser. Jika layar dalam kondisi terkunci dan halaman di-refresh, antarmuka langsung kembali terkunci seketika tanpa jeda kebocoran visual data. Jika layar terkunci di salah satu tab, seluruh tab browser SCADA yang terbuka otomatis ikut terkunci seketika.
 
 ### Rantai Alur Kode
 1. **Layout Wrapper**: Komponen `src/components/ScreenLock.js` dipasang di `src/app/(app)/layout.js:49`.
-2. **Deteksi Inaktivitas**: Event listener `mousemove`, `mousedown`, `keydown`, `touchstart`, dan `scroll` memperbarui timestamp `lastActivityRef` (`src/components/ScreenLock.js:29`). Jika waktu inaktivitas melebihi `LOCK_TIMEOUT_MS = 420000` (7 menit), state `locked` diubah menjadi `true` (`src/components/ScreenLock.js:36`).
-3. **Form Buka Kunci**: Pengguna memasukkan password ke input modal dan memicu `handleUnlock` (`src/components/ScreenLock.js:45`).
-4. **API Handler**: Permintaan dikirim ke `POST /api/auth/unlock/route.js`.
-5. **Verifikasi & Audit**: Endpoint mengambil user dari database (`src/app/api/auth/unlock/route.js:30`), mencocokkan password dengan `bcrypt.compare`, dan mencatat aksi `unlock_screen` ke `audit_log` (`src/app/api/auth/unlock/route.js:63`).
-6. **Buka Kunci**: Jika valid, komponen menyetel `locked = false` dan mereset timer inaktivitas (`src/components/ScreenLock.js:58`).
+2. **Penyimpanan Status Persisten**: Tiga kunci di `localStorage` memelihara status penguncian:
+   - `scada_screen_locked`: string `"true"` atau `"false"`.
+   - `scada_lock_user`: username pemilik sesi yang terkunci.
+   - `scada_last_activity`: timestamp milidetik aktivitas interaksi terakhir.
+3. **Inisialisasi & Anti-Refresh (F5)**: Saat komponen mount (`src/components/ScreenLock.js:90-118`), komponen memeriksa apakah `scada_screen_locked === "true"` atau `Date.now() - lastActivity > LOCK_TIMEOUT_MS`. Jika ya, layar langsung disetel terkunci seketika via `setTimeout(() => setIsLocked(true), 0)` (bebas peringatan linter cascading render).
+4. **Deteksi Inaktivitas Real-Time**: Event listener `mousemove`, `mousedown`, `keydown`, `touchstart`, dan `scroll` memperbarui timestamp `lastActivity` di memori dan `localStorage` (`src/components/ScreenLock.js:125-145`). Timer interval setiap 1000 ms memeriksa apakah `Date.now() - lastActivity >= LOCK_TIMEOUT_MS = 420000` (7 menit). Jika terlewati, state `isLocked` menjadi `true` dan `scada_screen_locked` disetel `"true"`.
+5. **Sinkronisasi Multi-Tab**: Memasang listener `window.addEventListener("storage", handleStorageChange)` (`src/components/ScreenLock.js:150-165`). Perubahan kunci `scada_screen_locked` di tab lain langsung mengunci atau membuka kunci tab saat ini.
+6. **Form Buka Kunci**: Pengguna memasukkan kata sandi ke modal pengunci dan memicu `handleUnlock` (`src/components/ScreenLock.js:200-230`).
+7. **API Handler**: Permintaan dikirim ke `POST /api/auth/unlock/route.js`.
+8. **Verifikasi & Audit**: Endpoint mengambil user dari database (`src/app/api/auth/unlock/route.js:30`), mencocokkan password dengan `bcrypt.compare`, dan mencatat aksi `unlock_screen` ke `audit_log` (`src/app/api/auth/unlock/route.js:63`).
+9. **Buka Kunci & Pembersihan Storage**: Jika valid, komponen menyetel `isLocked = false`, mereset `scada_screen_locked` menjadi `"false"`, dan memperbarui `scada_last_activity`. Pembersihan juga dijalankan saat logout via `src/components/Navbar.js:77-81` dan saat login baru di `src/app/login/page.js:192-194`.
 
 ### Bukti Kode
-- `src/components/ScreenLock.js:7-65`
-- `src/app/api/auth/unlock/route.js:8-75`
+- `src/components/ScreenLock.js:1-429`
+- `src/app/api/auth/unlock/route.js:1-75`
+- `src/components/Navbar.js:77-81`
+- `src/app/login/page.js:192-194`
 
 ---
 
@@ -678,17 +688,18 @@ Sumber: `src/lib/plcDoorCatalog.js:125–168`. Nilai null apa pun di state = tol
 ### Jalur Izin Ganda & Keputusan Desain (POST /api/plc-door)
 
 - **Jalur utama**: `manual_control >= edit` — berlaku untuk semua aksi (`seal`, `release`, `drain`, `unlock`, `chain`).
-- **Jalur kedua (berlaku untuk SEMUA aksi)**: `dashboard >= edit` **DAN** `action.batch_control = edit` (hak yang sama dengan START/STOP).
-- **Penolakan**: Bila kedua jalur gagal, server mengembalikan error 403 dari jalur utama (`manual_control` edit).
-- **Akses Baca (GET)**: `GET /api/plc-door` memerlukan `manual_control >= view` (`src/app/api/plc-door/route.js:27`). Menu "Door Operate" di `src/components/Navbar.js:26` dikaitkan dengan resource `manual_control`.
-- **Evaluasi di UI**: Halaman `src/app/(app)/door-operate/page.js:180-181` menghitung `canEdit` dengan dua jalur yang sama.
+- **Jalur kedua (HANYA untuk aksi tertentu)**: `dashboard >= edit` **DAN** `action.batch_control = edit` (hak yang sama dengan START/STOP) **HANYA diizinkan untuk `BATCH_CTRL_ALLOWED_ACTIONS = ["seal", "release", "drain"]`**.
+- **Isolasi K3 `chain` dan `unlock`**: Aksi penarikan rantai motor (`chain`) dan pembukaan kunci interlock pintu (`unlock`) **TIDAK termasuk dalam jalur kedua** karena risiko bahaya fisik yang tinggi (K3 mesin). Keduanya wajib melalui `manual_control: edit` DAN lolos evaluasi override izin per pengguna via `canWriteHmiItem(hmiOverrides, perms, "door_operate", itemKey)`.
+- **Penolakan**: Bila syarat izin gagal, server mengembalikan error 403.
+- **Akses Baca (GET)**: `GET /api/plc-door` memerlukan `manual_control >= view` (`src/app/api/plc-door/route.js:35`). Halaman `src/app/(app)/door-operate/page.js` dibungkus `PermissionGate resource="door_operate" minLevel="view" hmiOverridePage="door_operate"`.
+- **Evaluasi di UI**: Tombol-tombol di `door-operate/page.js` mengevaluasi fungsi pembantu `canSeeAction` (sembunyikan tombol jika override "none") dan `canUseAction` (matikan tombol jika tidak berhak write).
 
 ### Rantai Alur Kode
 
-1. **Halaman UI**: Pengguna mengakses `/door-operate` (`src/app/(app)/door-operate/page.js`) yang dibungkus `PermissionGate resource="manual_control" minLevel="view"`.
-2. **Polling Status**: Halaman memanggil `GET /api/plc-door` setiap 500 ms (baris 106–113). Respons mencakup keadaan pintu, seal, `releaseCmd`, fase, mode manual, status rantai, dan sisa auto-OFF timer.
+1. **Halaman UI**: Pengguna mengakses `/door-operate` (`src/app/(app)/door-operate/page.js`) yang dibungkus `PermissionGate resource="door_operate" minLevel="view" hmiOverridePage="door_operate"`.
+2. **Polling Status**: Halaman memanggil `GET /api/plc-door` setiap 500 ms. Respons mencakup keadaan pintu, seal, `releaseCmd`, fase, mode manual, status rantai, dan sisa auto-OFF timer.
 3. **Aksi Seal/Release**: Pengguna menekan tombol Door Sealing atau Door Release satu klik langsung (tanpa modal/dialog alasan). Tombol Door Release mendukung penonaktifan via tombol "Release: MATIKAN" yang mengirim `{ action: "release", value: false }`.
-4. **API POST**: Permintaan `POST /api/plc-door` (`src/app/api/plc-door/route.js:61`) diterima, melewati guard izin ganda, mengambil advisory locks `withPlcLocks`, memeriksa `checkMachineIdle(IDLE_PHASES_DOOR)`, membaca keadaan via `readDoorState()`, dan mengevaluasi `checkDoorCommand`.
+4. **API POST**: Permintaan `POST /api/plc-door` (`src/app/api/plc-door/route.js:52`) diterima, melewati guard izin (jalur utama atau jalur kedua untuk aksi yang diizinkan), memvalidasi HMI override untuk `chain` dan `unlock`, mengambil advisory locks `withPlcLocks`, memeriksa `checkMachineIdle(IDLE_PHASES_DOOR)`, membaca keadaan via `readDoorState()`, dan mengevaluasi `checkDoorCommand`.
 5. **Audit Fail-Closed**: Sebelum menulis PLC untuk perintah ON, `insertAudit` dicatat ke database — kegagalan DB membatalkan perintah.
 6. **Penulisan PLC**: Menggunakan `BOOL_VERIFY` (800ms / 100ms) untuk respons cepat bit boolean.
 7. **Deadman Rantai**: Tombol Forward/Backward menggunakan `HoldButton` dengan pointer capture. Loop async mengirim `{ action: "chain", mode: "run", dir }` setiap interval 100 ms secara fire-and-forget. Server memanggil `safety.chainRun()` yang memperbarui timer deadman 1000 ms; bila tombol dilepas atau koneksi putus >1000 ms, server menulis false otomatis ke kedua arah (`M11.0` dan `M11.1`).
@@ -726,16 +737,16 @@ Setiap perintah pintu dicatat dengan teks deskriptif spesifik mencantumkan aktor
 ### Bukti Kode
 - `src/lib/plcDoorCatalog.js:1-168`
 - `src/lib/plcDeadman.js:1-248`
-- `src/app/api/plc-door/route.js:1-263`
-- `src/app/(app)/door-operate/page.js:1-364`
+- `src/app/api/plc-door/route.js:1-285`
+- `src/app/(app)/door-operate/page.js:1-398`
 - `src/components/Navbar.js:26` (menu Door Operate)
 - `server.js:101-111` (reset rantai saat startup)
 
 ---
 
-## 27. Matriks Hak Akses & Perizinan Seluruh Endpoint API (Audit 2026-11-02)
+## 27. Matriks Hak Akses & Perizinan Seluruh Endpoint API (Audit 2026-11-07)
 
-Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status cakupan pengujian otomatis pada skrip harness `fase1/tests/matrix.mjs` untuk seluruh 40 berkas route handler backend (`src/app/api/**/route.js`):
+Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status cakupan pengujian otomatis pada skrip harness `fase1/tests/matrix.mjs` untuk seluruh 41 berkas route handler backend (`src/app/api/**/route.js`):
 
 | Endpoint Route | Metode | Guard / Aturan Izin yang Diminta | Status Publik / Sensitif | Cakupan `matrix.mjs` |
 |:---|:---:|:---|:---|:---:|
@@ -777,6 +788,8 @@ Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status ca
 | `/api/users/[username]` | DELETE | `requirePermission`: `users >= edit` | Hapus-Lunak Pengguna | ✅ Tercakup |
 | `/api/users/[username]/delete` | POST | `requirePermission`: `users >= edit` | Hapus-Lunak Pengguna | ✅ Tercakup |
 | `/api/users/[username]/reset-password` | POST | `requirePermission`: `users >= edit` | Reset Sandi | ✅ Tercakup |
+| `/api/users/[username]/hmi-overrides` | GET | `requirePermission`: `users >= view` | Izin Khusus HMI User | ❌ Belum tercakup |
+| `/api/users/[username]/hmi-overrides` | PUT | `requirePermission`: `users >= edit` | Izin Khusus HMI User | ❌ Belum tercakup |
 | `/api/roles` | GET | `requirePermission`: `roles >= view` | Role Management | ✅ Tercakup |
 | `/api/roles` | POST | `requirePermission`: `roles >= edit` | Role Management | ✅ Tercakup |
 | `/api/roles/[id]` | GET | `requirePermission`: `roles >= view` | Role Management | ✅ Tercakup |
@@ -793,7 +806,7 @@ Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status ca
 | `/api/plc-params` | GET | Dinamis: `meta.resource >= view` (`machine_params` atau `calibration`) | HMI Parameter Mesin | ❌ Belum tercakup |
 | `/api/plc-params` | PUT | Dinamis: `meta.resource >= edit` + `writeAction` + `restrictedActions` | HMI Parameter Mesin | ❌ Belum tercakup |
 | `/api/plc-door` | GET | `requirePermission`: `manual_control >= view` | HMI Door Operate | ❌ Belum tercakup |
-| `/api/plc-door` | POST | **Jalur Ganda (Semua Aksi)**:<br>1. `manual_control >= edit`<br>2. `dashboard >= edit` ∧ `action.batch_control = edit` | **KONTROL KRITIS** | ❌ Belum tercakup |
+| `/api/plc-door` | POST | 1. `manual_control >= edit` (semua aksi)<br>2. Jalur kedua (`dashboard >= edit` ∧ `action.batch_control = edit`) **hanya untuk `seal`, `release`, `drain`**.<br>*Khusus `chain` & `unlock`*: wajib lolos evaluasi override `canWriteHmiItem`. | **KONTROL KRITIS** | ❌ Belum tercakup |
 | `/api/backup` | GET | `requirePermission`: `backup >= view` | Layanan Backup | ❌ Belum tercakup |
 | `/api/backup` | PUT | `requirePermission`: `backup >= edit` | Konfigurasi Backup | ❌ Belum tercakup |
 | `/api/backup` | POST | `requirePermission`: `backup >= edit` | Eksekusi Backup | ❌ Belum tercakup |
@@ -803,9 +816,9 @@ Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status ca
 
 ---
 
-## 28. Inventarisasi Aksi Audit Log & Pemetaan Label UI (Audit 2026-11-05)
+## 28. Inventarisasi Aksi Audit Log & Pemetaan Label UI (Audit 2026-11-07)
 
-Terdapat **55 nama aksi unik** yang dicatat ke tabel database `audit_log` di seluruh aplikasi melalui modul `insertAudit`/`tryAudit` dan proses latar belakang. Sejak implementasi modul `src/lib/auditActionLabels.js`, seluruh aksi audit memiliki label tampilan resmi berbahasa Indonesia dan pewarnaan badge yang terstandarisasi untuk antarmuka web (`src/app/(app)/audit-log/page.js:203`) dan lembar cetak (`src/app/print/audit-log/page.js:154`), sedangkan nilai string kode teknis mentah tetap dipertahankan pada level database PostgreSQL, rute API query, dan format ekspor data mentah:
+Terdapat **56 nama aksi unik** yang dicatat ke tabel database `audit_log` di seluruh aplikasi melalui modul `insertAudit`/`tryAudit` dan proses latar belakang. Sejak implementasi modul `src/lib/auditActionLabels.js`, 55 aksi audit memiliki label tampilan resmi berbahasa Indonesia dan pewarnaan badge yang terstandarisasi untuk antarmuka web (`src/app/(app)/audit-log/page.js:203`) dan lembar cetak (`src/app/print/audit-log/page.js:154`), sementara 1 aksi baru (`update_hmi_overrides`) saat ini menggunakan fallback label string mentah dengan tone abu-abu netral (`idle`):
 
 | No | Nama Aksi Audit (`action`) | Entity Type | Berkas & Baris Pemanggil | Label Tampilan UI (Bahasa Indonesia) | Tone Badge UI |
 |:---:|:---|:---|:---|:---|:---:|
@@ -864,6 +877,7 @@ Terdapat **55 nama aksi unik** yang dicatat ke tabel database `audit_log` di sel
 | 53 | `backup_failed` | `backup` | `src/lib/backupService.js:260` | Backup gagal | `stop` (merah) |
 | 54 | `backup_settings_update` | `backup` | `src/lib/backupService.js:90` | Ubah pengaturan backup | `water` (biru) |
 | 55 | `backup_downloaded` | `backup` | `src/lib/backupService.js:277` | Unduh backup | `steam` (oranye) |
+| 56 | `update_hmi_overrides` | `user` | `src/app/api/users/[username]/hmi-overrides/route.js:77` | `update_hmi_overrides` *(belum terdaftar di `auditActionLabels.js`)* | `idle` (abu-abu) |
 
 ---
 
@@ -939,7 +953,81 @@ Seluruh proses pembuatan arsip dilakukan dalam transaksi database tunggal `REPEA
 
 ---
 
+## 31. Fitur User HMI Permission Override (Izin Khusus Per Pengguna)
+
+### Deskripsi Faktual
+Menyediakan mekanisme granular penyesuaian hak akses level tombol dan field input antarmuka HMI per pengguna individual tanpa perlu merombak definisi Role RBAC global. Fitur ini dirancang khusus untuk mengakomodasi kebutuhan operasional pabrik yang fleksibel, seperti penugasan **Foreman** (akun ber-role Operator biasa yang secara RBAC tidak memiliki akses ke halaman kalibrasi, namun diberi izin khusus untuk melihat atau mengkalibrasi sensor tertentu), atau sebaliknya membatasi operator tertentu dari tombol berisiko tinggi (seperti tombol motor rantai atau pelepasan seal) tanpa mempengaruhi operator lain dalam role yang sama.
+
+Konfigurasi disimpan dalam kolom `users.hmi_overrides` bertipe JSONB di database PostgreSQL. Jika bernilai `NULL`, pengguna beroperasi 100% mengikuti aturan RBAC dasarnya.
+
+### Mode Operasi & Tingkat Izin Item
+Setiap halaman HMI yang didukung dapat diatur ke dalam salah satu dari 2 mode per pengguna:
+1. **Mode Default (`"default"`)**: Halaman mengikuti perizinan RBAC role pengguna secara penuh (100%). Konfigurasi item diabaikan.
+2. **Mode Kustom (`"custom"`)**: Izin item dievaluasi berdasarkan entri `items` kustom. Item yang tidak didefinisikan secara khusus pada objek `items` akan otomatis jatuh (*fallback*) ke tingkat izin RBAC bawaan role.
+
+Setiap item/tombol dapat diatur ke salah satu dari 3 tingkat izin:
+- `"none"`: Item disembunyikan dari antarmuka atau dinonaktifkan (lebih restriktif dari RBAC).
+- `"read"`: Item dapat dilihat namun kontrol pengubahan/eksekusi dimatikan (*read-only*).
+- `"write"`: Item dapat dilihat dan diubah/dieksekusi secara penuh (setara `"edit"` pada RBAC).
+
+### Cakupan Halaman & Inventarisasi Item (`OVERRIDE_PAGES` & `OVERRIDE_ITEMS`)
+Fitur ini mencakup **4 halaman HMI** dengan total **48 item/tombol granular**:
+
+| Halaman HMI | Rute Web | Resource RBAC | Jumlah Item | Rincian Item / Tombol yang Dapat Di-override |
+|:---|:---|:---|:---:|:---|
+| **Kalibrasi** (`calibration`) | `/calibration` | `calibration` | 13 item | **Sensor Suhu (9)**: `th` (Boiler), `t1` s.d. `t6`, `tm` (Rata-rata), `tl` (Referensi).<br>**Sensor Tekanan (2)**: `p1`, `p2`.<br>**Sensor Lain (2)**: `l` (Konduktivitas), `water` (Level Air). |
+| **Parameter Mesin** (`machine_params`) | `/machine-params` | `machine_params` | 20 item | **Setting 1 (5)**: `sterTemp`, `ctrlTemp`, `tempSpace`, `sterTime`, `foValue`.<br>**Setting 2 (5)**: `cool1`, `cool2`, `regPress`, `overTemp`, `drainTime`.<br>**Pressure Coef (10)**: `exhaustTemp`, `alarmPress`, `safetyPress`, `selPress`, `a1`, `b1`, `a2`, `b2`, `heatCoef`, `sterCoef`, `coolCoef`. |
+| **Kontrol Manual** (`manual_control`) | `/manual` | `manual_control` | 10 item | **Katup & Aktuator**: `steam1`, `steam2`, `cooling1`, `cooling2`, `airChamber`, `drain`, `exhaust`, `fill`, `pump`, `buzzer`. |
+| **Operasi Pintu** (`door_operate`) | `/door-operate` | `door_operate` | 5 item | **Aksi Pintu**: `seal` (Door Sealing), `release` (Door Release), `drain` (Water Drain), `unlock` (Door Unlock), `chain` (Hold Rantai Forward/Backward). |
+
+### Aturan Resolusi Izin (`resolveHmiPermission`)
+Fungsi universal `resolveHmiPermission(hmiOverrides, rolePerms, page, itemKey)` mengevaluasi hak akses efektif:
+1. Jika override halaman tidak ada atau bernilai `"mode": "default"` → gunakan izin RBAC role (`rolePerms[page]`).
+2. Jika `"mode": "custom"` dan `itemKey` terdaftar dalam `items` → gunakan level override (`"none"` → `"hidden"`, `"read"` → `"read_only"`, `"write"` → `"read_write"`).
+3. Jika `"mode": "custom"` tetapi `itemKey` tidak terdaftar dalam `items` → fallback ke izin RBAC role.
+4. **Promosi Akses Halaman (Foreman Support)**: Fungsi `hasHmiOverrideAccess(hmiOverrides, page)` memeriksa apakah user dalam mode custom memiliki setidaknya satu item berizin `"read"` atau `"write"`. Jika ya, komponen `PermissionGate` pada level halaman otomatis meloloskan akses masuk antarmuka kendati role pengguna memiliki izin `"none"` untuk resource tersebut.
+
+### Pengamanan Sisi Server (Backend Guards)
+1. **API Door Operate (`src/app/api/plc-door/route.js`)**:
+   - Aksi berisiko tinggi `chain` dan `unlock` diputus dari jalur kedua (`action.batch_control`) dan wajib melalui verifikasi `canWriteHmiItem(session.hmiOverrides, session.permissions, "door_operate", action)`. Jika override pengguna melarang item ini, server menolak permintaan dengan kode HTTP 403 (*Forbidden*).
+2. **API Parameter & Kalibrasi (`src/app/api/plc-params/route.js`)**:
+   - Validasi izin tulis mencakup proteksi field keselamatan dan pengecekan otorisasi level halaman.
+3. **API HMI Overrides (`src/app/api/users/[username]/hmi-overrides/route.js`)**:
+   - `GET`: Memeriksa izin `users >= view`. Mengembalikan payload `{ ok: true, hmiOverrides }`.
+   - `PUT`: Memeriksa izin `users >= edit`. Memvalidasi skema payload via `validateHmiOverrides(data)` (memeriksa nama halaman, mode, keberadaan itemKey, dan validitas level). Mengupdate kolom `users.hmi_overrides` dan mencatat aktivitas ke tabel `audit_log` dengan aksi `update_hmi_overrides`. Mengirim `hmiOverrides: null` akan mereset seluruh izin user ke default RBAC.
+
+### Antarmuka Pengelolaan Admin (`src/app/(app)/users/page.js`)
+Pada halaman Manajemen Pengguna (`/users`), tombol "Izin HMI" di samping tombol edit pengguna membuka drawer/modal interaktif `HmiOverridePanel`:
+- Navigasi tab 4 halaman HMI (Kalibrasi, Parameter Mesin, Kontrol Manual, Door Operate).
+- Pilihan radio mode: "Ikuti RBAC (Default)" vs "Atur Khusus (Kustom)".
+- Saat memilih "Atur Khusus", daftar item ditampilkan dalam grup terstruktur dengan dropdown pilihan hak akses per item: Default (Ikuti RBAC), Sembunyikan (None), Hanya Baca (Read), atau Baca & Ubah (Write).
+- Tombol simpan memanggil `PUT /api/users/[username]/hmi-overrides` secara asinkron dengan indikator toast notifikasi.
+
+### Bukti Kode
+- `migrations/007_hmi_overrides.sql:1-34`
+- `migrations/007_hmi_overrides_rollback.sql:1-9`
+- `src/lib/hmiOverrideCatalog.js:1-350`
+- `src/hooks/useHmiPermission.js:1-108`
+- `src/app/api/users/[username]/hmi-overrides/route.js:1-87`
+- `src/app/(app)/users/page.js:1-890`
+- `src/components/PermissionGate.js:1-87`
+- `src/components/PlcParamEditor.js:1-492`
+- `src/app/(app)/calibration/page.js:1-16`
+- `src/app/(app)/machine-params/page.js:1-16`
+- `src/app/(app)/manual/page.js:1-283`
+- `src/app/(app)/door-operate/page.js:1-398`
+- `src/app/api/auth/me/route.js:1-69`
+- `src/app/api/plc-door/route.js:1-285`
+
+---
+
 ## Change Log
+
+- [2026-11-07] ADDED: Menambahkan dokumentasi Fitur 31 (Fitur User HMI Permission Override / Izin Khusus Per Pengguna) mencakup konsep mode default vs kustom, 48 item pada 4 halaman HMI, resolusi izin, promosi akses foreman, backend guard K3, API `hmi-overrides`, dan antarmuka `HmiOverridePanel`.
+- [2026-11-07] MODIFIED: Memperbarui Fitur 2 (Pengunci Layar Otomatis) dengan mekanisme persistensi anti-refresh F5 berbasis localStorage dan sinkronisasi status penguncian multi-tab via event storage.
+- [2026-11-07] MODIFIED: Memperbarui Fitur 26 (Door Operate) dengan pembatasan jalur izin kedua hanya untuk `["seal", "release", "drain"]` serta pengetatan guard keselamatan K3 untuk aksi `chain` dan `unlock` via override user.
+- [2026-11-07] MODIFIED: Memperbarui Seksi 27 (Matriks API) dengan 2 endpoint baru `/api/users/[username]/hmi-overrides` (GET & PUT) dan pembaruan aturan guard `/api/plc-door` POST.
+- [2026-11-07] MODIFIED: Memperbarui Seksi 28 (Inventarisasi Audit Log) dengan penambahan aksi ke-56 `update_hmi_overrides` dan mencatat ketiadaan label translasi resmi di `auditActionLabels.js`.
 
 - [2026-11-07] MODIFIED: Memperbarui Seksi 29 (Komparasi Tag PLC) dengan master CSV baru `context/tag_paling_baru.csv` (116 tag, 100% terpetakan), mencatat resolusi integrasi 11 tag manual dan `CAL_WATER`, serta resolusi penamaan tag F0 `F0_VAL` dan register `CAL_L` VW322.
 - [2026-11-07] MODIFIED: Memperbarui Fitur 3 (tampilan F0 target dan tombol cerdas toggle Door Release / MATIKAN), Fitur 4 (penulisan setpoint tag `F0_VAL` dan verifikasi baca-balik), Fitur 20 (`F0_VAL` VW220 `recipeDriven: true`), Fitur 21 (tag kalibrasi `CAL_WATER` VW324 dan live sensor L/WATER), Fitur 23 (polling 500ms, verifikasi cepat `BOOL_VERIFY`, GET non-blocking paralel), dan Fitur 26 (polling 500ms, loop rantai 100ms fire-and-forget, pelonggaran syarat Door Release).

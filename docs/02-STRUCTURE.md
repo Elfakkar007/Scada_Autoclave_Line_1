@@ -2,6 +2,7 @@
 
 ## Change Log (terbaru di atas)
 
+- [2026-11-07] ADDED: Menambahkan berkas migrasi `007_hmi_overrides.sql` & `007_hmi_overrides_rollback.sql` ke `migrations/`, endpoint `hmi-overrides/` ke `src/app/api/users/[username]/`, folder `src/hooks/` (`useHmiPermission.js`), serta pustaka `hmiOverrideCatalog.js` ke `src/lib/` untuk subsistem User HMI Overrides.
 - [2026-11-07] MOVED: Mengganti referensi berkas CSV tag master di folder `context/` dari `tag_terbaru_kepsrvr.csv` (105 tag) menjadi `tag_paling_baru.csv` (116 tag).
 - [2026-11-07] REMOVED: Menghapus berkas `context/ROADMAP (12).md` dari pohon direktori aktif setelah dihapus dari repositori pada commit `74e7b89`.
 - [2026-11-05] ADDED: Menambahkan rute `backup/` ke `src/app/(app)/`, endpoint `backup/` dan `backup/download/` ke `src/app/api/`, serta modul layanan backup (`backupArchive`, `backupSchedule`, `backupService`, `backup.test.mjs`, `backup_check.mjs`) ke `src/lib/` dan `fase1/tests/`.
@@ -16,7 +17,7 @@ scada-sterilizer/
 ├── docs/                                # Dokumentasi teknis sistem, inventarisasi file, peta relasi kode, dan spesifikasi fitur.
 ├── fase1/                               # Skrip dan berkas verifikasi pengujian modul Role Management (Fase 1).
 │   └── tests/                           # Skrip uji otomatis matriks perizinan role, mock interlock pintu, dan verifikasi backup database.
-├── migrations/                          # Berkas migrasi skema database PostgreSQL (termasuk 006 bottle_count) dan dump cadangan.
+├── migrations/                          # Berkas migrasi skema database PostgreSQL (termasuk 006 bottle_count, 007 hmi_overrides) dan dump cadangan.
 ├── public/                              # Aset statis web publik, logo perusahaan format SVG/PNG, dan berkas audio notifikasi.
 │   └── sounds/                          # Berkas audio WAV pemutar peringatan suara saat alarm aktif.
 ├── scripts/                             # Script utilitas baris perintah (CLI) untuk pembuatan hash password bcrypt di luar web.
@@ -26,18 +27,18 @@ scada-sterilizer/
     │   │   ├── alarm/                   # Halaman pemantauan tabel riwayat alarm mesin dengan filter pencarian dan rentang tanggal.
     │   │   ├── audit-log/               # Halaman inspeksi jejak audit aktivitas pengguna dan perubahan konfigurasi sistem.
     │   │   ├── backup/                  # Halaman administrasi backup data manual, konfigurasi backup terjadwal, dan riwayat unduhan arsip.
-    │   │   ├── calibration/             # Halaman kalibrasi offset sensor suhu, tekanan, dan konduktivitas pada PLC.
+    │   │   ├── calibration/             # Halaman kalibrasi offset sensor suhu, tekanan, dan konduktivitas pada PLC (mendukung HMI override).
     │   │   ├── data-report/             # Halaman daftar riwayat batch proses sterilisasi autoclave dengan fitur pencarian dan filter status.
     │   │   │   └── [batchNo]/           # Halaman laporan rinci satu nomor batch yang menampilkan metadata, kalkulasi F0, dan tabel trend.
-    │   │   ├── door-operate/            # Halaman pengendalian pintu autoclave (Door Sealing, Door Release, drain, bypass, rantai maju/mundur).
+    │   │   ├── door-operate/            # Halaman pengendalian pintu autoclave (Door Sealing, Door Release, drain, bypass, rantai maju/mundur dengan HMI override).
     │   │   ├── formula/                 # Halaman pengelolaan parameter resep sterilisasi dengan validasi rentang fisik dan proteksi saat batch berjalan.
-    │   │   ├── machine-params/          # Halaman pengelolaan parameter mesin PLC (Setting 1 & 2 dan Pressure Coefficient).
-    │   │   ├── manual/                  # Halaman kontrol manual aktuator katup, pompa, dan buzzer berbasis subrutin PLC SBR9.
+    │   │   ├── machine-params/          # Halaman pengelolaan parameter mesin PLC (Setting 1 & 2 dan Pressure Coefficient dengan HMI override).
+    │   │   ├── manual/                  # Halaman kontrol manual aktuator katup, pompa, dan buzzer berbasis subrutin PLC SBR9 (dengan HMI override).
     │   │   ├── plc-clock/               # Halaman pemantauan jam RTC PLC Siemens S7-200 dan sinkronisasi dengan waktu PC.
     │   │   ├── products/                # Halaman pengelolaan master nama produk dan spesifikasi kemasan dengan tab ganda.
     │   │   ├── roles/                   # Halaman administrasi peran pengguna (Role Management), penugasan matriks izin resource, dan kloning role.
     │   │   ├── trend/                   # Halaman visualisasi kurva grafik suhu 9 sensor dan tekanan per nomor batch.
-    │   │   └── users/                   # Halaman administrasi akun pengguna (operator/admin), penugasan role, reset password, dan aktivasi/hapus-lunak.
+    │   │   └── users/                   # Halaman administrasi akun pengguna (operator/admin), penugasan role, reset password, aktivasi/hapus-lunak, dan konfigurasi Izin Khusus HMI.
     │   ├── api/                         # Kumpulan endpoint backend Next.js Route Handler untuk operasi database dan integrasi ke PLC.
     │   │   ├── alarms/                  # Endpoint pengambilan data log alarm mesin dengan pagination dan filter parameter.
     │   │   │   ├── active/              # Endpoint pemantauan alarm aktif yang belum pulih beserta status heartbeat monitor.
@@ -51,7 +52,7 @@ scada-sterilizer/
     │   │   ├── auth/                    # Endpoint penanganan autentikasi sesi pengguna, login, logout, dan status verifikasi akun.
     │   │   │   ├── login/               # Endpoint verifikasi kredensial login dengan batas percobaan gagal 5 kali per 15 menit.
     │   │   │   ├── logout/              # Endpoint pencatatan audit log penutupan sesi dan penghapusan cookie session_token.
-    │   │   │   ├── me/                  # Endpoint verifikasi payload JWT sesi dan pengembalian detail akun, role, serta peta izin lengkap dari database.
+    │   │   │   ├── me/                  # Endpoint verifikasi payload JWT sesi dan pengembalian detail akun, role, izin lengkap, serta konfigurasi hmiOverrides dari database.
     │   │   │   ├── unlock/              # Endpoint autentikasi ulang kata sandi pengguna untuk membuka pengunci layar screen lock.
     │   │   │   └── users/               # Endpoint publik penyedia daftar username dan nama lengkap operator untuk form login.
     │   │   ├── backup/                  # Endpoint pembacaan status, konfigurasi jadwal, dan pembuatan arsip backup manual.
@@ -67,7 +68,7 @@ scada-sterilizer/
     │   │   ├── plc/                     # Endpoint interaksi dan manipulasi langsung tag komunikasi pengontrol PLC.
     │   │   │   └── reset/               # Endpoint pengiriman pulsa STOP untuk mereset mesin dari fase Selesai (VW98=6) kembali ke Siap.
     │   │   ├── plc-clock/               # Endpoint pembacaan selisih waktu dan pengaturan jam RTC PLC Siemens S7-200 via BCD dan pulsa M31.0.
-    │   │   ├── plc-door/                # Endpoint pemantauan status pintu dan eksekusi kendali seal, release, drain, unlock, serta deadman rantai.
+    │   │   ├── plc-door/                # Endpoint pemantauan status pintu dan eksekusi kendali seal, release, drain, unlock, serta deadman rantai (dengan guard K3 & evaluasi override).
     │   │   ├── plc-manual/              # Endpoint pemantauan status dan eksekusi kendali manual aktuator katup/pompa PLC Siemens S7-200.
     │   │   ├── plc-params/              # Endpoint pembacaan dan pembaruan parameter mesin serta offset kalibrasi PLC dengan verifikasi baca-balik.
     │   │   ├── product-specs/           # Endpoint daftar dan penambahan entitas master spesifikasi kemasan atau larutan produk.
@@ -81,6 +82,7 @@ scada-sterilizer/
     │   │   └── users/                   # Endpoint manajemen akun pengguna untuk menampilkan daftar user dan pendaftaran akun baru.
     │   │       └── [username]/          # Endpoint pengubahan profil (nama lengkap, role_id) dan penonaktifan akun pengguna.
     │   │           ├── delete/          # Endpoint eksekusi hapus-lunak akun user (deleted_at, is_active=false, role_id=NULL, username terkunci).
+    │   │           ├── hmi-overrides/   # Endpoint pembacaan (GET) dan pembaruan (PUT) konfigurasi izin khusus HMI per pengguna.
     │   │           └── reset-password/  # Endpoint reset kata sandi akun pengguna oleh administrator.
     │   ├── login/                       # Halaman antarmuka otentikasi login pengguna dengan dropdown pilihan akun.
     │   └── print/                       # Kumpulan halaman dokumen laporan yang ditata khusus untuk pencetakan kertas standar pabrik.
@@ -92,8 +94,9 @@ scada-sterilizer/
     │       │       └── curve/           # Format cetak khusus grafik kurva suhu 9 sensor dan tekanan satu halaman penuh (A4 landscape).
     │       └── trend/                   # Modul cetak kurva mandiri grafik suhu & tekanan per nomor batch.
     │           └── [batchNo]/           # Format cetak grafik kurva suhu 9 sensor dan tekanan satu halaman penuh (A4 landscape) dengan SignOffBlock.
-    ├── components/                      # Komponen antarmuka modular (dashboard, diagram ATV, modal START, combobox pencarian, badge deleted user, PermissionGate, blok tanda tangan, dan editor parameter PLC).
-    └── lib/                             # Modul logika bisnis, driver database, komunikasi IoT gateway, pemantau alarm, katalog izin, akses PLC on-demand, katalog parameter, kontrol manual, konverter RTC, formula F0, pengaman pintu, kamus label audit, dan layanan arsip/penjadwalan backup data.
+    ├── components/                      # Komponen antarmuka modular (dashboard, diagram ATV, modal START, combobox pencarian, badge deleted user, PermissionGate, blok tanda tangan, editor parameter PLC, dan ScreenLock).
+    ├── hooks/                           # Kumpulan React hooks kustom aplikasi (evaluasi izin HMI per item via useHmiPermission).
+    └── lib/                             # Modul logika bisnis, driver database, komunikasi IoT gateway, pemantau alarm, katalog izin, akses PLC on-demand, katalog parameter, kontrol manual, konverter RTC, formula F0, pengaman pintu, kamus label audit, katalog & validator HMI override, dan layanan arsip/penjadwalan backup data.
         └── __fixtures__/                # Berkas data referensi uji cetak dan catatan proses nyata batch tanggal 03-10-2026.
 ```
 

@@ -1,6 +1,6 @@
 # Referensi File Teknis (File Reference)
 
-Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dalam proyek `scada-sterilizer` (total 150 file, 143 file di luar folder `docs/`, 7 file dokumentasi di `docs/`). Seluruh deskripsi, nama fungsi, export, import, dan nomor baris diverifikasi langsung dari kode sumber tanpa praduga atau spekulasi.
+Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dalam proyek `scada-sterilizer` (total 155 file, 148 file di luar folder `docs/`, 7 file dokumentasi di `docs/`). Seluruh deskripsi, nama fungsi, export, import, dan nomor baris diverifikasi langsung dari kode sumber tanpa praduga atau spekulasi.
 
 ---
 
@@ -233,13 +233,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/auth.js`
 - **Tipe**: Util / Autentikasi & Otorisasi (Server-Only)
-- **Fungsi**: Menyediakan pembuatan token sesi JWT berdurasi 8 jam, verifikasi sesi dari cookies, opsi keamanan cookie, query data izin pengguna real-time dari database (`loadUserAccess`), serta guard otorisasi `requireAuth`, `requirePermission`, dan `requireAnyPermission`. Guard legacy `requireAdmin` telah dihapus.
+- **Fungsi**: Menyediakan pembuatan token sesi JWT berdurasi 8 jam, verifikasi sesi dari cookies, opsi keamanan cookie, query data izin pengguna dan konfigurasi `hmi_overrides` real-time dari database (`loadUserAccess`), serta guard otorisasi `requireAuth`, `requirePermission`, dan `requireAnyPermission`. Guard legacy `requireAdmin` telah dihapus.
 - **Export utama**: `createSessionToken`, `sessionCookieOptions`, `verifySessionToken`, `getSessionFromCookies`, `requireAuth`, `requirePermission`, `requireAnyPermission` (fungsi)
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/permissionCatalog.js`
 - **Dipakai oleh**: Seluruh route handler API berotentikasi di `src/app/api/*`
 - **Efek samping / dependensi eksternal**: Membaca variabel lingkungan `JWT_SECRET` (`src/lib/auth.js:19`), `COOKIE_SECURE` (`src/lib/auth.js:41`), membaca/memodifikasi cookies HTTP, dan menjalankan query ke tabel `users`, `roles`, serta `role_permissions`.
-- **Bukti**: `src/lib/auth.js:1-195`
-- **Catatan**: Perubahan role/izin pengguna di database langsung berlaku pada request berikutnya tanpa menunggu masa berlaku JWT berakhir.
+- **Bukti**: `src/lib/auth.js:1-197`
+- **Catatan**: Perubahan role/izin serta `hmi_overrides` pengguna di database langsung berlaku pada request berikutnya tanpa menunggu masa berlaku JWT berakhir. Objek sesi menyertakan field `hmiOverrides` (`src/lib/auth.js:102, 148`).
 
 ---
 
@@ -533,25 +533,25 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/components/ScreenLock.js`
 - **Tipe**: Client Component / Security Overlay
-- **Fungsi**: Mengunci antarmuka otomatis setelah 7 menit tanpa interaksi pengguna (inaktivitas mouse/keyboard) dan meminta verifikasi password untuk membuka kembali.
+- **Fungsi**: Mengunci antarmuka otomatis setelah 7 menit tanpa interaksi pengguna (inaktivitas mouse/keyboard) dan meminta verifikasi password untuk membuka kembali. Status penguncian dan waktu aktivitas persisten di `localStorage` sehingga kebal terhadap penyegaran halaman (F5) dan tersinkronisasi lintas-tab secara real-time via event `storage`.
 - **Export utama**: `default` ScreenLock (fungsi komponen React)
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: `src/app/(app)/layout.js`
-- **Efek samping / dependensi eksternal**: Menambahkan event listener global (`mousemove`, `keydown`), memanggil API `POST /api/auth/unlock` (`src/components/ScreenLock.js:150`), dan mengalihkan ke `/login` jika sesi kedaluwarsa.
-- **Bukti**: `src/components/ScreenLock.js:1-180`
-- **Catatan**: Waktu timeout ditentukan oleh konstanta `LOCK_TIMEOUT_MS = 7 * 60 * 1000` (`src/components/ScreenLock.js:7`).
+- **Efek samping / dependensi eksternal**: Menambahkan event listener global (`pointerdown`, `keydown`, `storage`), membaca dan menulis kunci `scada_screen_locked`, `scada_last_activity`, `scada_lock_user` pada `localStorage`, memanggil API `POST /api/auth/unlock` (`src/components/ScreenLock.js:235`), dan mengalihkan ke `/login` jika sesi kedaluwarsa.
+- **Bukti**: `src/components/ScreenLock.js:1-429`
+- **Catatan**: Waktu timeout ditentukan oleh konstanta `LOCK_TIMEOUT_MS = 7 * 60 * 1000` (`src/components/ScreenLock.js:7`). Kunci `scada_screen_locked` dibersihkan saat login baru (`src/app/login/page.js:192`) dan saat logout (`src/components/Navbar.js:90`, `src/components/ScreenLock.js:275`).
 
 ---
 
 ### `src/components/Navbar.js`
 - **Tipe**: Client Component / Navigasi
-- **Fungsi**: Merender bar navigasi atas aplikasi, indikator status online/offline PLC, jam digital, menu utama (Dashboard, Trend, Data Report, Alarm, Formula, Master Produk), menu mesin HMI (Parameter Mesin, Kalibrasi, Jam PLC, Kontrol Manual, **Door Operate**), menu administrasi (Audit Log, Kelola User, Role Management, **Backup**), identitas pengguna aktif, dan tombol logout.
+- **Fungsi**: Merender bar navigasi atas aplikasi, logo Satoria Pharma, indikator menu utama, menu mesin HMI (Parameter Mesin, Kalibrasi, Jam PLC, Kontrol Manual, **Door Operate**), menu administrasi (Audit Log, Kelola User, Role Management, **Backup**), identitas pengguna aktif, dan tombol logout. Menyaring visibilitas menu berdasarkan izin role RBAC serta promosi visibilitas otomatis dari konfigurasi `hmiOverrides` pengguna.
 - **Export utama**: `default` Navbar (fungsi komponen React)
-- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`)
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/hmiOverrideCatalog.js` (`hasHmiOverrideAccess`)
 - **Dipakai oleh**: `src/app/(app)/layout.js`
-- **Efek samping / dependensi eksternal**: Memanggil API `POST /api/auth/logout` saat tombol Logout diklik (`src/components/Navbar.js:88`), polling `/api/auth/me` setiap 60 detik (`src/components/Navbar.js:81`).
-- **Bukti**: `src/components/Navbar.js:1-163`
-- **Catatan**: Menu "Door Operate" ditambahkan ke `machineMenu` di baris 26 (`resource: "manual_control"`), dan menu "Backup" ditambahkan ke `adminMenu` di baris 27 (`resource: "backup"`). Seluruh item menu disaring secara dinamis menggunakan `hasLevel(user?.permissions, item.resource, "view")` (`src/components/Navbar.js:93-96`). `eslint-disable-next-line @next/next/no-img-element` di baris 104.
+- **Efek samping / dependensi eksternal**: Memanggil API `POST /api/auth/logout` dan membersihkan kunci `localStorage` saat tombol Logout diklik (`src/components/Navbar.js:89-94`), polling `/api/auth/me` setiap 60 detik (`src/components/Navbar.js:81`).
+- **Bukti**: `src/components/Navbar.js:1-187`
+- **Catatan**: Menu mesin disaring menggunakan `hasLevel(user?.permissions, item.resource, "view") || hasHmiOverrideAccess(user?.hmiOverrides, overridePage)` (`src/components/Navbar.js:101-112`) sehingga pengguna dengan role tanpa izin halaman (mis. operator/foreman) tetap dapat melihat menu yang di-override khusus.
 
 ---
 
@@ -617,13 +617,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/login/page.js`
 - **Tipe**: Client Component / Halaman Login
-- **Fungsi**: Merender form otentikasi login pengguna dengan dropdown pilihan username aktif, input password, proteksi batas percobaan gagal (throttle), dan logo perusahaan.
+- **Fungsi**: Merender form otentikasi login pengguna dengan dropdown pilihan username aktif, input password, proteksi batas percobaan gagal (throttle), dan logo perusahaan. Saat login berhasil, mereset state persistent lockscreen di localStorage (`scada_screen_locked = "false"`).
 - **Export utama**: `default` LoginPage (fungsi komponen React)
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/auth/users` untuk mengisi dropdown akun aktif dan `POST /api/auth/login` saat submit (`src/app/login/page.js:30-80`).
-- **Bukti**: `src/app/login/page.js:1-205`
-- **Catatan**: Membaca header respons HTTP `Retry-After` untuk menampilkan countdown detik saat login terblokir (`src/app/login/page.js:68`).
+- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/auth/users` untuk mengisi dropdown akun aktif dan `POST /api/auth/login` saat submit. Mengakses `localStorage` browser untuk membersihkan status lockscreen (`src/app/login/page.js:192-194`).
+- **Bukti**: `src/app/login/page.js:1-390`
+- **Catatan**: Membaca header respons HTTP `Retry-After` untuk menampilkan countdown detik saat login terblokir. Menjamin flag penguncian layar bersih setelah otentikasi baru.
 
 ---
 
@@ -743,14 +743,14 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 ---
 
 ### `src/app/(app)/users/page.js`
-- **Tipe**: Client Component / Halaman Kelola Pengguna
-- **Fungsi**: Menyediakan antarmuka administrasi akun pengguna bagi admin: pendaftaran user baru, pengubahan nama lengkap/role, aktivasi/penonaktifan akun, dan reset kata sandi.
+- **Tipe**: Client Component / Halaman Kelola Pengguna ("use client")
+- **Fungsi**: Menyediakan antarmuka administrasi akun pengguna bagi admin: pendaftaran user baru, pengubahan nama lengkap/role, aktivasi/penonaktifan akun, reset kata sandi, serta konfigurasi khusus izin HMI per pengguna (HMI Permission Overrides) melalui modal dialog `HmiOverridePanel`.
 - **Export utama**: `default` UsersPage (fungsi komponen React)
-- **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
-- **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/auth/me`, `GET/POST/PUT/DELETE /api/users`, dan `POST /api/users/[username]/reset-password` (`src/app/(app)/users/page.js:40-220`).
-- **Bukti**: `src/app/(app)/users/page.js:1-484`
-- **Catatan**: Dilindungi proteksi level halaman: pengguna non-admin langsung dialihkan ke `/` (`src/app/(app)/users/page.js:383`).
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/hmiOverrideCatalog.js` (`OVERRIDE_PAGES`, `OVERRIDE_ITEMS`, `getItemGroups`)
+- **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/users`)
+- **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/auth/me`, `GET/POST/PUT/DELETE /api/users`, `POST /api/users/[username]/reset-password`, serta `GET/PUT /api/users/[username]/hmi-overrides`.
+- **Bukti**: `src/app/(app)/users/page.js:1-890`
+- **Catatan**: Dilindungi proteksi level halaman: pengguna tanpa izin `users >= view` langsung dialihkan ke dashboard (`/`). Tombol "Izin HMI" membuka drawer/modal `HmiOverridePanel` untuk mengatur mode (default vs custom) dan izin per-item (none, read, write) pada 4 halaman HMI (kalibrasi, parameter mesin, kontrol manual, dan operasi pintu).
 
 ---
 
@@ -876,13 +876,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/auth/me/route.js`
 - **Tipe**: API Route Handler
-- **Fungsi**: Mengambil data identitas pengguna terkini dari database berdasarkan token JWT aktif untuk memastikan akun masih berstatus aktif (`is_active = true`).
+- **Fungsi**: Mengambil data identitas pengguna terkini dari database berdasarkan token JWT aktif untuk memastikan akun masih berstatus aktif (`is_active = true`), belum dihapus (`deleted_at IS NULL`), memuat seluruh peta izin RBAC dari `role_permissions`, serta membaca kolom `users.hmi_overrides` untuk konfigurasi izin per-item HMI.
 - **Export utama**: `GET` (fungsi handler HTTP)
-- **Meng-import (internal)**: `src/lib/auth.js`, `src/lib/db.js`
-- **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Membaca cookie `session_token` dan menjalankan query ke tabel `users` (`src/app/api/auth/me/route.js:17`).
-- **Bukti**: `src/app/api/auth/me/route.js:1-46`
-- **Catatan**: Jika akun pengguna telah dinonaktifkan di database, cookie sesi otomatis dihapus (`src/app/api/auth/me/route.js:23`).
+- **Meng-import (internal)**: `src/lib/auth.js` (`getSessionFromCookies`), `src/lib/db.js` (`pool`)
+- **Dipakai oleh**: Tidak di-import oleh file mana pun (endpoint API `/api/auth/me`)
+- **Efek samping / dependensi eksternal**: Membaca cookie `session_token`, menjalankan query ke tabel `users` dan `role_permissions`, serta menghapus cookie `session_token` jika akun terindikasi tidak aktif/dihapus.
+- **Bukti**: `src/app/api/auth/me/route.js:1-69`
+- **Catatan**: Mengembalikan payload `{ ok: true, user: { username, fullName, role, roleId, roleName, permissions, hmiOverrides } }`. Dipakai oleh `Navbar`, `PermissionGate`, `useHmiPermission`, dan komponen HMI lainnya.
 
 ---
 
@@ -1283,14 +1283,14 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 ---
 
 ### `src/components/PermissionGate.js`
-- **Tipe**: Client Component / Wrapper Guard
-- **Fungsi**: Membungkus komponen anak (children) dengan verifikasi izin berbasis `hasLevel` dari hasil fetch `/api/auth/me`. Menampilkan pesan akses ditolak (fail-closed) jika izin tidak mencukupi.
+- **Tipe**: Client Component / Wrapper Guard ("use client")
+- **Fungsi**: Membungkus komponen anak (children) dengan verifikasi izin berbasis `hasLevel` dari hasil fetch `/api/auth/me`. Dilengkapi dukungan prop `hmiOverridePage` untuk meloloskan akses jika pengguna memiliki konfigurasi HMI override aktif pada halaman terkait (meskipun di RBAC dasarnya bernilai none, mendukung use-case foreman/penugasan khusus). Menampilkan pesan akses ditolak (fail-closed) jika izin tidak mencukupi.
 - **Export utama**: `default` PermissionGate (fungsi komponen React)
-- **Meng-import (internal)**: `src/lib/permissionCatalog.js`
-- **Dipakai oleh**: `src/app/(app)/alarm/page.js`, `src/app/(app)/data-report/page.js`, `src/app/(app)/data-report/[batchNo]/page.js`, `src/app/(app)/formula/page.js`, `src/app/(app)/products/page.js`, `src/app/(app)/trend/page.js`, `src/app/print/alarm/page.js`, `src/app/print/batch-records/page.js`, `src/app/print/data-report/[batchNo]/page.js`
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/hmiOverrideCatalog.js` (`hasHmiOverrideAccess`)
+- **Dipakai oleh**: `src/app/(app)/alarm/page.js`, `src/app/(app)/data-report/page.js`, `src/app/(app)/data-report/[batchNo]/page.js`, `src/app/(app)/formula/page.js`, `src/app/(app)/products/page.js`, `src/app/(app)/trend/page.js`, `src/app/print/alarm/page.js`, `src/app/print/batch-records/page.js`, `src/app/print/data-report/[batchNo]/page.js`, `src/app/(app)/calibration/page.js`, `src/app/(app)/machine-params/page.js`, `src/app/(app)/manual/page.js`, `src/app/(app)/door-operate/page.js`
 - **Efek samping / dependensi eksternal**: Memanggil API `GET /api/auth/me` pada saat komponen mount.
-- **Bukti**: `src/components/PermissionGate.js:1-78`
-- **Catatan**: Mencegah kebocoran UI pada route baca bagi pengguna tanpa izin.
+- **Bukti**: `src/components/PermissionGate.js:1-87`
+- **Catatan**: Mencegah kebocoran UI pada route baca bagi pengguna tanpa izin. Lolos bila `hasRbac` bernilai true ATAU `hasOverride` bernilai true.
 
 ---
 
@@ -1378,6 +1378,30 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
+### `migrations/007_hmi_overrides.sql`
+- **Tipe**: SQL Migration
+- **Fungsi**: Menambahkan kolom `hmi_overrides` bertipe `JSONB DEFAULT NULL` pada tabel `users` untuk menyimpan konfigurasi izin khusus per halaman dan per item/tombol antarmuka HMI (kalibrasi, parameter mesin, kontrol manual, operasi pintu).
+- **Export utama**: DDL SQL (`ALTER TABLE users ADD COLUMN IF NOT EXISTS hmi_overrides JSONB DEFAULT NULL;`)
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Tidak di-import langsung (dieksekusi via migration tool atau psql)
+- **Efek samping / dependensi eksternal**: Memodifikasi skema tabel PostgreSQL `users` dan menambahkan komentar deskriptif kolom `users.hmi_overrides`.
+- **Bukti**: `migrations/007_hmi_overrides.sql:1-34`
+- **Catatan**: Kolom bernilai `NULL` berarti seluruh halaman HMI mengikuti izin RBAC bawaan role pengguna (mode "default"). Disertai skrip rollback `migrations/007_hmi_overrides_rollback.sql`.
+
+---
+
+### `migrations/007_hmi_overrides_rollback.sql`
+- **Tipe**: SQL Migration Rollback
+- **Fungsi**: Membatalkan migrasi 007 dengan menghapus kolom `hmi_overrides` dari tabel `users`.
+- **Export utama**: DDL SQL (`ALTER TABLE users DROP COLUMN IF EXISTS hmi_overrides;`)
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Tidak di-import langsung (dieksekusi saat rollback skema 007)
+- **Efek samping / dependensi eksternal**: Menghapus kolom `hmi_overrides` beserta seluruh konfigurasi override izin HMI user yang tersimpan di tabel `users`.
+- **Bukti**: `migrations/007_hmi_overrides_rollback.sql:1-9`
+- **Catatan**: Disediakan sebagai mitigasi pembatalan skema migrasi 007.
+
+---
+
 ### `src/components/SearchableCombobox.js`
 - **Tipe**: Client Component / Input Combobox ("use client")
 - **Fungsi**: Antarmuka dropdown pencarian yang mendukung seleksi opsi master sekaligus pengisian nilai teks manual (free text), dilengkapi navigasi keyboard (panah atas/bawah, Enter, Escape) dan penutupan otomatis saat klik di luar area.
@@ -1416,13 +1440,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/components/PlcParamEditor.js`
 - **Tipe**: Client Component / Editor Parameter HMI ("use client")
-- **Fungsi**: Menyediakan antarmuka interaktif pemantauan dan pengubahan parameter mesin PLC per grup (Setting 1, Setting 2, Coef, Calibration), integrasi pengecekan izin pengguna via `/api/auth/me`, dialog konfirmasi perubahan nilai lama vs baru dengan input alasan wajib, peringatan parameter keselamatan (`danger`), kolom tambahan "Nilai Sensor" pada grup kalibrasi (`showSensorColumn`) yang menampilkan nilai aktual sensor (+42.7 °C) dari prop `liveValue` (atau "—" bila offline), dan tabel hasil verifikasi baca-balik dari PLC.
+- **Fungsi**: Menyediakan antarmuka interaktif pemantauan dan pengubahan parameter mesin PLC per grup (Setting 1, Setting 2, Coef, Calibration), integrasi pengecekan izin pengguna via `/api/auth/me`, dialog konfirmasi perubahan nilai lama vs baru dengan input alasan wajib, peringatan parameter keselamatan (`danger`), kolom tambahan "Nilai Sensor" pada grup kalibrasi (`showSensorColumn`) yang menampilkan nilai aktual sensor (+42.7 °C) dari prop `liveValue` (atau "—" bila offline), evaluasi HMI Permission Overrides per field (`resolveHmiPermission`) untuk menyembunyikan field (`perm === "hidden"`) atau mematikan tombol ubah (`perm !== "read_write"`), dan tabel hasil verifikasi baca-balik dari PLC.
 - **Export utama**: `default PlcParamEditor`
-- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/plcParamCatalog.js` (`PLC_GROUPS`, `PLC_FIELDS`, `formatValue`, `validateField`, `rawEquals`), `src/components/PlcDialog.js`
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/plcParamCatalog.js` (`PLC_GROUPS`, `PLC_FIELDS`, `formatValue`, `validateField`, `rawEquals`), `src/components/PlcDialog.js`, `src/lib/hmiOverrideCatalog.js` (`resolveHmiPermission`)
 - **Dipakai oleh**: `src/app/(app)/machine-params/page.js`, `src/app/(app)/calibration/page.js`
 - **Efek samping / dependensi eksternal**: Melakukan HTTP fetch ke `/api/auth/me`, `GET /api/plc-params?group=...`, dan `PUT /api/plc-params`.
-- **Bukti**: `src/components/PlcParamEditor.js:1-429`
-- **Catatan**: Menangani proteksi disable tombol saat mesin berstatus tidak idle atau saat pengguna tidak memiliki izin edit. Pada grup kalibrasi, label kolom "Nilai PLC" otomatis berganti menjadi "Offset Kalibrasi".
+- **Bukti**: `src/components/PlcParamEditor.js:1-492`
+- **Catatan**: Menangani proteksi disable tombol saat mesin berstatus tidak idle atau saat pengguna tidak memiliki izin edit (baik dari RBAC maupun override khusus). Pada grup kalibrasi, label kolom "Nilai PLC" otomatis berganti menjadi "Offset Kalibrasi".
 
 ---
 
@@ -1516,9 +1540,9 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 - **Export utama**: `default CalibrationPage`
 - **Meng-import (internal)**: `src/components/PermissionGate.js`, `src/components/PlcParamEditor.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/calibration`)
-- **Efek samping / dependensi eksternal**: Tidak ada (dibungkus `PermissionGate resource="calibration" minLevel="view"`).
+- **Efek samping / dependensi eksternal**: Tidak ada (dibungkus `PermissionGate resource="calibration" minLevel="view" hmiOverridePage="calibration"`).
 - **Bukti**: `src/app/(app)/calibration/page.js:1-16`
-- **Catatan**: Menggunakan komponen `PlcParamEditor` dengan grup `["calibration"]`.
+- **Catatan**: Menggunakan komponen `PlcParamEditor` dengan grup `["calibration"]`. Meneruskan prop `hmiOverridePage="calibration"` ke `PermissionGate` agar pengguna yang mendapatkan override izin kalibrasi (misal foreman) tetap dapat mengakses halaman kendati role dasarnya tidak memiliki izin kalibrasi.
 
 ---
 
@@ -1528,21 +1552,21 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 - **Export utama**: `default MachineParamsPage`
 - **Meng-import (internal)**: `src/components/PermissionGate.js`, `src/components/PlcParamEditor.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/machine-params`)
-- **Efek samping / dependensi eksternal**: Tidak ada (dibungkus `PermissionGate resource="machine_params" minLevel="view"`).
+- **Efek samping / dependensi eksternal**: Tidak ada (dibungkus `PermissionGate resource="machine_params" minLevel="view" hmiOverridePage="machine_params"`).
 - **Bukti**: `src/app/(app)/machine-params/page.js:1-16`
-- **Catatan**: Menggunakan komponen `PlcParamEditor` dengan tab grup `["param1", "param2", "coef"]`.
+- **Catatan**: Menggunakan komponen `PlcParamEditor` dengan tab grup `["param1", "param2", "coef"]`. Meneruskan prop `hmiOverridePage="machine_params"` ke `PermissionGate`.
 
 ---
 
 ### `src/app/(app)/manual/page.js`
 - **Tipe**: Client Component / Halaman Kontrol Manual ("use client")
-- **Fungsi**: Menyajikan antarmuka pengoperasian manual aktuator mesin sterilisasi (katup, pompa sirkulasi, buzzer), indikator lampu perintah vs output fisik aktual, tombol mulai/keluar mode manual, dan polling status interlock secara real-time setiap 500 ms.
+- **Fungsi**: Menyajikan antarmuka pengoperasian manual aktuator mesin sterilisasi (katup, pompa sirkulasi, buzzer), indikator lampu perintah vs output fisik aktual, tombol mulai/keluar mode manual, evaluasi HMI Permission Overrides per tombol (`canSeeItem`/`canUseItem`) untuk menyembunyikan item atau menonaktifkan aksi sesuai izin individual pengguna, dan polling status interlock secara real-time setiap 500 ms.
 - **Export utama**: `default function ManualPage`
-- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/plcManualCatalog.js` (`MANUAL_ITEMS`), `src/components/PermissionGate.js`, `src/components/PlcDialog.js`
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/plcManualCatalog.js` (`MANUAL_ITEMS`), `src/components/PermissionGate.js`, `src/components/PlcDialog.js`, `src/lib/hmiOverrideCatalog.js` (`resolveHmiPermission`, `hasHmiOverrideAccess`)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/manual`)
 - **Efek samping / dependensi eksternal**: Memanggil API `GET /api/auth/me`, `GET /api/plc-manual` setiap 500 ms, dan `POST /api/plc-manual`.
-- **Bukti**: `src/app/(app)/manual/page.js:1-264`
-- **Catatan**: Dilindungi `PermissionGate resource="manual_control" minLevel="view"`. Menampilkan visualisasi lampu hijau/merah/abu-abu untuk membedakan bit perintah vs output relay aktual. Polling dipercepat ke 500 ms agar status interlock dan lampu indikator sinkron dengan PLC.
+- **Bukti**: `src/app/(app)/manual/page.js:1-283`
+- **Catatan**: Dilindungi `PermissionGate resource="manual_control" minLevel="view" hmiOverridePage="manual_control"`. Menampilkan visualisasi lampu hijau/merah/abu-abu untuk membedakan bit perintah vs output relay aktual. Polling dipercepat ke 500 ms agar status interlock dan lampu indikator sinkron dengan PLC.
 
 ---
 
@@ -1584,17 +1608,17 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/plc-door/route.js`
 - **Tipe**: API Route Handler (Server-Only)
-- **Fungsi**: Mengembalikan status pintu, rantai, status `releaseCmd`, dan auto-OFF timer (`GET`), serta mengeksekusi aksi pintu: pulsa `seal`, toggle ON/OFF `release` (`value: false` untuk mematikan perintah), toggle `drain`/`unlock` dengan auto-OFF, dan deadman `chain` Forward/Backward (`POST`) menggunakan verifikasi cepat `BOOL_VERIFY` (800ms / 100ms).
+- **Fungsi**: Mengembalikan status pintu, rantai, status `releaseCmd`, dan auto-OFF timer (`GET`), serta mengeksekusi aksi pintu: pulsa `seal`, toggle ON/OFF `release` (`value: false` untuk mematikan perintah), toggle `drain`/`unlock` dengan auto-OFF, dan deadman `chain` Forward/Backward (`POST`) menggunakan verifikasi cepat `BOOL_VERIFY` (800ms / 100ms), dilengkapi proteksi HMI permission override dan isolasi jalur kedua demi keselamatan fisik K3.
 - **Export utama**: `GET`, `POST`
-- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/auditLog.js` (`insertAudit`, `tryAudit`), `src/lib/plcDoorCatalog.js`, `src/lib/plcAccess.js` (`withPlcLocks`, `checkMachineIdle`, `writeAndVerify`, `verifyRaw`), `src/lib/plcWrite.js` (`pulsePlcTag`), `src/lib/plcDeadman.js` (`readDoorState`, `getDoorSafety`)
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/auditLog.js` (`insertAudit`, `tryAudit`), `src/lib/plcDoorCatalog.js`, `src/lib/plcAccess.js` (`withPlcLocks`, `checkMachineIdle`, `writeAndVerify`, `verifyRaw`), `src/lib/plcWrite.js` (`pulsePlcTag`), `src/lib/plcDeadman.js` (`readDoorState`, `getDoorSafety`), `src/lib/hmiOverrideCatalog.js` (`canWriteHmiItem`)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (dipanggil via fetch oleh `src/app/(app)/door-operate/page.js` dan `src/app/(app)/page.js`)
 - **Efek samping / dependensi eksternal**: Menulis tag PLC via KEPServerEX, mencatat audit `plc_door_command`, `plc_door_command_failed`, `plc_door_chain`.
-- **Bukti**: `src/app/api/plc-door/route.js:1-263`
+- **Bukti**: `src/app/api/plc-door/route.js:1-285`
 - **Catatan**:
-  - **GET** (baris 27–50): guard `requirePermission(cookieStore, "manual_control", "view")`. Menyertakan status `releaseCmd: !!snap.doorRelease` dari PLC.
-  - **POST** (baris 61–263): guard utama `requirePermission(cookieStore, "manual_control", "edit")`. **Jalur izin kedua berlaku untuk SEMUA aksi** (`seal`, `release`, `drain`, `unlock`, `chain`): lolos bila pemegang `dashboard >= edit` DAN `action.batch_control = edit`.
+  - **GET**: guard `requirePermission(cookieStore, "manual_control", "view")`. Menyertakan status `releaseCmd: !!snap.doorRelease` dari PLC.
+  - **POST**: guard utama `requirePermission(cookieStore, "manual_control", "edit")`. **Jalur izin kedua HANYA berlaku untuk `BATCH_CTRL_ALLOWED_ACTIONS = ["seal", "release", "drain"]`** (lolos bila pemegang `dashboard >= edit` DAN `action.batch_control = edit`).
+  - **Proteksi K3 `chain` dan `unlock`**: Kedua aksi ini TIDAK masuk dalam jalur kedua; wajib memiliki `manual_control: edit` dan lolos evaluasi override HMI `canWriteHmiItem(hmiOverrides, perms, "door_operate", itemKey)`.
   - Aksi `release` mendukung parameter `value: false` untuk menonaktifkan bit perintah `DOOR_RELEASE_CMD` (M1.3) seketika tanpa jeda auto-OFF.
-  - Seluruh aksi satu klik langsung tanpa dialog konfirmasi dan tanpa validasi field alasan `reason`.
   - Audit `plc_door_command` ditulis fail-closed sebelum menulis PLC untuk perintah ON dengan deskripsi `"<Label> dijalankan oleh <username> menggunakan SCADA."`.
   - Audit `plc_door_chain` dicatat pada `onStart` (fail-closed) dan `onEnd` (best-effort via `tryAudit`).
 
@@ -1602,13 +1626,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/door-operate/page.js`
 - **Tipe**: Client Component / Halaman Door Operate ("use client")
-- **Fungsi**: Menyajikan antarmuka pengendalian pintu autoclave dari web: tombol Door Sealing, Door Release (toggle cerdas ON / MATIKAN), Water Drain (toggle), Forward/Backward rantai (hold-to-run dengan loop fire-and-forget 100ms dan pointer capture), Door Unlock (toggle), panel status sensor, dan lampu indikator pintu/seal.
+- **Fungsi**: Menyajikan antarmuka pengendalian pintu autoclave dari web: tombol Door Sealing, Door Release (toggle cerdas ON / MATIKAN), Water Drain (toggle), Forward/Backward rantai (hold-to-run dengan loop fire-and-forget 100ms dan pointer capture), Door Unlock (toggle), panel status sensor, lampu indikator pintu/seal, serta evaluasi HMI Permission Overrides per tombol (`canSeeAction`/`canUseAction`).
 - **Export utama**: `default function DoorOperatePage`
-- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`, baris 4), `src/lib/plcDoorCatalog.js` (`checkDoorCommand`, baris 5), `src/components/PermissionGate.js` (baris 6)
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/plcDoorCatalog.js` (`checkDoorCommand`), `src/components/PermissionGate.js`, `src/lib/hmiOverrideCatalog.js` (`resolveHmiPermission`)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/door-operate`)
-- **Efek samping / dependensi eksternal**: Polling `GET /api/plc-door` tiap 500 ms (baris 106–113), memanggil `POST /api/plc-door` untuk aksi, memanggil `GET /api/auth/me` untuk izin (baris 95–100), menggunakan `navigator.sendBeacon` sebagai fallback saat tab ditutup/blur (baris 124).
-- **Bukti**: `src/app/(app)/door-operate/page.js:1-364`
-- **Catatan**: Dilindungi `PermissionGate resource="manual_control" minLevel="view"`. Evaluasi hak aksi `canEdit` mendukung jalur ganda (`manual_control` edit ATAU `dashboard` edit + `action.batch_control` edit). Tombol Forward/Backward menggunakan pointer capture dengan pengiriman sinyal tick `HOLD_INTERVAL_MS = 100` ms berbasis fire-and-forget (maksimal 3 error berturut-turut sebelum berhenti otomatis). Tombol Door Release kini mendukung pematian langsung via tombol berlabel "Release: MATIKAN".
+- **Efek samping / dependensi eksternal**: Polling `GET /api/plc-door` tiap 500 ms, memanggil `POST /api/plc-door` untuk aksi, memanggil `GET /api/auth/me` untuk izin dan HMI overrides, menggunakan `navigator.sendBeacon` sebagai fallback saat tab ditutup/blur.
+- **Bukti**: `src/app/(app)/door-operate/page.js:1-398`
+- **Catatan**: Dilindungi `PermissionGate resource="door_operate" minLevel="view" hmiOverridePage="door_operate"`. Tombol Forward/Backward menggunakan pointer capture dengan pengiriman sinyal tick `HOLD_INTERVAL_MS = 100` ms berbasis fire-and-forget. Setiap tombol/aksi dievaluasi melalui `canSeeAction` (sembunyikan tombol jika override bernilai "none") dan `canUseAction` (disable tombol jika hanya memiliki hak "read").
 
 ---
 
@@ -1768,7 +1792,46 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
+### `src/lib/hmiOverrideCatalog.js`
+- **Tipe**: Lib / Katalog & Utilitas Evaluasi Izin HMI Override (Universal Client/Server)
+- **Fungsi**: Mendefinisikan katalog 4 halaman HMI yang mendukung override izin pengguna individual (`OVERRIDE_PAGES`: calibration, machine_params, manual_control, door_operate), daftar 48 item/tombol (`OVERRIDE_ITEMS`), pengelompokan grup UI (`getItemGroups`, `getAllItemKeys`), logika resolusi izin bertingkat gabungan RBAC + User Override (`resolveHmiPermission`, `canWriteHmiItem`, `canReadHmiItem`, `hasHmiOverrideAccess`), serta validator payload skema override (`validateHmiOverrides`). Aman diimpor di server maupun browser karena tidak memiliki dependensi Node.js native atau database.
+- **Export utama**: `OVERRIDE_PAGES`, `OVERRIDE_ITEMS`, `getAllItemKeys`, `getItemGroups`, `hasHmiOverrideAccess`, `resolveHmiPermission`, `canWriteHmiItem`, `canReadHmiItem`, `validateHmiOverrides`
+- **Meng-import (internal)**: Tidak ada (modul murni / tanpa dependensi database)
+- **Dipakai oleh**: `src/hooks/useHmiPermission.js`, `src/components/PermissionGate.js`, `src/components/PlcParamEditor.js`, `src/app/(app)/manual/page.js`, `src/app/(app)/door-operate/page.js`, `src/app/(app)/users/page.js`, `src/app/api/users/[username]/hmi-overrides/route.js`, `src/app/api/plc-door/route.js`
+- **Efek samping / dependensi eksternal**: Tidak ada (murni fungsi evaluasi data).
+- **Bukti**: `src/lib/hmiOverrideCatalog.js:1-350`
+- **Catatan**: Menangani 3 status izin: `"none"` (hidden/terlarang), `"read"` (baca saja/tombol nonaktif), dan `"write"` (baca-tulis penuh).
+
+---
+
+### `src/hooks/useHmiPermission.js`
+- **Tipe**: Client Custom Hook ("use client")
+- **Fungsi**: Menyediakan React Hooks untuk evaluasi izin HMI sisi klien: `useHmiPermission` untuk mengevaluasi satu item/tombol spesifik, dan `useHmiPagePermissions` untuk evaluasi efisien seluruh item dalam satu halaman sekaligus dengan caching fetch `/api/auth/me`.
+- **Export utama**: `useHmiPermission`, `useHmiPagePermissions`
+- **Meng-import (internal)**: `src/lib/hmiOverrideCatalog.js` (`resolveHmiPermission`)
+- **Dipakai oleh**: Dapat dipakai oleh komponen antarmuka HMI granular untuk kontrol akses tombol/field.
+- **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/auth/me` pada saat komponen mount.
+- **Bukti**: `src/hooks/useHmiPermission.js:1-108`
+- **Catatan**: Mengembalikan objek `{ canRead, canWrite, level, source, loading, user }`.
+
+---
+
+### `src/app/api/users/[username]/hmi-overrides/route.js`
+- **Tipe**: API Route Handler (Server-Only)
+- **Fungsi**: Menyediakan endpoint RESTful untuk membaca (`GET`) konfigurasi override izin HMI pengguna dan menyimpan atau mereset (`PUT`) konfigurasi izin khusus ke kolom database `users.hmi_overrides`, divalidasi dengan `validateHmiOverrides`, dan dicatat ke `audit_log` dengan aksi `update_hmi_overrides`.
+- **Export utama**: `GET`, `PUT`
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/auditLog.js` (`insertAudit`), `src/lib/hmiOverrideCatalog.js` (`validateHmiOverrides`)
+- **Dipakai oleh**: Dipanggil via fetch dari antarmuka manajemen pengguna `src/app/(app)/users/page.js`
+- **Efek samping / dependensi eksternal**: Membaca cookie sesi, membaca dan memperbarui tabel PostgreSQL `users`, menulis riwayat aktivitas ke tabel `audit_log`.
+- **Bukti**: `src/app/api/users/[username]/hmi-overrides/route.js:1-87`
+- **Catatan**: Endpoint `GET` dilindungi izin `users >= view`, sedangkan endpoint `PUT` dilindungi izin `users >= edit`. Mengirim nilai `hmiOverrides: null` pada `PUT` akan mereset seluruh izin user ke aturan RBAC default.
+
+---
+
 ## Change Log
+
+- [2026-11-07] ADDED: Menambahkan dokumentasi teknis 5 file baru terkait Subsistem User HMI Overrides: `migrations/007_hmi_overrides.sql`, `migrations/007_hmi_overrides_rollback.sql`, `src/lib/hmiOverrideCatalog.js`, `src/hooks/useHmiPermission.js`, dan `src/app/api/users/[username]/hmi-overrides/route.js`.
+- [2026-11-07] MODIFIED: Memperbarui dokumentasi 13 file kode sumber: `src/lib/auth.js` (sinkronisasi session payload `hmiOverrides`), `src/app/api/auth/me/route.js` (return `hmiOverrides`), `src/app/api/plc-door/route.js` (isolasi jalur kedua via `BATCH_CTRL_ALLOWED_ACTIONS` dan guard K3 `chain`/`unlock`), `src/components/ScreenLock.js` (persistensi anti-refresh F5, timeout 7 menit, sinkronisasi multi-tab lewat event storage), `src/components/Navbar.js` (reset storage lockscreen pada logout), `src/app/login/page.js` (reset lockscreen pada login), `src/components/PermissionGate.js` (prop `hmiOverridePage`), `src/components/PlcParamEditor.js` (evaluasi override per field), `src/app/(app)/calibration/page.js` (`hmiOverridePage`), `src/app/(app)/machine-params/page.js` (`hmiOverridePage`), `src/app/(app)/manual/page.js` (evaluasi override tombol manual), `src/app/(app)/door-operate/page.js` (evaluasi override tombol pintu/rantai), dan `src/app/(app)/users/page.js` (panel `HmiOverridePanel` untuk konfigurasi izin per tombol).
 
 - [2026-11-07] REMOVED: Menandai `context/ROADMAP (12).md` sebagai REMOVED setelah dihapus dari repositori pada commit `74e7b89`.
 - [2026-11-07] MOVED: Mengganti referensi master CSV tag dari `context/tag_terbaru_kepsrvr.csv` (105 tag) menjadi `context/tag_paling_baru.csv` (116 tag, 100% terpetakan).

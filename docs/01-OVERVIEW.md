@@ -61,6 +61,8 @@ Aplikasi dijalankan menggunakan server HTTP berbasis Node.js `http.createServer`
 5. **Background Worker 3 — Backup Scheduler**: Memanggil fungsi `startBackupScheduler()` yang memeriksa jadwal backup data setiap 60 detik (`server.js:92-97`). Nonaktif secara default dan terisolasi dari proses utama.
 6. **Blok Reset Rantai**: Saat server start, secara *best-effort* menulis `CHAIN_FWD` / `CHAIN_BWD` = false ke PLC (`server.js:101-111`) untuk memastikan rantai pintu tidak tertinggal menyala dari sesi sebelum server mati.
 7. **Proxy Middleware Konvensi Next.js 16**: Menggunakan `src/proxy.js` dengan ekspor fungsi `proxy(request)` untuk memeriksa sesi token JWT pada route yang dilindungi. Verifikasi izin granular per resource/level dilakukan pada server runtime melalui fungsi `requirePermission` / `requireAnyPermission` di masing-masing route handler, serta komponen `PermissionGate` pada sisi klien.
+8. **Subsistem User HMI Overrides (Izin Khusus Per User)**: Memungkinkan penugasan hak akses granular per item/halaman HMI (`calibration`, `machine_params`, `manual_control`, `door_operate`) yang menimpa (override) hak bawaan role RBAC. Disimpan dalam kolom `users.hmi_overrides` (JSONB) via migrasi `migrations/007_hmi_overrides.sql`, dievaluasi secara server-side dan client-side via `src/lib/hmiOverrideCatalog.js` dan hook `src/hooks/useHmiPermission.js`.
+9. **Screen Lock Persisten (Anti-Bypass Refresh & Multi-Tab Sync)**: Pengunci layar otomatis 7 menit di `src/components/ScreenLock.js` kini persisten terhadap refresh halaman (F5) menggunakan `localStorage` (`scada_screen_locked`, `scada_last_activity`, `scada_lock_user`) serta sinkronisasi lintas-tab via event `storage`.
 
 ---
 
@@ -88,6 +90,7 @@ Variabel lingkungan yang diakses langsung melalui `process.env.*` pada kode sumb
 
 ## Change Log
 
+- [2026-11-07] ADDED: Menambahkan dokumentasi Subsistem User HMI Overrides (migrasi `007_hmi_overrides.sql`, `hmiOverrideCatalog.js`, `useHmiPermission.js`, dan endpoint `/api/users/[username]/hmi-overrides`) serta mekanisme Screen Lock persisten berbasis `localStorage` dan multi-tab sync pada Seksi 4.
 - [2026-11-07] MODIFIED: Memperbarui rentang baris dependencies (`11-21`) dan devDependencies (`22-27`) pada `package.json`, memperbarui baris pembacaan variabel lingkungan di `server.js` (`NODE_ENV:30`, `HOSTNAME:31`, `PORT:32`, `TRUST_PROXY:54`), serta memverifikasi status commit `74e7b89` dan passing 366 unit test.
 
 - [2026-11-05] ADDED: Menambahkan dependensi `fflate` (`^0.8.3`) pada Seksi 2, Background Worker 3 (Backup Scheduler, `server.js:92-97`) pada Seksi 4, variabel lingkungan `BACKUP_DIR` pada Seksi 5, serta memperbarui nomor baris blok reset rantai di `server.js` (baris 101–111).
