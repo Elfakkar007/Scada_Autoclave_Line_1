@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 
 // Durasi pasif sebelum layar terkunci: 7 menit
 const LOCK_TIMEOUT_MS = 7 * 60 * 1000;
+const STORAGE_KEY_LOCKED = "scada_screen_locked";
+const STORAGE_KEY_LAST_ACTIVITY = "scada_last_activity";
+const STORAGE_KEY_USER = "scada_lock_user";
 
 function EyeIcon({ off }) {
     return (
@@ -45,10 +48,11 @@ export default function ScreenLock() {
 
     const router = useRouter();
     const lastActivityRef = useRef(0);
+    const lastSavedActivityRef = useRef(0);
     const isLockedRef = useRef(false);
     const passwordInputRef = useRef(null);
 
-    // Ambil info user aktif saat mount
+    // Ambil info user aktif saat mount + verifikasi kepemilikan sesi kunci
     useEffect(() => {
         let active = true;
         fetch("/api/auth/me")
@@ -56,6 +60,21 @@ export default function ScreenLock() {
             .then((json) => {
                 if (active && json.ok) {
                     setUser(json.user);
+                    try {
+                        const storedUser = localStorage.getItem(STORAGE_KEY_USER);
+                        if (storedUser && storedUser !== json.user.username) {
+                            // User baru login menggantikan user lama, reset kunci lama
+                            localStorage.setItem(STORAGE_KEY_LOCKED, "false");
+                            localStorage.setItem(STORAGE_KEY_USER, json.user.username);
+                            const now = Date.now();
+                            localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
+                            lastActivityRef.current = now;
+                            isLockedRef.current = false;
+                            setIsLocked(false);
+                        } else {
+                            localStorage.setItem(STORAGE_KEY_USER, json.user.username);
+                        }
+                    } catch {}
                 }
             })
             .catch(() => {});
@@ -67,24 +86,95 @@ export default function ScreenLock() {
     // Listener interaksi user: hanya klik & ketik keyboard yang mereset timer (bukan sekadar geser mouse)
     const handleUserInteraction = useCallback(() => {
         if (!isLockedRef.current) {
-            lastActivityRef.current = Date.now();
+            const now = Date.now();
+            lastActivityRef.current = now;
+            // Throttle penulisan ke localStorage agar tidak membebani performa browser
+            if (now - lastSavedActivityRef.current > 1000) {
+                lastSavedActivityRef.current = now;
+                try {
+                    localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
+                    localStorage.setItem(STORAGE_KEY_LOCKED, "false");
+                } catch {}
+            }
         }
     }, []);
 
     useEffect(() => {
-        // Inisialisasi waktu aktivitas pertama kali
-        lastActivityRef.current = Date.now();
+        // Cek status persisten saat mount / refresh
+        try {
+            const isPersistedLocked = localStorage.getItem(STORAGE_KEY_LOCKED) === "true";
+            const storedActivity = Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY));
+            const now = Date.now();
+
+            if (isPersistedLocked) {
+                // Sebelumnya sudah terkunci -> pertahankan kunci
+                isLockedRef.current = true;
+                setTimeout(() => setIsLocked(true), 0);
+            } else if (storedActivity && (now - storedActivity >= LOCK_TIMEOUT_MS)) {
+                // Sudah lewat 7 menit sejak aktivitas terakhir tersimpan -> langsung kunci
+                isLockedRef.current = true;
+                localStorage.setItem(STORAGE_KEY_LOCKED, "true");
+                setTimeout(() => setIsLocked(true), 0);
+            } else {
+                // Belum terkunci -> lanjutkan hitungan mundur dari aktivitas terakhir
+                const initialActivity = (storedActivity && storedActivity <= now && (now - storedActivity < LOCK_TIMEOUT_MS))
+                    ? storedActivity
+                    : now;
+                lastActivityRef.current = initialActivity;
+                lastSavedActivityRef.current = initialActivity;
+                localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(initialActivity));
+                localStorage.setItem(STORAGE_KEY_LOCKED, "false");
+            }
+        } catch {
+            lastActivityRef.current = Date.now();
+        }
 
         window.addEventListener("pointerdown", handleUserInteraction, { capture: true });
         window.addEventListener("keydown", handleUserInteraction, { capture: true });
 
+        // Sinkronisasi status kunci & aktivitas antar-tab browser via event storage
+        const handleStorageChange = (e) => {
+            if (e.key === STORAGE_KEY_LOCKED) {
+                if (e.newValue === "true") {
+                    isLockedRef.current = true;
+                    setIsLocked(true);
+                } else if (e.newValue === "false") {
+                    isLockedRef.current = false;
+                    setIsLocked(false);
+                    setShowModal(false);
+                    setError("");
+                }
+            } else if (e.key === STORAGE_KEY_LAST_ACTIVITY && e.newValue) {
+                const t = Number(e.newValue);
+                if (t > lastActivityRef.current) {
+                    lastActivityRef.current = t;
+                }
+            }
+        };
+        window.addEventListener("storage", handleStorageChange);
+
         // Interval pengecekan pasif 7 menit (tiap 1 detik)
         const intervalId = setInterval(() => {
-            if (!isLockedRef.current && lastActivityRef.current > 0) {
-                const elapsed = Date.now() - lastActivityRef.current;
+            if (isLockedRef.current) return;
+
+            // Baca timestamp aktivitas terbaru (bisa diperbarui tab lain)
+            let last = lastActivityRef.current;
+            try {
+                const stored = Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY));
+                if (stored && stored > last) {
+                    last = stored;
+                    lastActivityRef.current = stored;
+                }
+            } catch {}
+
+            if (last > 0) {
+                const elapsed = Date.now() - last;
                 if (elapsed >= LOCK_TIMEOUT_MS) {
                     isLockedRef.current = true;
                     setIsLocked(true);
+                    try {
+                        localStorage.setItem(STORAGE_KEY_LOCKED, "true");
+                    } catch {}
                 }
             }
         }, 1000);
@@ -92,6 +182,7 @@ export default function ScreenLock() {
         return () => {
             window.removeEventListener("pointerdown", handleUserInteraction, { capture: true });
             window.removeEventListener("keydown", handleUserInteraction, { capture: true });
+            window.removeEventListener("storage", handleStorageChange);
             clearInterval(intervalId);
         };
     }, [handleUserInteraction]);
@@ -131,8 +222,14 @@ export default function ScreenLock() {
 
             if (res.ok && data.ok) {
                 // Berhasil buka kunci
+                const now = Date.now();
                 isLockedRef.current = false;
-                lastActivityRef.current = Date.now();
+                lastActivityRef.current = now;
+                lastSavedActivityRef.current = now;
+                try {
+                    localStorage.setItem(STORAGE_KEY_LOCKED, "false");
+                    localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
+                } catch {}
                 setIsLocked(false);
                 setShowModal(false);
                 setPassword("");
@@ -144,6 +241,11 @@ export default function ScreenLock() {
                 }
             } else if (data.expired || data.deactive) {
                 // Sesi habis atau user dinonaktifkan
+                try {
+                    localStorage.removeItem(STORAGE_KEY_LOCKED);
+                    localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
+                    localStorage.removeItem(STORAGE_KEY_USER);
+                } catch {}
                 router.push("/login");
             } else {
                 setError(data.error || "Password salah, silakan coba lagi");
@@ -158,6 +260,11 @@ export default function ScreenLock() {
 
     // Logout / Ganti akun
     async function handleLogout() {
+        try {
+            localStorage.removeItem(STORAGE_KEY_LOCKED);
+            localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
+            localStorage.removeItem(STORAGE_KEY_USER);
+        } catch {}
         try {
             await fetch("/api/auth/logout", { method: "POST" });
         } finally {

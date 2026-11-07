@@ -11,15 +11,19 @@
  *   Tidak redirect supaya tidak menyebabkan loop dan kebocoran konteks.
  *
  * Props:
- *   resource  (string)  - nama resource dari permissionCatalog
- *   minLevel  (string)  - level minimum; default "view"
- *   children  (node)    - konten yang dijaga
+ *   resource          (string)  - nama resource dari permissionCatalog
+ *   minLevel          (string)  - level minimum; default "view"
+ *   hmiOverridePage   (string)  - opsional: nama page HMI override (dari OVERRIDE_PAGES).
+ *                                 Bila ada, halaman juga lolos bila user punya override aktif
+ *                                 untuk page tersebut (mendukung use-case foreman).
+ *   children          (node)    - konten yang dijaga
  */
 
 import { useEffect, useState } from "react";
 import { hasLevel } from "@/lib/permissionCatalog";
+import { hasHmiOverrideAccess } from "@/lib/hmiOverrideCatalog";
 
-export default function PermissionGate({ resource, minLevel = "view", children }) {
+export default function PermissionGate({ resource, minLevel = "view", hmiOverridePage, children }) {
     const [status, setStatus] = useState("loading"); // "loading" | "ok" | "denied"
 
     useEffect(() => {
@@ -28,7 +32,14 @@ export default function PermissionGate({ resource, minLevel = "view", children }
             .then((r) => r.json())
             .then((json) => {
                 if (cancelled) return;
-                if (json.ok && hasLevel(json.user?.permissions ?? {}, resource, minLevel)) {
+                const perms = json.user?.permissions ?? {};
+                const hmiOverrides = json.user?.hmiOverrides ?? null;
+                const hasRbac = json.ok && hasLevel(perms, resource, minLevel);
+                // Halaman juga lolos bila user punya HMI override aktif untuk page ini
+                const hasOverride = hmiOverridePage
+                    ? hasHmiOverrideAccess(hmiOverrides, hmiOverridePage)
+                    : false;
+                if (hasRbac || hasOverride) {
                     setStatus("ok");
                 } else {
                     setStatus("denied");
@@ -38,7 +49,7 @@ export default function PermissionGate({ resource, minLevel = "view", children }
                 if (!cancelled) setStatus("denied");
             });
         return () => { cancelled = true; };
-    // resource dan minLevel adalah konstanta prop, tidak perlu masuk dependency runtime
+    // resource, minLevel, hmiOverridePage adalah konstanta prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

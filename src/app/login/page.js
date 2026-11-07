@@ -187,7 +187,12 @@ export default function LoginPage() {
                 return;
             }
 
-            // Sukses: redirect ke dashboard
+            // Sukses: reset state lockscreen lama & redirect ke dashboard
+            try {
+                localStorage.setItem("scada_screen_locked", "false");
+                localStorage.setItem("scada_lock_user", username.trim());
+                localStorage.setItem("scada_last_activity", String(Date.now()));
+            } catch {}
             router.push("/");
         } catch {
             setError("Gagal terhubung ke server. Periksa koneksi jaringan.");

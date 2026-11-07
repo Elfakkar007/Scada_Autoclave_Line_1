@@ -51,7 +51,7 @@ Setelah 7 menit tanpa adanya interaksi fisik (pergerakan mouse atau penekanan to
 ## 3. Fitur Pengawasan Proses & Visualisasi Autoclave Real-Time
 
 ### Deskripsi Faktual
-Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data status mesin ke backend. Data sensor ditampilkan dalam bentuk kartu metrik digital, status posisi pintu, serta diagram visual interaktif yang menggambarkan animasi katup, level air, dan status pompa sirkulasi.
+Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data status mesin ke backend. Data sensor ditampilkan dalam bentuk kartu metrik digital, status posisi pintu, kartu detail resep berjalan (termasuk F0 Target jika ada), kontrol tombol proses (START, STOP, Reset), blok pengendali pintu interaktif (Door Sealing dan tombol cerdas Door Release / MATIKAN), serta diagram visual interaktif yang menggambarkan animasi katup, level air, dan status pompa sirkulasi.
 
 ### Rantai Alur Kode
 1. **Polling Dashboard**: Komponen `src/app/(app)/page.js:102` menjalankan `setInterval` setiap 1000 ms yang memanggil `fetch("/api/status")`.
@@ -59,16 +59,18 @@ Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data sta
 3. **Komunikasi IoT Gateway**:
    - `readPlcSnapshot` mengirim HTTP GET ke endpoint KEPServerEX `/iotgateway/read` (`src/lib/plc.js:145`).
    - Menerima array tag pembacaan PLC Siemens S7-200.
-   - Melakukan penskalaan nilai: suhu dibagi 10 (`src/lib/plc.js:189-197`), tekanan kPa diambil langsung (`src/lib/plc.js:198`), serta memetakan nilai integer register `PROCCES_TEXT` (VW98) ke objek fase proses (`src/lib/plc.js:213-233`).
+   - Melakukan penskalaan nilai: suhu dibagi 10 (`src/lib/plc.js:189-197`), tekanan kPa diambil langsung (`src/lib/plc.js:198`), target F0 dibagi 10 ke satuan menit (`src/lib/plc.js:78`), serta memetakan nilai integer register `PROCCES_TEXT` (VW98) ke objek fase proses (`src/lib/plc.js:213-233`).
 4. **Pengambilan Status Batch**: Handler `src/app/api/status/route.js:23` menjalankan query `SELECT ... FROM batch_records WHERE status = 'running'` untuk menyematkan metadata batch aktif.
 5. **Rendering Visual**:
    - Komponen internal `Gauge` pada `src/app/(app)/page.js:50-65` merender kartu indikator suhu dan tekanan (`src/app/(app)/page.js:471-488`).
+   - Kartu Formula pada `src/app/(app)/page.js:754-759` menampilkan "F0 Target" bila `data.setpoints?.f0Val` terdefinisi.
+   - Tombol Door Sealing dan Door Release pada `src/app/(app)/page.js:818-848`: Tombol Door Release kini berstatus cerdas (toggle); bila release sedang aktif (`releaseOn = !!data.door?.releaseCmd`), tombol berubah label menjadi "Release: MATIKAN" dengan warna merah (`#A23B2E`) untuk menonaktifkan pelepasan seal; bila tidak aktif, berlabel "Door Release" untuk mengaktifkan seal lepas.
    - Komponen `src/components/AtvDiagram.js` menerima properti sensor dan merender gambar bejana SVG beserta indikator katup aktif berwarna hijau/merah (`src/components/AtvDiagram.js:120-280`).
 
 ### Bukti Kode
-- `src/app/(app)/page.js:102-120`
+- `src/app/(app)/page.js:102-120, 754-759, 818-848`
 - `src/app/api/status/route.js:17-60`
-- `src/lib/plc.js:125-240`
+- `src/lib/plc.js:78, 125-240`
 - `src/components/AtvDiagram.js:120-280`
 
 ---
@@ -76,7 +78,7 @@ Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data sta
 ## 4. Fitur Memulai Batch Sterilisasi (Start Batch Sequence)
 
 ### Deskripsi Faktual
-Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Produk (dropdown/ketik manual), Spesifikasi Kemasan (dropdown/ketik manual), Jumlah Botol (amount integer positif), dan Formula Resep. Sistem mengunci eksekusi START dengan advisory lock `START_LOCK_KEY` agar tidak bisa ditekan ganda, memvalidasi resep, memeriksa ketiadaan batch aktif lain, memeriksa interlock fisik PLC (kedua pintu tertutup dan segel aktif), menulis 7 setpoint resep ke register PLC, melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records` (termasuk kolom `bottle_count`).
+Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Produk (dropdown/ketik manual), Spesifikasi Kemasan (dropdown/ketik manual), Jumlah Botol (amount integer positif), dan Formula Resep. Sistem mengunci eksekusi START dengan advisory lock `START_LOCK_KEY` agar tidak bisa ditekan ganda, memvalidasi resep, memeriksa ketiadaan batch aktif lain, memeriksa interlock fisik PLC (kedua pintu tertutup dan segel aktif), menulis setpoint resep (7 parameter dasar ditambah target F0 `F0_VAL` jika diisi) ke register PLC, melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records` (termasuk kolom `bottle_count`).
 
 ### Rantai Alur Kode
 1. **Dialog Input**: Tombol "START BATCH" di `src/app/(app)/page.js:380` membuka modal `src/components/StartDialog.js`. Modal menyediakan form 2 kolom responsif, combobox pencarian `SearchableCombobox` untuk Nama Produk dan Spesifikasi Kemasan, serta validasi bilangan bulat positif untuk Jumlah Botol (`bottleCount`).
@@ -87,6 +89,7 @@ Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Prod
    - Memeriksa keunikan Batch No pada tabel `batch_records` (`src/app/api/batch/start/route.js:218`).
    - Membaca dan memvalidasi `bottleCount` (atau `amount`) dari body (`src/app/api/batch/start/route.js:134-141`).
    - Memvalidasi rentang fisik resep melalui `validateRecipe` (`src/lib/recipeValidation.js:52`).
+   - Membaca `recipe.fo_val_setting` jika ada untuk parameter F0 target (`src/app/api/batch/start/route.js:206`).
    - Membangun snapshot formula resep melalui `buildRecipeSnapshot` (`src/lib/recipeSnapshot.js:18`).
 5. **Guard Interlock Mesin**:
    - Membaca snapshot PLC via `readPlcSnapshot` (`src/app/api/batch/start/route.js:245`).
@@ -94,10 +97,10 @@ Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Prod
    - Menolak jika pintu terbuka (`opnFrnt` / `opnRear`), pintu belum rapat tertutup (`!clsFrnt` / `!clsRear`), atau door seal belum aktif (`!door.seal`) (`src/app/api/batch/start/route.js:309-335`).
    - Menolak jika `ctrlSel === true` (mesin dalam mode F0 manual) (`src/app/api/batch/start/route.js:357`).
 6. **Penulisan Setpoint ke PLC**:
-   - Menyusun 7 pasangan tag: `CTRL_TEMP`, `TEMP_SPACE`, `STER_SET`, `STER_SET_TIME`, `ALRM_PRES`, `COOL1_TEMP`, `COOL2_TEMP` (`src/app/api/batch/start/route.js:367`).
+   - Menyusun pasangan tag: `CTRL_TEMP`, `TEMP_SPACE`, `STER_SET`, `STER_SET_TIME`, `ALRM_PRES`, `COOL1_TEMP`, `COOL2_TEMP`, dan menyertakan `F0_VAL` (`Math.round(foValSetting * 10)`) bila target F0 terdefinisi (`src/app/api/batch/start/route.js:387-393`).
    - Mengirim request ke KEPServerEX via `writePlcTags` (`src/lib/plcWrite.js:16`).
 7. **Verifikasi Pasca-Tulis**:
-   - Melakukan polling pembacaan ulang setpoint ke PLC hingga 4000 ms (`src/app/api/batch/start/route.js:399-453`).
+   - Melakukan polling pembacaan ulang setpoint ke PLC hingga 4000 ms (`src/app/api/batch/start/route.js:418-453`), mencocokkan seluruh setpoint dasar dan `F0_VAL`.
    - Jika terjadi selisih nilai, membatalkan START dan mencatat audit `start_batch_rejected` (`src/app/api/batch/start/route.js:468`).
 8. **Audit Pre-Start (Fail-Closed)**:
    - Mencatat aksi `plc_setpoints_written` ke tabel `audit_log` via `insertAudit` (`src/app/api/batch/start/route.js:508`). Jika pencatatan audit gagal, proses START dibatalkan.
@@ -106,14 +109,14 @@ Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Prod
 10. **Polling Fase PLC**:
     - Memanggil `pollUntilPhase([2, 3, 4], 10000, 500)` (`src/app/api/batch/start/route.js:547`) menunggu hingga register `PROCCES_TEXT` berubah menjadi kode 2 (Filling), 3 (Heating), atau 4 (Steril).
 11. **Pencatatan Batch Record**:
-    - Menjalankan `INSERT INTO batch_records` dengan kolom `bottle_count`, status `'running'`, dan snapshot resep JSON (`src/app/api/batch/start/route.js:606`).
+    - Menjalankan `INSERT INTO batch_records` dengan kolom `bottle_count`, status `'running'`, dan snapshot resep JSON (`src/app/api/batch/start/route.js:618`).
     - Menyediakan fallback bila kolom `bottle_count` belum ada di database (`colErr.code === "42703"`, `src/app/api/batch/start/route.js:630`).
     - Mencatat aksi `start_batch` ke tabel `audit_log` (`src/app/api/batch/start/route.js:685`).
 
 ### Bukti Kode
 - `src/components/StartDialog.js:1-420`
 - `src/components/SearchableCombobox.js:1-204`
-- `src/app/api/batch/start/route.js:1-743`
+- `src/app/api/batch/start/route.js:1-755`
 - `src/lib/recipeGuard.js:1-55`
 - `src/lib/recipeValidation.js:52-120`
 - `src/lib/plcWrite.js:16-85`
@@ -491,10 +494,10 @@ Menyediakan mekanisme penghapusan akun pengguna yang patuh terhadap integritas j
 ## 20. Fitur Pengaturan Parameter Mesin PLC (Machine Parameters)
 
 ### Deskripsi Faktual
-Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin sterilisasi autoclave yang tersimpan pada register PLC Siemens S7-200. Parameter dikelompokkan dalam 3 tab: Parameter Setting 1 (Ster. Temp, Control Temp, Temp. Space, Ster. Time, Alarm Press., Cool. Temp 1 & 2, serta FO Value), Parameter Setting 2 (Safety Press., Regu. Press, Over. Temp, Drain Time, Exhau. Temp, Select Press), dan Pressure Coefficient (a1, b1, a2, b2, Heat/Ster/Cool Coeff). Seluruh operasi penulisan dilindungi oleh PostgreSQL advisory lock `PLC_WRITE_LOCK_KEY` (847291035) dan `START_LOCK_KEY`, validasi batas nilai fisik, cross-check logika antar-field, isian alasan wajib untuk audit trail, serta verifikasi baca-balik dari PLC hingga 4,5 detik. Parameter keselamatan kritis (`SAFETY_PRESS`, `ALRM_PRES`, `SEL_PRESU`) mewajibkan izin khusus `action.write_safety_params`.
+Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin sterilisasi autoclave yang tersimpan pada register PLC Siemens S7-200. Parameter dikelompokkan dalam 3 tab: Parameter Setting 1 (Ster. Temp, Control Temp, Temp. Space, Ster. Time, FO Value, Alarm Press., Cool. Temp 1 & 2), Parameter Setting 2 (Safety Press., Regu. Press, Over. Temp, Drain Time, Exhau. Temp, Select Press), dan Pressure Coefficient (a1, b1, a2, b2, Heat/Ster/Cool Coeff). Seluruh operasi penulisan dilindungi oleh PostgreSQL advisory lock `PLC_WRITE_LOCK_KEY` (847291035) dan `START_LOCK_KEY`, validasi batas nilai fisik, cross-check logika antar-field, isian alasan wajib untuk audit trail, serta verifikasi baca-balik dari PLC hingga 4,5 detik. Parameter keselamatan kritis (`SAFETY_PRESS`, `ALRM_PRES`, `SEL_PRESU`) mewajibkan izin khusus `action.write_safety_params`.
 
 ### Rantai Alur Kode
-1. **Halaman UI**: Pengguna mengakses `/machine-params` (`src/app/(app)/machine-params/page.js`) yang dibungkus `PermissionGate resource="machine_params" minLevel="view"`. Komponen `PlcParamEditor` memuat tab `["param1", "param2", "coef"]`. Khusus Setting 1, memuat 8 parameter termasuk `foValue` (tag `FO_VALUE`, register VW220, skala 10, unit MIN, rentang 0–99).
+1. **Halaman UI**: Pengguna mengakses `/machine-params` (`src/app/(app)/machine-params/page.js`) yang dibungkus `PermissionGate resource="machine_params" minLevel="view"`. Komponen `PlcParamEditor` memuat tab `["param1", "param2", "coef"]`. Khusus Setting 1, memuat 8 parameter termasuk `foValue` (tag `F0_VAL`, register VW220, skala 10, unit MIN, rentang 0–99, `recipeDriven: true`).
 2. **Pembacaan Tag On-Demand**: `PlcParamEditor` memanggil `GET /api/plc-params?group=...` (`src/app/api/plc-params/route.js:19`).
 3. **Akses PLC Server-Side**: Handler memanggil `readPlcRaw` (`src/lib/plcAccess.js:48`) via REST API KEPServerEX `/iotgateway/read`, mengonversi raw ke nilai teknik via `rawToValue` (`src/lib/plcParamCatalog.js:133`), dan memeriksa status mesin via `checkMachineIdle(IDLE_PHASES_PARAMS)`.
 4. **Form Edit & Konfirmasi**: Pengguna dengan hak `machine_params >= edit` mengubah nilai, memicu dialog modal `PlcDialog` (`src/components/PlcParamEditor.js:58`) yang menampilkan perbandingan nilai lama vs baru, tanda bahaya merah untuk field keselamatan (`danger`), dan input teks alasan wajib minimal 3 karakter.
@@ -514,21 +517,21 @@ Menyediakan antarmuka HMI-web untuk memantau dan mengubah parameter mesin steril
 - `src/app/(app)/machine-params/page.js:1-16`
 - `src/components/PlcParamEditor.js:1-415`
 - `src/components/PlcDialog.js:1-20`
-- `src/lib/plcParamCatalog.js:1-240`
-- `src/lib/plcAccess.js:1-185`
-- `src/app/api/plc-params/route.js:1-223`
+- `src/lib/plcParamCatalog.js:1-236`
+- `src/lib/plcAccess.js:1-192`
+- `src/app/api/plc-params/route.js:1-245`
 
 ---
 
 ## 21. Fitur Kalibrasi Offset Sensor PLC (Sensor Calibration)
 
 ### Deskripsi Faktual
-Menyediakan antarmuka HMI-web untuk melihat nilai aktual sensor bersandingan dengan offset kalibrasi bertanda pada sensor autoclave yang terhubung ke PLC: 9 sensor suhu (TH, T1, T2, T3, T4, T5, T6, TM, TL pada tag `CAL_TH` s.d. `CAL_TL`), 2 sensor tekanan bejana (P1 pada `CAL_P1` dan P2 pada `CAL_P2`), serta konduktivitas air (L pada `CAL_L`). Antarmuka menampilkan kolom 'Nilai Sensor' secara live yang membaca suhu dan tekanan riil saat ini (atau '—' saat offline), berdampingan dengan kolom 'Offset Kalibrasi' sehingga operator memiliki visibilitas identik dengan layar fisik HMI Siemens SmartLine di mesin. Mengubah offset kalibrasi dilindungi guard ganda: pengguna wajib memiliki hak akses `calibration >= edit` dan izin aksi kritis `action.write_calibration = edit`. Penulisan tunduk pada serialisasi penguncian mesin, pemeriksaan fase idle, pencatatan jejak audit lengkap dengan alasan, serta verifikasi baca-balik real-time.
+Menyediakan antarmuka HMI-web untuk melihat nilai aktual sensor bersandingan dengan offset kalibrasi bertanda pada sensor autoclave yang terhubung ke PLC: 9 sensor suhu (TH, T1, T2, T3, T4, T5, T6, TM, TL pada tag `CAL_TH` s.d. `CAL_TL`), 2 sensor tekanan bejana (P1 pada `CAL_P1` dan P2 pada `CAL_P2`), konduktivitas air (L pada `CAL_L`, register VW322), serta level air bejana (WATER pada `CAL_WATER`, register VW324). Antarmuka menampilkan kolom 'Nilai Sensor' secara live yang membaca suhu, tekanan, konduktivitas, dan level air riil saat ini (atau '—' saat offline), berdampingan dengan kolom 'Offset Kalibrasi' sehingga operator memiliki visibilitas identik dengan layar fisik HMI Siemens SmartLine di mesin. Mengubah offset kalibrasi dilindungi guard ganda: pengguna wajib memiliki hak akses `calibration >= edit` dan izin aksi kritis `action.write_calibration = edit`. Penulisan tunduk pada serialisasi penguncian mesin, pemeriksaan fase idle, pencatatan jejak audit lengkap dengan alasan, serta verifikasi baca-balik real-time.
 
 ### Rantai Alur Kode
 1. **Halaman UI**: Pengguna mengakses `/calibration` (`src/app/(app)/calibration/page.js`) yang dibungkus `PermissionGate resource="calibration" minLevel="view"`. Komponen `PlcParamEditor` memuat grup `["calibration"]`. Pada grup kalibrasi, tabel mengaktifkan flag `showSensorColumn` yang merender kolom "Nilai Sensor" (angka biru tebal) di sebelah kolom "Offset Kalibrasi" (`src/components/PlcParamEditor.js:154-158, 303-315`).
-2. **Pembacaan Offset & Nilai Sensor Live**: Handler `GET /api/plc-params?group=calibration` membaca tag `CAL_*` melalui `readPlcRaw` dan secara bersamaan membaca snapshot sensor aktual (`TH`, `T1`–`T6`, `TM`, `TL`, `P1`, `P2`) melalui `readPlcSnapshot` (`src/app/api/plc-params/route.js:33-43`), mengembalikan objek `{ success: true, values, liveValues, idle, rawPhase }`.
-3. **Pemberian Nilai Baru**: Pengguna memasukkan offset baru pada input desimal. Rentang offset suhu dibatasi -10 s.d. +10 °C, tekanan -50 s.d. +50 kPa, dan konduktivitas -500 s.d. +500 unit raw (`src/lib/plcParamCatalog.js:112-119`).
+2. **Pembacaan Offset & Nilai Sensor Live**: Handler `GET /api/plc-params?group=calibration` membaca tag `CAL_*` melalui `readPlcRaw` dan secara bersamaan membaca snapshot sensor aktual (`TH`, `T1`–`T6`, `TM`, `TL`, `P1`, `P2`, `L`, `WATER`) melalui `readPlcRaw(LIVE_TAGS)` (`src/app/api/plc-params/route.js:46-55`), mengembalikan objek `{ success: true, values, liveValues, idle, rawPhase }`.
+3. **Pemberian Nilai Baru**: Pengguna memasukkan offset baru pada input desimal. Rentang offset suhu dibatasi -10 s.d. +10 °C, tekanan -50 s.d. +50 kPa, serta konduktivitas dan level air -500 s.d. +500 unit raw (`src/lib/plcParamCatalog.js:111-125`).
 4. **Validasi Hak Aksi Kritis**: Permintaan `PUT /api/plc-params` memeriksa izin `action.write_calibration >= edit` (`src/app/api/plc-params/route.js:69`). Jika ditolak, mengembalikan status 403 Forbidden.
 5. **Penulisan Terkunci & Audit**: Handler memperoleh kunci advisory `withPlcLocks`, memastikan fase idle `[0, 1, 6]`, mencatat jejak audit `plc_calibration_write_attempt`, menulis ke KEPServerEX, dan memverifikasi baca-balik tag `CAL_*`.
 6. **Audit Sukses**: Mencatat jejak audit `plc_calibration_write_success` dengan rincian nilai lama dan nilai baru ke tabel `audit_log`.
@@ -536,9 +539,9 @@ Menyediakan antarmuka HMI-web untuk melihat nilai aktual sensor bersandingan den
 ### Bukti Kode
 - `src/app/(app)/calibration/page.js:1-16`
 - `src/components/PlcParamEditor.js:154-158, 303-315`
-- `src/lib/plcParamCatalog.js:111-135, 180-210`
-- `src/lib/plcAccess.js:89-185`
-- `src/app/api/plc-params/route.js:15-70, 71-223`
+- `src/lib/plcParamCatalog.js:1-236`
+- `src/lib/plcAccess.js:1-192`
+- `src/app/api/plc-params/route.js:1-245`
 
 ---
 
@@ -573,31 +576,32 @@ Memantau waktu Real-Time Clock (RTC) pengontrol Siemens S7-200 secara real-time 
 ## 23. Fitur Kontrol Manual Aktuator PLC (Manual Control)
 
 ### Deskripsi Faktual
-Menyediakan antarmuka pengoperasian manual aktuator mesin sterilisasi (10 item: katup steam 1 & 2, katup cooling 1 & 2, udara chamber, buang air drain, buang steam exhaust, pengisian air murni, pompa sirkulasi air, dan buzzer) yang dipetakan langsung ke subrutin PLC SBR9. Antarmuka menampilkan indikator lampu status perintah web vs status output relay fisik aktual secara real-time setiap 1,5 detik. Fitur ini dirancang dengan prinsip keselamatan industri farmasi:
+Menyediakan antarmuka pengoperasian manual aktuator mesin sterilisasi (10 item: katup steam 1 & 2, katup cooling 1 & 2, udara chamber, buang air drain, buang steam exhaust, pengisian air murni, pompa sirkulasi air, dan buzzer) yang dipetakan langsung ke subrutin PLC SBR9. Antarmuka menampilkan indikator lampu status perintah web vs status output relay fisik aktual secara real-time setiap 500 ms. Fitur ini dirancang dengan prinsip keselamatan industri farmasi:
 - **Masuk Mode Manual**: Hanya dapat diaktifkan saat mesin idle (kode fase 0 atau 1) dan memastikan seluruh 10 perintah mati terlebih dahulu.
 - **Keluar Mode Manual**: Dirancang sebagai tindakan darurat (emergency/safety action) yang SELALU diizinkan tanpa penguncian advisory lock dan tanpa syarat fase mesin. Prosedur keluar mematikan seluruh bit perintah katup terlebih dahulu, baru kemudian menurunkan bit `MANUAL_OPER` (M5.0) sehingga PLC mereset seluruh output proses.
 - **Pagar Interlock Katup**: Katup steam hanya dapat dibuka jika kedua pintu bejana tertutup rapat dan seal pintu aktif (`clsFrnt && clsRear && seal`). Katup steam dan katup cooling dilarang aktif secara bersamaan (mutually exclusive).
+- **Responsivitas Eksekusi**: Menggunakan konstanta verifikasi respons cepat `BOOL_VERIFY` ({ timeoutMs: 800, intervalMs: 100 }) untuk menulis perintah katup sehingga relay merespons tanpa delay setpoint.
 
 ### Rantai Alur Kode
-1. **Halaman UI**: Antarmuka diakses di `/manual` (`src/app/(app)/manual/page.js`) dengan proteksi `PermissionGate resource="manual_control" minLevel="view"`. Melakukan polling ke `GET /api/plc-manual` setiap 1500 ms.
-2. **Pemantauan Status Aktuator**: Handler `src/app/api/plc-manual/route.js:47` membaca seluruh tag perintah manual (`MAN_*`), tag output fisik aktual (`STEAM_1`, `COOLING_1`, `WTR_PUMP`, dll.), status pintu, dan level air via `readManualState` (`src/app/api/plc-manual/route.js:24`).
+1. **Halaman UI**: Antarmuka diakses di `/manual` (`src/app/(app)/manual/page.js`) dengan proteksi `PermissionGate resource="manual_control" minLevel="view"`. Melakukan polling ke `GET /api/plc-manual` setiap 500 ms.
+2. **Pemantauan Status Aktuator**: Handler `src/app/api/plc-manual/route.js:47` membaca seluruh tag perintah manual (`MAN_*`), tag output fisik aktual (`STEAM_1`, `COOLING_1`, `WTR_PUMP`, dll.), status pintu, dan status batch berjalan secara paralel (`Promise.all`) tanpa round-trip redundant ke database.
 3. **Mulai Mode Manual**:
-   - Operator dengan izin `manual_control >= edit` menekan "Mulai Mode Manual", mengisi alasan pada dialog modal, dan mengirim `POST /api/plc-manual` dengan `{ action: "enter", reason }` (`src/app/api/plc-manual/route.js:127`).
-   - Handler memperoleh advisory lock `withPlcLocks`, memeriksa mesin idle (`checkMachineIdle([0, 1])`), mematikan seluruh perintah `MAN_*`, menulis `MANUAL_OPER = true` (M5.0), dan mencatat jejak audit `plc_manual_command`.
+   - Operator dengan izin `manual_control >= edit` menekan "Mulai Mode Manual", mengisi alasan pada dialog modal, dan mengirim `POST /api/plc-manual` dengan `{ action: "enter", reason }` (`src/app/api/plc-manual/route.js:145`).
+   - Handler memperoleh advisory lock `withPlcLocks`, memeriksa mesin idle, mematikan seluruh perintah `MAN_*` dengan `BOOL_VERIFY`, menulis `MANUAL_OPER = true` (M5.0), dan mencatat jejak audit `plc_manual_command`.
 4. **Pemberian Perintah Aktuator**:
    - Operator menekan tombol "Nyalakan" / "Matikan" pada kartu aktuator.
    - Mengirim `POST /api/plc-manual` dengan `{ action: "set", key, value }`.
-   - Jika `value === false` (mematikan), permintaan langsung dieksekusi via `writeAndVerify` tanpa syarat interlock.
-   - Jika `value === true` (menyalakan), handler memeriksa `checkMachineIdle([0, 1])`, memvalidasi pagar interlock keselamatan `checkManualCommand` (`src/lib/plcManualCatalog.js:48`), menulis bit perintah ke PLC, dan mencatat jejak audit.
+   - Jika `value === false` (mematikan), permintaan langsung dieksekusi via `writeAndVerify(..., BOOL_VERIFY)` tanpa syarat interlock.
+   - Jika `value === true` (menyalakan), handler memeriksa status idle mesin, memvalidasi pagar interlock keselamatan `checkManualCommand` (`src/lib/plcManualCatalog.js:48`), menulis bit perintah ke PLC dengan `BOOL_VERIFY`, dan mencatat jejak audit.
 5. **Keluar Mode Manual (Fail-Safe Exit)**:
-   - Operator menekan "Keluar Mode Manual". Mengirim `{ action: "exit" }` (`src/app/api/plc-manual/route.js:90`).
-   - Eksekusi berjalan tanpa penguncian lock agar tidak terhalang. Handler mematikan seluruh perintah `MAN_*` ke `false`, memverifikasi katup menutup, lalu menurunkan `MANUAL_OPER` ke `false` (tepi turun M5.0 memicu ladder PLC mereset seluruh output proses), dan mencatat jejak audit.
+   - Operator menekan "Keluar Mode Manual". Mengirim `{ action: "exit" }` (`src/app/api/plc-manual/route.js:111`).
+   - Eksekusi berjalan tanpa penguncian lock agar tidak terhalang. Handler mematikan seluruh perintah `MAN_*` ke `false`, memverifikasi katup menutup via `BOOL_VERIFY`, lalu menurunkan `MANUAL_OPER` ke `false` (tepi turun M5.0 memicu ladder PLC mereset seluruh output proses), dan mencatat jejak audit.
 
 ### Bukti Kode
 - `src/app/(app)/manual/page.js:1-264`
 - `src/lib/plcManualCatalog.js:1-66`
-- `src/app/api/plc-manual/route.js:1-217`
-- `src/lib/plcAccess.js:1-185`
+- `src/app/api/plc-manual/route.js:1-238`
+- `src/lib/plcAccess.js:1-192`
 
 ---
 
@@ -610,7 +614,7 @@ Menambahkan pelacakan data jumlah botol (amount) produk dalam siklus sterilisasi
 1. **Input Modal START**: Komponen `src/components/StartDialog.js:127` memvalidasi input `bottleCount`. Nilai wajib diisi dan harus berupa integer > 0.
 2. **Pengiriman & Penyimpanan Server**:
    - Handler `src/app/api/batch/start/route.js:134` mengekstrak `bottleCount` (atau alias `amount`), membersihkan karakter non-digit, dan memparsing menjadi integer.
-   - Menyisipkan nilai ke kolom `bottle_count` pada query `INSERT INTO batch_records` (`src/app/api/batch/start/route.js:610`).
+   - Menyisipkan nilai ke kolom `bottle_count` pada query `INSERT INTO batch_records` (`src/app/api/batch/start/route.js:618`).
    - Menyediakan fallback bila skema database belum dimigrasi (`colErr.code === "42703"`, `src/app/api/batch/start/route.js:630`).
 3. **Penyajian di Antarmuka**:
    - Halaman detail batch `src/app/(app)/data-report/[batchNo]/page.js:255` menampilkan baris "Amount / Jumlah Botol" dengan format angka pemisah ribuan (misal: `1.200 Botol`).
@@ -654,7 +658,7 @@ Menyediakan komponen lembar pengesahan tanda tangan fisik standar Good Manufactu
 ## 26. Fitur Pengendalian Pintu Autoclave dari Web (Door Operate)
 
 ### Deskripsi Faktual
-Menyediakan antarmuka HMI-web untuk mengendalikan pintu autoclave: pulsa Door Sealing (mengembangkan seal), pulsa Door Release (melepas seal), toggle Water Drain, toggle Door Unlock (bypass interlock tekanan), dan kontrol rantai Forward/Backward dengan mekanisme deadman (rantai berjalan hanya selama tombol ditahan, berhenti otomatis bila dilepas, tab ditutup, atau koneksi putus). Water Drain dan Door Unlock mati sendiri setelah 60 detik (auto-OFF timer). Semua perintah hanya diizinkan saat mesin idle (fase 0 atau 1). Keadaan rantai dan timer hidup di `globalThis.__plcDoorSafety` (singleton tahan duplikasi bundle Next.js).
+Menyediakan antarmuka HMI-web untuk mengendalikan pintu autoclave: pulsa Door Sealing (mengembangkan seal), kontrol Door Release cerdas (toggle ON untuk melepas seal, dan tombol "Release: MATIKAN" untuk menonaktifkan pelepasan seal), toggle Water Drain, toggle Door Unlock (bypass interlock tekanan), dan kontrol rantai Forward/Backward dengan mekanisme deadman (loop fire-and-forget 100 ms, auto-stop bila tombol dilepas atau koneksi terputus). Water Drain dan Door Unlock mati sendiri setelah 60 detik (auto-OFF timer). Semua perintah hanya diizinkan saat mesin idle (fase 0 atau 1). Keadaan rantai dan timer hidup di `globalThis.__plcDoorSafety` (singleton tahan duplikasi bundle Next.js).
 
 Seluruh operasi pintu (baik Door Release maupun Door Unlock) dieksekusi secara **satu klik langsung tanpa dialog konfirmasi dan tanpa kolom alasan** (baik di halaman Door Operate maupun tombol di Dashboard), menyelaraskan pengalaman pengguna dengan HMI fisik mesin pabrik. Setiap tindakan dicatat secara otomatis ke Audit Log dengan keterangan "menggunakan SCADA" (sebelumnya aksi di HMI mesin tidak memiliki rekam jejak audit).
 
@@ -663,40 +667,33 @@ Seluruh operasi pintu (baik Door Release maupun Door Unlock) dieksekusi secara *
 | Aksi | Kondisi yang Diperiksa Sebelum Menyalakan |
 |:---|:---|
 | `seal` | Fase ∈ {0,1}, tidak mode manual, kedua pintu tertutup (`clsFrnt && clsRear`), seal belum aktif, tidak ada Release aktif, tidak ada rantai bergerak |
-| `release` | Fase ∈ {0,1}, tidak mode manual, seal aktif, P1 ≤ Safety Press (keduanya terbaca), tidak ada Sealing aktif |
+| `release` | Fase ∈ {0,1}, tidak mode manual, tidak ada Sealing aktif. Bila kedua pintu tertutup (atau fase 1), butuh P1 ≤ Safety Press (keduanya terbaca). Bila pintu terbuka (fase 0), diizinkan langsung karena tekanan chamber dijamin aman |
 | `drain` | Fase ∈ {0,1}, tidak mode manual, seal sudah lepas, kedua pintu TIDAK tertutup |
 | `unlock` | Fase ∈ {0,1}, tidak mode manual, P1 ≤ Safety Press (keduanya terbaca) |
 | `fwd` (rantai maju) | Fase ∈ {0,1}, tidak mode manual, seal sudah lepas, pintu belakang tidak tertutup, arah bwd tidak aktif |
 | `bwd` (rantai mundur) | Fase ∈ {0,1}, tidak mode manual, seal sudah lepas, pintu depan tidak tertutup, arah fwd tidak aktif |
 
-Sumber: `src/lib/plcDoorCatalog.js:111–162`. Nilai null apa pun di state = tolak (fail-closed).
+Sumber: `src/lib/plcDoorCatalog.js:125–168`. Nilai null apa pun di state = tolak (fail-closed).
 
 ### Jalur Izin Ganda & Keputusan Desain (POST /api/plc-door)
 
 - **Jalur utama**: `manual_control >= edit` — berlaku untuk semua aksi (`seal`, `release`, `drain`, `unlock`, `chain`).
 - **Jalur kedua (berlaku untuk SEMUA aksi)**: `dashboard >= edit` **DAN** `action.batch_control = edit` (hak yang sama dengan START/STOP).
 - **Penolakan**: Bila kedua jalur gagal, server mengembalikan error 403 dari jalur utama (`manual_control` edit).
-- **Akses Baca (GET)**: `GET /api/plc-door` memerlukan `manual_control >= view` (`src/app/api/plc-door/route.js:26`). Menu "Door Operate" di `src/components/Navbar.js:26` dikaitkan dengan resource `manual_control`.
-- **Evaluasi di UI**: Halaman `src/app/(app)/door-operate/page.js:172-173` menghitung `canEdit` dengan dua jalur yang sama:
-  ```js
-  const canEdit = hasLevel(perms, "manual_control", "edit")
-      || (hasLevel(perms, "dashboard", "edit") && hasLevel(perms, "action.batch_control", "edit"));
-  ```
-- **Keputusan Desain (Bukan Bug)**: Pemilik menetapkan parity (kesetaraan) penuh antara kontrol web dan HMI fisik mesin, tempat operator proses biasa mengoperasikan seluruh kontrol pintu. Pengetatan per-tombol (mis. pembatasan khusus Door Unlock) direncanakan di fase berikutnya melalui perizinan granular per-user.
-- **Batasan yang Diketahui**: Role kustom yang memiliki `dashboard` edit + `action.batch_control` edit tetapi `manual_control = none` tidak akan melihat menu/halaman Door Operate di Navbar dan pemanggilan `GET /api/plc-door` akan ditolak 403 (walaupun aksi POST diizinkan).
-- **Catatan Risiko Operasional**: Door Unlock dapat dijalankan oleh semua pemegang hak START/STOP (diterima pemilik; pagar fisik tekanan server P1 ≤ Safety Press tetap berlaku mutlak di backend).
+- **Akses Baca (GET)**: `GET /api/plc-door` memerlukan `manual_control >= view` (`src/app/api/plc-door/route.js:27`). Menu "Door Operate" di `src/components/Navbar.js:26` dikaitkan dengan resource `manual_control`.
+- **Evaluasi di UI**: Halaman `src/app/(app)/door-operate/page.js:180-181` menghitung `canEdit` dengan dua jalur yang sama.
 
 ### Rantai Alur Kode
 
-1. **Halaman UI**: Pengguna mengakses `/door-operate` (`src/app/(app)/door-operate/page.js`) yang dibungkus `PermissionGate resource="manual_control" minLevel="view"` (baris 331).
-2. **Polling Status**: Halaman memanggil `GET /api/plc-door` setiap 1500 ms (baris 108–114). Respons mencakup keadaan pintu, seal, fase, mode manual, status rantai, dan sisa auto-OFF timer.
-3. **Aksi Seal/Release**: Pengguna menekan tombol Door Sealing atau Door Release satu klik langsung (tanpa modal/dialog alasan).
-4. **API POST**: Permintaan `POST /api/plc-door` (`src/app/api/plc-door/route.js:57`) diterima, melewati guard izin ganda, mengambil advisory locks `withPlcLocks`, memeriksa `checkMachineIdle(IDLE_PHASES_DOOR)`, membaca keadaan via `readDoorState()`, dan mengevaluasi `checkDoorCommand`.
+1. **Halaman UI**: Pengguna mengakses `/door-operate` (`src/app/(app)/door-operate/page.js`) yang dibungkus `PermissionGate resource="manual_control" minLevel="view"`.
+2. **Polling Status**: Halaman memanggil `GET /api/plc-door` setiap 500 ms (baris 106–113). Respons mencakup keadaan pintu, seal, `releaseCmd`, fase, mode manual, status rantai, dan sisa auto-OFF timer.
+3. **Aksi Seal/Release**: Pengguna menekan tombol Door Sealing atau Door Release satu klik langsung (tanpa modal/dialog alasan). Tombol Door Release mendukung penonaktifan via tombol "Release: MATIKAN" yang mengirim `{ action: "release", value: false }`.
+4. **API POST**: Permintaan `POST /api/plc-door` (`src/app/api/plc-door/route.js:61`) diterima, melewati guard izin ganda, mengambil advisory locks `withPlcLocks`, memeriksa `checkMachineIdle(IDLE_PHASES_DOOR)`, membaca keadaan via `readDoorState()`, dan mengevaluasi `checkDoorCommand`.
 5. **Audit Fail-Closed**: Sebelum menulis PLC untuk perintah ON, `insertAudit` dicatat ke database — kegagalan DB membatalkan perintah.
-6. **Penulisan PLC**: Fungsi `perform()` mengirim pulsa `DOOR_SEAL_CMD` (1500 ms) atau `DOOR_RELEASE` (3000 ms) via `pulsePlcTag`, lalu memverifikasi status bit `DOOR_SEAL` baca-balik (`verifyRaw`).
-7. **Deadman Rantai**: Tombol Forward/Backward menggunakan `HoldButton` dengan pointer capture (`setPointerCapture`, baris 65). Loop async mengirim `{ action: "chain", mode: "run", dir }` setiap interval 250 ms. Server memanggil `safety.chainRun()` yang memperbarui timer deadman 1000 ms; bila tombol dilepas atau koneksi putus >1000 ms, server menulis false otomatis ke kedua arah (`M11.0` dan `M11.1`).
+6. **Penulisan PLC**: Menggunakan `BOOL_VERIFY` (800ms / 100ms) untuk respons cepat bit boolean.
+7. **Deadman Rantai**: Tombol Forward/Backward menggunakan `HoldButton` dengan pointer capture. Loop async mengirim `{ action: "chain", mode: "run", dir }` setiap interval 100 ms secara fire-and-forget. Server memanggil `safety.chainRun()` yang memperbarui timer deadman 1000 ms; bila tombol dilepas atau koneksi putus >1000 ms, server menulis false otomatis ke kedua arah (`M11.0` dan `M11.1`).
 8. **Auto-OFF**: Water Drain dan Door Unlock ON memasang timer `AUTO_OFF_MS = 60_000` ms via `safety.armAutoOff()`. Timer mati otomatis menulis false dan mencatat audit.
-9. **Dashboard Integration**: Panel kanan Dashboard (`src/app/(app)/page.js:793–835`) menyediakan tombol Door Sealing dan Door Release satu klik langsung tanpa dialog/alasan menggunakan state `doorBusy`, `doorMsg`, dan handler `sendDoor` (baris 385–410).
+9. **Dashboard Integration**: Panel kanan Dashboard (`src/app/(app)/page.js:818–848`) menyediakan tombol Door Sealing dan tombol toggle dinamis Door Release ("Release: MATIKAN").
 
 ### Format Deskripsi & Aksi Audit Trail
 
@@ -704,14 +701,12 @@ Setiap perintah pintu dicatat dengan teks deskriptif spesifik mencantumkan aktor
 
 | Aksi Audit | Peristiwa / Pemicu | Format Deskripsi Faktual di Kode | Payload `newValue` |
 |:---|:---|:---|:---|
-| `plc_door_command` | Perintah ON / Pulsa berhasil (Seal, Release, Drain, Unlock) | `"<Label> dijalankan oleh <username> menggunakan SCADA."` (`route.js:202`) | `{ command, value: true, via: "scada", p1, safetyPress }` |
-| `plc_door_command` | Perintah OFF manual berhasil (Drain, Unlock) | `"<Label> dimatikan oleh <username> menggunakan SCADA."` (`route.js:130`) | `{ command, value: false }` |
-| `plc_door_command` | Auto-OFF 60 detik berhasil (Drain, Unlock) | `"<Label> dimatikan otomatis oleh SCADA setelah 60 dtk."` (`route.js:181`) | `{ command, value: false, auto: true }` |
+| `plc_door_command` | Perintah ON / Pulsa berhasil (Seal, Release, Drain, Unlock) | `"<Label> dijalankan oleh <username> menggunakan SCADA."` | `{ command, value: true, via: "scada", p1, safetyPress }` |
+| `plc_door_command` | Perintah OFF manual berhasil (Release, Drain, Unlock) | `"<Label> dimatikan oleh <username> menggunakan SCADA."` | `{ command, value: false }` |
+| `plc_door_command` | Auto-OFF 60 detik berhasil (Drain, Unlock) | `"<Label> dimatikan otomatis oleh SCADA setelah 60 dtk."` | `{ command, value: false, auto: true }` |
 | `plc_door_command_failed` | Perintah gagal kirim / verifikasi gagal | `"<Label>: <pesan error>"` atau `"<Label> dimatikan oleh ... (TIDAK terverifikasi)"` | `{ command, value: ... }` |
-| `plc_door_chain` | Mulai penahanan rantai (onStart, fail-closed) | `"Rantai <Forward\|Backward> dijalankan oleh <username> menggunakan SCADA (ditahan, berhenti otomatis bila dilepas)."` (`route.js:102`) | `{ direction, event: "start" }` |
-| `plc_door_chain` | Akhir penahanan rantai (onEnd, best-effort) | `"Rantai <Forward\|Backward> (SCADA) berhenti setelah <dtk> dtk (<alasan>)"` (`route.js:108`) | `{ direction, event: "end", durationMs, reason, offVerified }` |
-
-Sumber: `src/app/api/plc-door/route.js:99–109, 127–131, 178–182, 199–203, 211–215`.
+| `plc_door_chain` | Mulai penahanan rantai (onStart, fail-closed) | `"Rantai <Forward\|Backward> dijalankan oleh <username> menggunakan SCADA (ditahan, berhenti otomatis bila dilepas)."` | `{ direction, event: "start" }` |
+| `plc_door_chain` | Akhir penahanan rantai (onEnd, best-effort) | `"Rantai <Forward\|Backward> (SCADA) berhenti setelah <dtk> dtk (<alasan>)"` | `{ direction, event: "end", durationMs, reason, offVerified }` |
 
 ### Konstanta Kunci
 
@@ -719,24 +714,22 @@ Sumber: `src/app/api/plc-door/route.js:99–109, 127–131, 178–182, 199–203
 |:---|:---|:---|
 | `IDLE_PHASES_DOOR` | `[0, 1]` | Fase yang membolehkan perintah pintu |
 | `SEAL_PULSE_MS` | `1500` | Durasi pulsa Door Sealing (ms) |
-| `RELEASE_PULSE_MS` | `3000` | Durasi pulsa Door Release (ms) — **[TIDAK TERVERIFIKASI: tebakan durasi tahan tombol HMI, belum dikonfirmasi ke mesin fisik]** |
+| `RELEASE_PULSE_MS` | `3000` | Durasi pulsa Door Release saat mode pulsa (ms) |
 | `DEADMAN_TIMEOUT_MS` | `1000` | Rantai mati bila sinyal "run" tidak datang dalam (ms) |
 | `AUTO_OFF_MS` | `60_000` | Water Drain dan Door Unlock mati otomatis setelah (ms) |
 
-Sumber: `src/lib/plcDoorCatalog.js:27–34`.
-
 ### Keterbatasan yang Diketahui
 
-- **Server mati saat rantai bergerak**: Rantai terus jalan sampai syarat PLC memotong (seal aktif, pintu tertutup, sensor `I2.0`/`I1.7`). Tidak ada failsafe dari sisi web — perlindungan penuh membutuhkan timeout di ladder PLC (di luar lingkup web). `server.js` menyiasatinya dengan reset best-effort `CHAIN_FWD`/`CHAIN_BWD` saat startup (baris 92–105).
-- **Tag belum diimpor**: Tag `DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT` belum ada di KEPServerEX — harus impor `context/SiemensS7-200_pintu_NANTI.csv` dulu.
+- **Server mati saat rantai bergerak**: Rantai terus jalan sampai syarat batas fisik PLC memotong (`I1.7`/`I2.0`). `server.js` menyiasatinya dengan reset best-effort `CHAIN_FWD`/`CHAIN_BWD` saat startup (baris 101–111).
+- **Integrasi Tag**: Seluruh tag pintu dan perintah kini 100% terdaftar pada berkas master CSV `context/tag_paling_baru.csv` (116 tag).
 
 ### Bukti Kode
-- `src/lib/plcDoorCatalog.js:1-163`
-- `src/lib/plcDeadman.js:1-246`
-- `src/app/api/plc-door/route.js:1-236`
-- `src/app/(app)/door-operate/page.js:1-335`
+- `src/lib/plcDoorCatalog.js:1-168`
+- `src/lib/plcDeadman.js:1-248`
+- `src/app/api/plc-door/route.js:1-263`
+- `src/app/(app)/door-operate/page.js:1-364`
 - `src/components/Navbar.js:26` (menu Door Operate)
-- `server.js:92-105` (reset rantai saat startup)
+- `server.js:101-111` (reset rantai saat startup)
 
 ---
 
@@ -874,42 +867,25 @@ Terdapat **55 nama aksi unik** yang dicatat ke tabel database `audit_log` di sel
 
 ---
 
-## 29. Komparasi Faktual Tag PLC: Kode Sumber vs Dokumen CSV (Audit 2026-11-03)
+## 29. Komparasi Faktual Tag PLC: Kode Sumber vs Dokumen CSV (Audit 2026-11-07)
 
-Pemeriksaan komparatif dilakukan antara seluruh tag yang didefinisikan pada berkas master CSV `context/tag_terbaru_kepsrvr.csv` terhadap pemanggilan tag nyata di kode sumber (`src/lib/plc.js`, `plcManualCatalog.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcWrite.js`, `batch/start`, `batch/stop`, `plc/reset`, `server.js`):
+Pemeriksaan komparatif dilakukan antara seluruh tag yang didefinisikan pada berkas master CSV `context/tag_paling_baru.csv` terhadap pemanggilan tag nyata di kode sumber (`src/lib/plc.js`, `plcManualCatalog.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcWrite.js`, `plcClock.js`, `batch/start`, `batch/stop`, `plc/reset`, `server.js`):
 
-- Total baris data tag pada `context/tag_terbaru_kepsrvr.csv`: **105 tag** (menggantikan berkas lama `SiemensS7-200.csv` 60 tag dan `SiemensS7-200_pintu_NANTI.csv` 6 tag yang telah dihapus).
-- Total tag aktif yang diakses kode sumber: **77 tag** (termasuk tag baru `foValue` / VW220).
+- Total baris data tag pada `context/tag_paling_baru.csv`: **116 tag** (menggantikan berkas staging `tag_terbaru_kepsrvr.csv` 105 tag).
+- Total tag aktif yang diakses kode sumber: **116 tag** (100% terpetakan).
 
-### Perkembangan Integrasi Tag CSV Terbaru:
-1. **Tag Pintu Autoclave**: Seluruh 6 tag pintu (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`) kini telah resmi terdaftar di `tag_terbaru_kepsrvr.csv`.
-2. **Tag Parameter Mesin**: Tiga tag parameter mesin yang sebelumnya belum terdaftar (`DRAIN_TIME` VW88, `SEL_PROG` VW32, `SEL_PRESU` VW30) kini telah terdaftar di `tag_terbaru_kepsrvr.csv`.
+### Integrasi Penuh Tag CSV Master Terbaru (`tag_paling_baru.csv`):
+1. **Tag Kontrol Manual (11 Tag)**: Seluruh 11 tag kontrol manual yang sebelumnya belum terdaftar di CSV kini telah resmi masuk:
+   - `MANUAL_OPER` (M5.0), `MAN_STEAM_1` (M2.0), `MAN_STEAM_2` (M2.1), `MAN_WTR_DRAIN` (M2.5), `MAN_COOLING_1` (M2.2), `MAN_COOLING_2` (M2.3), `MAN_STEAM_EXHS` (M2.6), `MAN_WTR_FILL` (M4.0), `MAN_AIR_CMBR` (M2.4), `MAN_WTR_PUMP` (M2.7), `MAN_BUZZER` (M10.6).
+2. **Tag Offset Kalibrasi Level Air**: Tag `CAL_WATER` (register VW324) telah resmi masuk ke CSV dan katalog kalibrasi `src/lib/plcParamCatalog.js`.
+3. **Resolusi Diskrepansi Penamaan Tag F0 (`F0_VAL`)**:
+   - Tag register VW220 resmi dinamai `"F0_VAL"` pada `tag_paling_baru.csv:55` dan diselaraskan di `src/lib/plcParamCatalog.js:50`, `src/lib/plc.js:78`, `src/app/api/batch/start/route.js:390`, serta kartu ringkasan Dashboard (`src/app/(app)/page.js:754`).
+4. **Resolusi Alamat Register Offset Konduktivitas (`CAL_L`)**:
+   - Register `CAL_L` resmi beralamat `VW322` selaras antara kode katalog dan CSV.
+5. **Tag Jam RTC PLC**:
+   - Seluruh tag pembacaan BCD (`R_YEAR`..`R_SECOND` VB2000..VB2005), penulisan BCD (`S_YEAR`..`S_SECOND` VB3000..VB3005), dan picu eksekusi RTC (`ENTER_RTC` M31.0) terdaftar resmi di berkas CSV master.
 
-### Tag yang Dipakai Kode Sumber Tapi MASIH TIDAK ADA di CSV (11 Tag Kontrol Manual)
-Seluruh 11 tag kontrol manual di bawah ini aktif di kode (`src/lib/plcManualCatalog.js`) namun belum dimasukkan ke master CSV `tag_terbaru_kepsrvr.csv`:
-
-| Nama Tag di Kode | Alamat Register PLC | Lokasi Pemanggilan Kode Sumber | Deskripsi & Fungsi |
-|:---|:---:|:---|:---|
-| `MANUAL_OPER` | M5.0 | `src/lib/plcManualCatalog.js:16` | Bit aktivasi mode kontrol manual |
-| `MAN_STEAM_1` | M2.6 | `src/lib/plcManualCatalog.js:20` | Perintah manual katup Steam 1 |
-| `MAN_STEAM_2` | M2.7 | `src/lib/plcManualCatalog.js:21` | Perintah manual katup Steam 2 |
-| `MAN_WTR_DRAIN` | M2.5 | `src/lib/plcManualCatalog.js:23`, `plcDoorCatalog.js:42` | Perintah manual buang air / Door Operate drain |
-| `MAN_COOLING_1` | M10.0 | `src/lib/plcManualCatalog.js:24` | Perintah manual air pendingin 1 |
-| `MAN_COOLING_2` | M10.1 | `src/lib/plcManualCatalog.js:25` | Perintah manual air pendingin 2 |
-| `MAN_STEAM_EXHS`| M10.2 | `src/lib/plcManualCatalog.js:26` | Perintah manual katup buang uap (exhaust) |
-| `MAN_WTR_FILL` | M10.3 | `src/lib/plcManualCatalog.js:27` | Perintah manual pengisian air bejana |
-| `MAN_AIR_CMBR` | M10.4 | `src/lib/plcManualCatalog.js:28` | Perintah manual udara tekan chamber |
-| `MAN_WTR_PUMP` | M10.5 | `src/lib/plcManualCatalog.js:29` | Perintah manual pompa air pendingin |
-| `MAN_BUZZER` | M10.6 | `src/lib/plcManualCatalog.js:34` | Perintah manual pengujian buzzer alarm |
-
-### Diskrepansi Alamat & Penamaan Tag Antara Kode vs CSV:
-1. **Perbedaan Penamaan Tag F0 (`FO_VALUE` vs `F0_VAL`)**:
-   - Di `src/lib/plcParamCatalog.js:50`, definisi field `foValue` menggunakan properti `tag: "FO_VALUE"` dengan alamat VW220.
-   - Namun di `context/tag_terbaru_kepsrvr.csv:55`, tag dengan alamat VW220 dinamai `"F0_VAL"` (huruf nol dan singkatan VAL).
-   - **Dampak Potensial**: Bila KEPServerEX menggunakan penamaan persis dari file CSV (`F0_VAL`), REST API pembacaan/penulisan parameter `foValue` akan mengembalikan error tag not found.
-2. **Perbedaan Alamat Register Offset Kalibrasi Konduktivitas (`CAL_L`)**:
-   - Di `src/lib/plcParamCatalog.js:189`, tag `CAL_L` dialamatkan ke register `VW144`.
-   - Namun di `context/tag_terbaru_kepsrvr.csv:20`, tag `CAL_L` dialamatkan ke register `VW322` ("offset kalibrasi L, bertanda, ditambahkan ke VW122").
+Seluruh 116 tag PLC Siemens S7-200 kini telah memiliki pemetaan identik antara file CSV konfigurasi KEPServerEX dengan seluruh lapisan aplikasi SCADA web.
 
 ---
 
@@ -965,6 +941,8 @@ Seluruh proses pembuatan arsip dilakukan dalam transaksi database tunggal `REPEA
 
 ## Change Log
 
+- [2026-11-07] MODIFIED: Memperbarui Seksi 29 (Komparasi Tag PLC) dengan master CSV baru `context/tag_paling_baru.csv` (116 tag, 100% terpetakan), mencatat resolusi integrasi 11 tag manual dan `CAL_WATER`, serta resolusi penamaan tag F0 `F0_VAL` dan register `CAL_L` VW322.
+- [2026-11-07] MODIFIED: Memperbarui Fitur 3 (tampilan F0 target dan tombol cerdas toggle Door Release / MATIKAN), Fitur 4 (penulisan setpoint tag `F0_VAL` dan verifikasi baca-balik), Fitur 20 (`F0_VAL` VW220 `recipeDriven: true`), Fitur 21 (tag kalibrasi `CAL_WATER` VW324 dan live sensor L/WATER), Fitur 23 (polling 500ms, verifikasi cepat `BOOL_VERIFY`, GET non-blocking paralel), dan Fitur 26 (polling 500ms, loop rantai 100ms fire-and-forget, pelonggaran syarat Door Release).
 - [2026-11-05] ADDED: Menambahkan dokumentasi Fitur 30 (Fitur Backup & Pengarsipan Data Sistem / Backup Service) mencakup alur manual & terjadwal, format arsip ZIP RFC 4180 + manifest SHA-256, verifikasi integritas, rotasi generasi, dan pengamanan unduhan.
 - [2026-11-05] MODIFIED: Memperbarui Seksi 27 dengan penambahan 4 endpoint backup (`/api/backup` GET/PUT/POST dan `/api/backup/download` GET), memperbarui Seksi 28 dengan penambahan 18 aksi audit baru (total 55 aksi), serta memperbarui Fitur 16 terkait penanganan baris pemisah fase pertama print data report dan resolusi warning linting pada print trend.
 - [2026-11-03] ADDED: Menambahkan dokumentasi sub-fitur 16.5 Format Cetak Kurva Trend Mandiri (`/print/trend/[batchNo]`) pada Fitur 16 dan tombol pintas cetak mandiri pada Fitur 15.

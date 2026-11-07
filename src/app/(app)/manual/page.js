@@ -5,6 +5,7 @@ import { hasLevel } from "@/lib/permissionCatalog";
 import { MANUAL_ITEMS } from "@/lib/plcManualCatalog";
 import PermissionGate from "@/components/PermissionGate";
 import PlcDialog from "@/components/PlcDialog";
+import { resolveHmiPermission, hasHmiOverrideAccess } from "@/lib/hmiOverrideCatalog";
 
 const PHASE_LABEL = {
     0: "Idle (pintu belum tertutup)", 1: "Siap (pintu tertutup)", 2: "FILLING", 3: "HEATING",
@@ -41,6 +42,7 @@ function ItemCard({ item, command, output, canUse, busy, onSet }) {
 
 function ManualContent() {
     const [perms, setPerms] = useState(null);
+    const [hmiOverrides, setHmiOverrides] = useState(null);
     const [state, setState] = useState(null);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null); // { type: "error"|"ok", text }
@@ -51,7 +53,12 @@ function ManualContent() {
         let cancelled = false;
         fetch("/api/auth/me")
             .then((r) => r.json())
-            .then((json) => { if (!cancelled && json.ok) setPerms(json.user.permissions ?? null); })
+            .then((json) => {
+                if (!cancelled && json.ok) {
+                    setPerms(json.user.permissions ?? null);
+                    setHmiOverrides(json.user.hmiOverrides ?? null);
+                }
+            })
             .catch(() => { });
         return () => { cancelled = true; };
     }, []);
@@ -74,6 +81,18 @@ function ManualContent() {
     const missing = plcOk ? state.missingTags ?? [] : [];
     const modeOn = plcOk && state.modeOn === true;
     const idle = state?.idle ?? null;
+
+    // Evaluasi izin per item dengan HMI override
+    // canUseItem(key): boleh menyalakan item ini?
+    function canUseItem(key) {
+        const { level } = resolveHmiPermission(hmiOverrides, perms, "manual_control", key);
+        return level === "write";
+    }
+    // canSeeItem(key): item ini tampil di UI?
+    function canSeeItem(key) {
+        const { level } = resolveHmiPermission(hmiOverrides, perms, "manual_control", key);
+        return level !== "none";
+    }
 
     async function send(body) {
         setBusy(true);
@@ -192,13 +211,13 @@ function ManualContent() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                {MANUAL_ITEMS.map((item) => (
+                {MANUAL_ITEMS.filter((item) => canSeeItem(item.key)).map((item) => (
                     <ItemCard
                         key={item.key}
                         item={item}
                         command={plcOk ? state.commands?.[item.key] ?? null : null}
                         output={plcOk ? state.outputs?.[item.key] ?? null : null}
-                        canUse={canEdit && plcOk && modeOn && missing.length === 0}
+                        canUse={canUseItem(item.key) && plcOk && modeOn && missing.length === 0}
                         busy={busy}
                         onSet={handleSet}
                     />
@@ -257,7 +276,7 @@ function ManualContent() {
 
 export default function ManualPage() {
     return (
-        <PermissionGate resource="manual_control" minLevel="view">
+        <PermissionGate resource="manual_control" minLevel="view" hmiOverridePage="manual_control">
             <ManualContent />
         </PermissionGate>
     );

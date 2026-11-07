@@ -5,6 +5,7 @@ import pool from "@/lib/db";
 // GET /api/auth/me — data sesi terkini untuk klien (Navbar, gating halaman).
 // Semua dibaca dari DB tiap request (bukan dari token): perubahan role/izin oleh
 // admin langsung berlaku. `permissions` = { resource: "none" | "view" | "edit" }.
+// `hmiOverrides` = konfigurasi izin HMI khusus per user (null = semua default/RBAC).
 // Catatan: ini hanya untuk menampilkan/menyembunyikan UI. Penjagaan data tetap di API
 // (requirePermission) — jangan jadikan respons ini satu-satunya pagar.
 export async function GET() {
@@ -17,7 +18,7 @@ export async function GET() {
         }
 
         const result = await pool.query(
-            `SELECT u.full_name, u.is_active, u.deleted_at, u.role_id,
+            `SELECT u.full_name, u.is_active, u.deleted_at, u.role_id, u.hmi_overrides,
                     r.key AS role_key, r.name AS role_name
                FROM users u
                LEFT JOIN roles r ON r.id = u.role_id
@@ -58,6 +59,7 @@ export async function GET() {
                 roleId: dbUser.role_id,
                 roleName: dbUser.role_name ?? roleKey,  // untuk ditampilkan di UI
                 permissions,
+                hmiOverrides: dbUser.hmi_overrides ?? null,
             },
         });
     } catch (error) {

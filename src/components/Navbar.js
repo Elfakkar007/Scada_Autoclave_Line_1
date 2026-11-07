@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { hasLevel } from "@/lib/permissionCatalog";
+import { hasHmiOverrideAccess } from "@/lib/hmiOverrideCatalog";
 
 // Tiap menu terikat ke satu resource izin. Menu tampil bila levelnya >= "view";
 // level "none" (atau resource tanpa baris izin) = menu tersembunyi.
@@ -85,11 +86,34 @@ export default function Navbar() {
     }, [router]);
 
     async function handleLogout() {
+        try {
+            localStorage.removeItem("scada_screen_locked");
+            localStorage.removeItem("scada_last_activity");
+            localStorage.removeItem("scada_lock_user");
+        } catch {}
         await fetch("/api/auth/logout", { method: "POST" });
         router.push("/login");
     }
 
-    const canSee = (item) => hasLevel(user?.permissions, item.resource, "view");
+    // Menu tampil bila RBAC >= view ATAU ada HMI override aktif untuk resource ini.
+    // HMI override hanya relevan untuk menu mesin (machineMenu) yang memiliki page override.
+    // Pemetaan item.resource → page override (door_operate memakai resource manual_control di RBAC
+    // tapi page override terpisah — keduanya cukup dicek lewat hasHmiOverrideAccess).
+    const HMI_OVERRIDE_PAGE = {
+        machine_params: "machine_params",
+        calibration:    "calibration",
+        manual_control: "manual_control",
+    };
+    const canSee = (item) => {
+        if (hasLevel(user?.permissions, item.resource, "view")) return true;
+        // Cek HMI override: menu muncul jika user punya override aktif pada halaman terkait
+        const overridePage = HMI_OVERRIDE_PAGE[item.resource] ?? item.resource;
+        if (hasHmiOverrideAccess(user?.hmiOverrides, overridePage)) return true;
+        // door-operate (/door-operate) berbagi resource manual_control di RBAC,
+        // tapi bisa punya override "door_operate" tersendiri.
+        if (item.href === "/door-operate" && hasHmiOverrideAccess(user?.hmiOverrides, "door_operate")) return true;
+        return false;
+    };
     const visibleMain = user ? mainMenu.filter(canSee) : [];
     const visibleMachine = user ? machineMenu.filter(canSee) : [];
     const visibleAdmin = user ? adminMenu.filter(canSee) : [];

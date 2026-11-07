@@ -58,10 +58,10 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
     - **Status**: `[TIDAK TERVERIFIKASI: fitur Door Operate belum pernah diuji langsung ke mesin fisik pabrik]`
     - **Fakta Kode**: Logika pengaman web (deadman, auto-OFF, interlocking phase) telah lulus 21 uji mock (`fase1/tests/plc_door_mock.mjs`), namun interaksi fisik pergerakan mekanis kereta dorong, katup pembuangan air chamber `M2.5` (`MAN_WTR_DRAIN`), dan keandalan segel pintu belum pernah diuji pada autoclave fisik.
 
-11. **Status Impor Tag Kontrol Manual ke Master CSV KEPServerEX**
-    - **Lokasi Kode**: `src/lib/plcManualCatalog.js:16-34`, `context/tag_terbaru_kepsrvr.csv`
-    - **Status**: `[TIDAK TERVERIFIKASI: 11 tag manual belum terdaftar di KEPServerEX server pabrik]`
-    - **Fakta Kode**: Sebanyak 6 tag pintu dan 4 tag parameter mesin telah berhasil dimasukkan ke master CSV `tag_terbaru_kepsrvr.csv`. Namun 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1`, `MAN_STEAM_2`, `MAN_WTR_DRAIN`, `MAN_COOLING_1`, `MAN_COOLING_2`, `MAN_STEAM_EXHS`, `MAN_WTR_FILL`, `MAN_AIR_CMBR`, `MAN_WTR_PUMP`, `MAN_BUZZER`) masih belum terdaftar di berkas CSV tersebut.
+11. **[TERATASI] Status Impor Tag Kontrol Manual ke Master CSV KEPServerEX**
+    - **Lokasi Kode**: `src/lib/plcManualCatalog.js:16-34`, `context/tag_paling_baru.csv:58-68`
+    - **Status**: `[TERATASI: seluruh 11 tag kontrol manual resmi terdaftar di context/tag_paling_baru.csv]`
+    - **Fakta Kode**: Seluruh 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1`, `MAN_STEAM_2`, `MAN_WTR_DRAIN`, `MAN_COOLING_1`, `MAN_COOLING_2`, `MAN_STEAM_EXHS`, `MAN_WTR_FILL`, `MAN_AIR_CMBR`, `MAN_WTR_PUMP`, `MAN_BUZZER`) serta tag `CAL_WATER` (VW324) kini telah resmi didaftarkan di berkas CSV master `context/tag_paling_baru.csv` (116 tag). Tidak ada lagi tag kontrol manual yang tertinggal di luar CSV.
 
 12. **Kebijakan Retensi Berkas Backup SQL (`migrations/backup_271026.sql`)**
     - **Lokasi Kode**: `migrations/backup_271026.sql`
@@ -207,6 +207,9 @@ Poin-poin di bawah ini sebelumnya merupakan temuan kode mati, inkonsistensi, ata
 12. **Kamus Translasi Seluruh Aksi Audit Log Sistem (Perluasan ke 55 Aksi)**
     - **Status**: `RESOLVED` (`src/lib/auditActionLabels.js` & `src/lib/auditActionLabels.test.mjs`)
     - **Keterangan**: Sebanyak 18 aksi audit tambahan (mencakup formula, produk, spesifikasi, batch, ekspor data, dan layanan backup) telah resmi dipetakan ke dalam `AUDIT_ACTIONS` dengan label bahasa Indonesia dan warna badge terstandarisasi, diverifikasi dengan 171 unit test lolos 100%.
+13. **Integrasi 116 Tag Master PLC ke CSV Resmi (`context/tag_paling_baru.csv`)**
+    - **Status**: `RESOLVED` (`context/tag_paling_baru.csv`)
+    - **Keterangan**: Berkas CSV master terbaru telah menggantikan `context/tag_terbaru_kepsrvr.csv` (105 tag) menjadi `context/tag_paling_baru.csv` (116 tag). Seluruh 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1`, `MAN_STEAM_2`, `MAN_WTR_DRAIN`, `MAN_COOLING_1`, `MAN_COOLING_2`, `MAN_STEAM_EXHS`, `MAN_WTR_FILL`, `MAN_AIR_CMBR`, `MAN_WTR_PUMP`, `MAN_BUZZER`), offset kalibrasi level air bejana (`CAL_WATER` di VW324), serta standarisasi penamaan `F0_VAL` (VW220) dan register kalibrasi konduktivitas `CAL_L` (VW322) kini 100% terdaftar resmi dan sinkron dengan kode sumber.
 
 ---
 
@@ -226,9 +229,9 @@ Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, pe
    - **Lokasi**: `src/lib/plcDeadman.js:14-17`, `server.js:92-105`
    - **Risiko**: Mekanisme deadman rantai berjalan di memori Node.js (`setTimeout` 1000 ms). Bila proses server atau PC SCADA mati mendadak saat bit `M11.0` (Forward) atau `M11.1` (Backward) sedang bernilai `true`, server tidak dapat menulis `false`. Rantai fisik akan terus bergerak sampai sensor batas mesin (`I1.7`/`I2.0`) atau interlock PLC memotongnya. Penanganan saat ini: `server.js` menulis `false` secara best-effort saat startup (baris 101–111). Perlindungan mutlak membutuhkan timer internal pada ladder PLC.
 
-4. **Ketiadaan Berkas CSV Resmi untuk 11 Tag Kontrol Manual**:
-   - **Lokasi**: `src/lib/plcManualCatalog.js:16-34`, `context/tag_terbaru_kepsrvr.csv`
-   - **Risiko**: Sebanyak 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1`, `MAN_STEAM_2`, `MAN_WTR_DRAIN`, `MAN_COOLING_1`, `MAN_COOLING_2`, `MAN_STEAM_EXHS`, `MAN_WTR_FILL`, `MAN_AIR_CMBR`, `MAN_WTR_PUMP`, `MAN_BUZZER`) masih belum terdaftar pada master CSV `tag_terbaru_kepsrvr.csv`. Fitur kontrol manual akan mengalami galat tag not found jika tag-tag ini belum diimpor manual ke proyek KEPServerEX pabrik.
+4. **[TERATASI] Ketiadaan Berkas CSV Resmi untuk 11 Tag Kontrol Manual**:
+   - **Lokasi**: `src/lib/plcManualCatalog.js:16-34`, `context/tag_paling_baru.csv`
+   - **Status**: Telah diselesaikan melalui kehadiran `context/tag_paling_baru.csv` (116 tag). Seluruh 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1` s.d. `MAN_BUZZER`) dan tag kalibrasi `CAL_WATER` kini telah resmi terdaftar di baris 31 dan 58–68 master CSV.
 
 5. **Catatan TODO Kritis Terbengkalai di Pustaka Inti**:
    - `src/lib/batchFinalize.js:22`: `// TODO: konfirmasikan ke QA apakah kode 5 (cooling) sudah cukup sebagai bukti sterilisasi selesai.`
@@ -251,6 +254,9 @@ Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, pe
 ---
 
 ## Change Log
+
+- [2026-11-07] RESOLVED: Memindahkan isu 11 tag kontrol manual yang belum terdaftar di CSV ke Seksi 5 dan menandai butir 4 Seksi 6 sebagai teratasi setelah seluruh 116 tag PLC resmi dimasukkan ke master CSV context/tag_paling_baru.csv.
+- [2026-11-07] RESOLVED: Memindahkan isu diskrepansi register kalibrasi konduktivitas CAL_L (VW322 vs VW144) dan F0 target (F0_VAL VW220) ke status terselesaikan seiring pembaruan master tag CSV.
 
 - [2026-11-05] RESOLVED: Memindahkan isu peringatan linting `react-hooks/set-state-in-effect` pada halaman cetak trend dan kesenjangan translasi aksi audit ke Seksi 5 setelah diperbaiki penuh di kode.
 - [2026-11-05] ADDED: Menambahkan berkas pengujian mandiri `src/lib/backup.test.mjs` dan skrip validasi database baca-saja `fase1/tests/backup_check.mjs` pada Seksi 3.

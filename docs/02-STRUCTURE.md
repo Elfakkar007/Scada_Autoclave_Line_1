@@ -2,6 +2,8 @@
 
 ## Change Log (terbaru di atas)
 
+- [2026-11-07] MOVED: Mengganti referensi berkas CSV tag master di folder `context/` dari `tag_terbaru_kepsrvr.csv` (105 tag) menjadi `tag_paling_baru.csv` (116 tag).
+- [2026-11-07] REMOVED: Menghapus berkas `context/ROADMAP (12).md` dari pohon direktori aktif setelah dihapus dari repositori pada commit `74e7b89`.
 - [2026-11-05] ADDED: Menambahkan rute `backup/` ke `src/app/(app)/`, endpoint `backup/` dan `backup/download/` ke `src/app/api/`, serta modul layanan backup (`backupArchive`, `backupSchedule`, `backupService`, `backup.test.mjs`, `backup_check.mjs`) ke `src/lib/` dan `fase1/tests/`.
 - [2026-11-03] ADDED: Menambahkan rute cetak kurva mandiri `src/app/print/trend/[batchNo]/` ke pohon direktori; menambahkan rute `door-operate/` dan endpoint `api/plc-door/`; memperbarui deskripsi `context/` (`tag_terbaru_kepsrvr.csv`) dan `src/lib/` (`auditActionLabels`).
 - [2026-11-02] ADDED: Menambahkan entri pohon direktori untuk fitur Door Operate: `src/app/(app)/door-operate/` (halaman HMI pengendalian pintu autoclave), `src/app/api/plc-door/` (endpoint GET status dan POST aksi pintu), `src/lib/plcDoorCatalog.js`, `src/lib/plcDeadman.js` (di `src/lib/`), `context/SiemensS7-200_pintu_NANTI.csv` (di `context/`), dan `fase1/tests/plc_door_mock.mjs` (di `fase1/tests/`). Memperbarui deskripsi folder `components/` dan `lib/`.
@@ -10,7 +12,7 @@ Dokumen ini menyajikan pohon direktori proyek `scada-sterilizer` beserta deskrip
 
 ```text
 scada-sterilizer/
-├── context/                             # Berkas referensi PLC Siemens S7-200, tabel CSV pemetaan tag (tag_terbaru_kepsrvr.csv 105 tag), program AWL, dan catatan desain.
+├── context/                             # Berkas referensi PLC Siemens S7-200, tabel CSV pemetaan tag master (tag_paling_baru.csv 116 tag), dan program ladder AWL export_atv.awl.
 ├── docs/                                # Dokumentasi teknis sistem, inventarisasi file, peta relasi kode, dan spesifikasi fitur.
 ├── fase1/                               # Skrip dan berkas verifikasi pengujian modul Role Management (Fase 1).
 │   └── tests/                           # Skrip uji otomatis matriks perizinan role, mock interlock pintu, dan verifikasi backup database.
@@ -99,6 +101,8 @@ scada-sterilizer/
 
 ## Change Log
 
+- [2026-11-07] MOVED: Mengganti referensi berkas CSV tag master di folder `context/` dari `tag_terbaru_kepsrvr.csv` (105 tag) menjadi `tag_paling_baru.csv` (116 tag).
+- [2026-11-07] REMOVED: Menghapus berkas `context/ROADMAP (12).md` dari pohon direktori aktif setelah dihapus dari repositori pada commit `74e7b89`.
 - [2026-11-05] ADDED: Menambahkan rute `backup/` ke `src/app/(app)/`, endpoint `backup/` dan `backup/download/` ke `src/app/api/`, serta modul layanan backup (`backupArchive`, `backupSchedule`, `backupService`, `backup.test.mjs`, `backup_check.mjs`) ke `src/lib/` dan `fase1/tests/`.
 - [2026-11-03] ADDED: Menambahkan rute cetak kurva mandiri `src/app/print/trend/[batchNo]/` ke pohon direktori; menambahkan rute `door-operate/` dan endpoint `api/plc-door/`; memperbarui deskripsi `context/` (penggantian ke `tag_terbaru_kepsrvr.csv` 105 tag) dan `src/lib/` (penambahan `auditActionLabels`, `plcDoorCatalog`, `plcDeadman`).
 - [2026-11-02] ADDED: Menambahkan entri pohon direktori untuk fitur Door Operate: `src/app/(app)/door-operate/` (halaman HMI pengendalian pintu autoclave), `src/app/api/plc-door/` (endpoint GET status dan POST aksi pintu), `src/lib/plcDoorCatalog.js`, `src/lib/plcDeadman.js` (di `src/lib/`), `context/SiemensS7-200_pintu_NANTI.csv` (di `context/`), dan `fase1/tests/plc_door_mock.mjs` (di `fase1/tests/`). Memperbarui deskripsi folder `components/` dan `lib/`.

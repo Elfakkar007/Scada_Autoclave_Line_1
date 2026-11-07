@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { hasLevel } from "@/lib/permissionCatalog";
 import { checkDoorCommand } from "@/lib/plcDoorCatalog";
 import PermissionGate from "@/components/PermissionGate";
+import { resolveHmiPermission } from "@/lib/hmiOverrideCatalog";
 
 const PHASE_LABEL = {
     0: "Idle (pintu belum tertutup)", 1: "Siap (pintu tertutup)", 2: "FILLING", 3: "HEATING",
@@ -82,6 +83,7 @@ function HoldButton({ label, active, disabled, onStart, onEnd, hint }) {
 
 function DoorContent() {
     const [perms, setPerms] = useState(null);
+    const [hmiOverrides, setHmiOverrides] = useState(null);
     const [state, setState] = useState(null);
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState(null); // { type: "error"|"ok", text }
@@ -94,7 +96,12 @@ function DoorContent() {
         let cancelled = false;
         fetch("/api/auth/me")
             .then((r) => r.json())
-            .then((json) => { if (!cancelled && json.ok) setPerms(json.user.permissions ?? null); })
+            .then((json) => {
+                if (!cancelled && json.ok) {
+                    setPerms(json.user.permissions ?? null);
+                    setHmiOverrides(json.user.hmiOverrides ?? null);
+                }
+            })
             .catch(() => { });
         return () => { cancelled = true; };
     }, []);
@@ -185,6 +192,7 @@ function DoorContent() {
     }, [endHold]);
 
     // Sama dengan server: manual_control edit ATAU hak START/STOP (dashboard edit + batch_control edit).
+    // Jalur kedua (batch_control) di server hanya berlaku untuk seal/release/drain (fix bug chain/unlock).
     const canEdit = hasLevel(perms, "manual_control", "edit")
         || (hasLevel(perms, "dashboard", "edit") && hasLevel(perms, "action.batch_control", "edit"));
     const plcOk = state?.plcOk === true;
@@ -192,6 +200,21 @@ function DoorContent() {
     const usable = canEdit && plcOk && missing.length === 0 && !busy;
     const cmd = plcOk ? state.commands ?? {} : {};
     const doors = plcOk ? state.doors ?? {} : {};
+
+    // Evaluasi izin per tombol dengan HMI override
+    // chain dan unlock: perlu manual_control:edit DAN override tidak melarang
+    function canUseAction(actionKey) {
+        const { level } = resolveHmiPermission(hmiOverrides, perms, "door_operate", actionKey);
+        return level === "write";
+    }
+    // canSeeAction: tombol tampil di UI?
+    function canSeeAction(actionKey) {
+        const { level } = resolveHmiPermission(hmiOverrides, perms, "door_operate", actionKey);
+        return level !== "none";
+    }
+
+    // usableFor(actionKey): usable base + override check
+    const usableFor = (actionKey) => usable && canUseAction(actionKey);
 
     // Alasan penolakan per tombol (pagar yang sama dengan server; server tetap yang menentukan)
     const why = (a) => (plcOk ? checkDoorCommand(a, state) : null);
@@ -304,45 +327,57 @@ function DoorContent() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <CmdButton
-                    label="Door Sealing" color="water"
-                    disabled={!usable || !!refuse.seal}
-                    onClick={() => send({ action: "seal" })}
-                    hint={refuse.seal && canEdit ? refuse.seal : "Pulsa singkat; seal aktif bila kedua pintu tertutup."}
-                />
-                <CmdButton
-                    label={releaseOn ? "Door Release: MATIKAN" : "Door Release"}
-                    color={releaseOn ? "stop" : "steam"}
-                    disabled={releaseOn ? !(canEdit && plcOk && !busy) : (!usable || !!refuse.release)}
-                    onClick={() => send({ action: "release", value: !releaseOn })}
-                    hint={!releaseOn && refuse.release && canEdit ? refuse.release : "Melepas seal. Bisa ditekan saat pintu terbuka atau saat P1 ≤ Safety Press."}
-                />
-                <CmdButton
-                    label={drainOn ? `Water Drain: MATIKAN${secLeft(state?.autoOff?.drain) !== null ? ` (auto-OFF ${secLeft(state.autoOff.drain)} dtk)` : ""}` : "Water Drain"}
-                    color={drainOn ? "stop" : "water"}
-                    disabled={drainOn ? !(canEdit && plcOk && !busy) : (!usable || !!refuse.drain)}
-                    onClick={() => send({ action: "drain", value: !drainOn })}
-                    hint={!drainOn && refuse.drain && canEdit ? refuse.drain : "Buang air chamber. Mati sendiri setelah 60 detik."}
-                />
-                <HoldButton
-                    label="Forward" active={holding === "fwd"}
-                    disabled={!usable || !!refuse.fwd || (holding !== null && holding !== "fwd")}
-                    onStart={() => startHold("fwd")} onEnd={endHold}
-                    hint={refuse.fwd && canEdit ? refuse.fwd : "Rantai maju hanya selama ditahan."}
-                />
-                <HoldButton
-                    label="Backward" active={holding === "bwd"}
-                    disabled={!usable || !!refuse.bwd || (holding !== null && holding !== "bwd")}
-                    onStart={() => startHold("bwd")} onEnd={endHold}
-                    hint={refuse.bwd && canEdit ? refuse.bwd : "Rantai mundur hanya selama ditahan."}
-                />
-                <CmdButton
-                    label={unlockOn ? `Door Unlock: MATIKAN${secLeft(state?.autoOff?.unlock) !== null ? ` (auto-OFF ${secLeft(state.autoOff.unlock)} dtk)` : ""}` : "Door Unlock"}
-                    color="stop"
-                    disabled={unlockOn ? !(canEdit && plcOk && !busy) : (!usable || !!refuse.unlock)}
-                    onClick={() => send({ action: "unlock", value: !unlockOn })}
-                    hint={!unlockOn && refuse.unlock && canEdit ? refuse.unlock : "Bypass interlock PLC. Hanya bila P1 ≤ Safety Press; mati sendiri setelah 60 detik."}
-                />
+                {canSeeAction("seal") && (
+                    <CmdButton
+                        label="Door Sealing" color="water"
+                        disabled={!usableFor("seal") || !!refuse.seal}
+                        onClick={() => send({ action: "seal" })}
+                        hint={refuse.seal && canEdit ? refuse.seal : "Pulsa singkat; seal aktif bila kedua pintu tertutup."}
+                    />
+                )}
+                {canSeeAction("release") && (
+                    <CmdButton
+                        label={releaseOn ? "Door Release: MATIKAN" : "Door Release"}
+                        color={releaseOn ? "stop" : "steam"}
+                        disabled={releaseOn ? !(canUseAction("release") && plcOk && !busy) : (!usableFor("release") || !!refuse.release)}
+                        onClick={() => send({ action: "release", value: !releaseOn })}
+                        hint={!releaseOn && refuse.release && canEdit ? refuse.release : "Melepas seal. Bisa ditekan saat pintu terbuka atau saat P1 ≤ Safety Press."}
+                    />
+                )}
+                {canSeeAction("drain") && (
+                    <CmdButton
+                        label={drainOn ? `Water Drain: MATIKAN${secLeft(state?.autoOff?.drain) !== null ? ` (auto-OFF ${secLeft(state.autoOff.drain)} dtk)` : ""}` : "Water Drain"}
+                        color={drainOn ? "stop" : "water"}
+                        disabled={drainOn ? !(canUseAction("drain") && plcOk && !busy) : (!usableFor("drain") || !!refuse.drain)}
+                        onClick={() => send({ action: "drain", value: !drainOn })}
+                        hint={!drainOn && refuse.drain && canEdit ? refuse.drain : "Buang air chamber. Mati sendiri setelah 60 detik."}
+                    />
+                )}
+                {canSeeAction("chain") && (
+                    <HoldButton
+                        label="Forward" active={holding === "fwd"}
+                        disabled={!usableFor("chain") || !!refuse.fwd || (holding !== null && holding !== "fwd")}
+                        onStart={() => startHold("fwd")} onEnd={endHold}
+                        hint={refuse.fwd && canEdit ? refuse.fwd : "Rantai maju hanya selama ditahan."}
+                    />
+                )}
+                {canSeeAction("chain") && (
+                    <HoldButton
+                        label="Backward" active={holding === "bwd"}
+                        disabled={!usableFor("chain") || !!refuse.bwd || (holding !== null && holding !== "bwd")}
+                        onStart={() => startHold("bwd")} onEnd={endHold}
+                        hint={refuse.bwd && canEdit ? refuse.bwd : "Rantai mundur hanya selama ditahan."}
+                    />
+                )}
+                {canSeeAction("unlock") && (
+                    <CmdButton
+                        label={unlockOn ? `Door Unlock: MATIKAN${secLeft(state?.autoOff?.unlock) !== null ? ` (auto-OFF ${secLeft(state.autoOff.unlock)} dtk)` : ""}` : "Door Unlock"}
+                        color="stop"
+                        disabled={unlockOn ? !(canUseAction("unlock") && plcOk && !busy) : (!usableFor("unlock") || !!refuse.unlock)}
+                        onClick={() => send({ action: "unlock", value: !unlockOn })}
+                        hint={!unlockOn && refuse.unlock && canEdit ? refuse.unlock : "Bypass interlock PLC. Hanya bila P1 ≤ Safety Press; mati sendiri setelah 60 detik."}
+                    />
+                )}
             </div>
 
             <div className="mt-6 text-xs text-scada-muted max-w-3xl space-y-1">
@@ -356,7 +391,7 @@ function DoorContent() {
 
 export default function DoorOperatePage() {
     return (
-        <PermissionGate resource="manual_control" minLevel="view">
+        <PermissionGate resource="manual_control" minLevel="view" hmiOverridePage="door_operate">
             <DoorContent />
         </PermissionGate>
     );

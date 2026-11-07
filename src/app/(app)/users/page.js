@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { hasLevel } from "@/lib/permissionCatalog";
+import {
+    OVERRIDE_PAGES, OVERRIDE_ITEMS, getItemGroups,
+} from "@/lib/hmiOverrideCatalog";
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ toast }) {
@@ -146,6 +149,225 @@ function AddUserForm({ roles, onSave, onCancel }) {
     );
 }
 
+// ── HMI Override Panel ────────────────────────────────────────────────────────
+// Panel konfigurasi izin HMI khusus per user. Muncul sebagai row inline di tabel.
+const PAGE_LABELS = {
+    calibration:    "Kalibrasi",
+    machine_params: "Parameter Mesin",
+    manual_control: "Kontrol Manual",
+    door_operate:   "Door Operate",
+};
+
+const LEVEL_OPTIONS_ITEM = [
+    { value: "none",  label: "Sembunyikan" },
+    { value: "read",  label: "Lihat saja" },
+    { value: "write", label: "Lihat & ubah" },
+];
+
+function HmiOverridePanel({ username, onClose, onToast }) {
+    const [overrides, setOverrides] = useState(null);
+    const [draft, setDraft] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    // Load override saat ini
+    useEffect(() => {
+        let cancelled = false;
+        fetch(`/api/users/${encodeURIComponent(username)}/hmi-overrides`)
+            .then((r) => r.json())
+            .then((json) => {
+                if (cancelled) return;
+                const data = json.hmiOverrides ?? null;
+                setOverrides(data);
+                // Inisialisasi draft dari data yang ada
+                const init = {};
+                for (const page of OVERRIDE_PAGES) {
+                    init[page] = {
+                        mode: data?.[page]?.mode ?? "default",
+                        items: { ...(data?.[page]?.items ?? {}) },
+                    };
+                }
+                setDraft(init);
+            })
+            .catch(() => { if (!cancelled) setDraft({}) ; })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [username]);
+
+    async function handleSave() {
+        setSaving(true);
+        try {
+            // Bersihkan draft: mode=default → items bisa dikosongkan
+            const cleaned = {};
+            for (const page of OVERRIDE_PAGES) {
+                const pageData = draft[page];
+                if (pageData.mode === "default") {
+                    cleaned[page] = { mode: "default", items: {} };
+                } else {
+                    cleaned[page] = { mode: "custom", items: pageData.items ?? {} };
+                }
+            }
+            const res = await fetch(`/api/users/${encodeURIComponent(username)}/hmi-overrides`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hmiOverrides: cleaned }),
+            });
+            const json = await res.json();
+            if (!res.ok || json.ok === false) {
+                onToast(json.error ?? "Gagal menyimpan override", "error");
+                return;
+            }
+            onToast(`HMI override user ${username} berhasil disimpan`);
+            onClose();
+        } catch {
+            onToast("Gagal terhubung ke server", "error");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleReset() {
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/users/${encodeURIComponent(username)}/hmi-overrides`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hmiOverrides: null }),
+            });
+            const json = await res.json();
+            if (!res.ok || json.ok === false) {
+                onToast(json.error ?? "Gagal mereset override", "error");
+                return;
+            }
+            onToast(`Override user ${username} direset ke default (ikuti RBAC)`);
+            onClose();
+        } catch {
+            onToast("Gagal terhubung ke server", "error");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function setPageMode(page, mode) {
+        setDraft((prev) => ({ ...prev, [page]: { ...prev[page], mode } }));
+    }
+
+    function setItemLevel(page, itemKey, level) {
+        setDraft((prev) => ({
+            ...prev,
+            [page]: {
+                ...prev[page],
+                items: { ...prev[page].items, [itemKey]: level },
+            },
+        }));
+    }
+
+    if (loading || !draft) {
+        return (
+            <tr className="bg-scada-bg border-b border-scada-rule">
+                <td colSpan={6} className="px-4 py-4 text-sm text-scada-muted">Memuat konfigurasi override…</td>
+            </tr>
+        );
+    }
+
+    return (
+        <tr className="bg-scada-bg border-b border-scada-rule">
+            <td colSpan={6} className="px-4 py-5">
+                <div className="mb-3 flex items-center justify-between">
+                    <div>
+                        <h3 className="font-semibold text-sm">Izin Khusus HMI — {username}</h3>
+                        <p className="text-xs text-scada-muted mt-0.5">
+                            Mode &quot;Ikuti Role&quot; = tidak ada perubahan dari RBAC. Mode &quot;Kustom&quot; = override per item.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="space-y-5">
+                    {OVERRIDE_PAGES.map((page) => {
+                        const pageData = draft[page];
+                        const isCustom = pageData.mode === "custom";
+                        return (
+                            <div key={page} className="bg-white border border-scada-rule rounded-lg p-4">
+                                <div className="flex items-center gap-4 mb-3">
+                                    <span className="font-semibold text-sm">{PAGE_LABELS[page]}</span>
+                                    <select
+                                        className="bg-white border border-scada-idle rounded px-2 py-1 text-xs text-scada-ink focus:outline-none focus:border-scada-water cursor-pointer"
+                                        value={pageData.mode}
+                                        onChange={(e) => setPageMode(page, e.target.value)}
+                                    >
+                                        <option value="default">Ikuti Role (Default)</option>
+                                        <option value="custom">Kustom (Override per item)</option>
+                                    </select>
+                                </div>
+
+                                {isCustom && (
+                                    <div className="space-y-3">
+                                        {getItemGroups(page).map(([groupKey, groupDef]) => (
+                                            <div key={groupKey}>
+                                                <div className="text-xs font-semibold text-scada-muted uppercase mb-1.5">
+                                                    {groupDef.label}
+                                                    {groupDef.hint && (
+                                                        <span className="ml-2 text-scada-steam font-normal normal-case">{groupDef.hint}</span>
+                                                    )}
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                    {groupDef.items.map((itemDef) => {
+                                                        const currentLevel = pageData.items?.[itemDef.key] ?? "default";
+                                                        return (
+                                                            <div key={itemDef.key} className="flex items-center gap-2">
+                                                                <span className="text-xs text-scada-ink w-28 shrink-0">{itemDef.label}</span>
+                                                                <select
+                                                                    className="flex-1 bg-white border border-scada-idle rounded px-2 py-1 text-xs text-scada-ink focus:outline-none focus:border-scada-water cursor-pointer"
+                                                                    value={currentLevel}
+                                                                    onChange={(e) => setItemLevel(page, itemDef.key, e.target.value)}
+                                                                >
+                                                                    <option value="default">Default (ikuti role)</option>
+                                                                    {LEVEL_OPTIONS_ITEM.map((opt) => (
+                                                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="px-4 py-2 bg-scada-water hover:bg-scada-water-hover text-white disabled:opacity-40 rounded text-sm font-semibold transition-colors"
+                    >
+                        {saving ? "Menyimpan…" : "Simpan Override"}
+                    </button>
+                    <button
+                        onClick={handleReset}
+                        disabled={saving || overrides === null}
+                        className="px-4 py-2 bg-scada-idle hover:bg-scada-bg border border-scada-idle text-scada-ink disabled:opacity-40 rounded text-sm font-semibold transition-colors"
+                        title="Reset semua override ke default (ikuti RBAC)"
+                    >
+                        Reset ke Default
+                    </button>
+                    <button
+                        onClick={onClose}
+                        disabled={saving}
+                        className="px-4 py-2 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded text-sm font-semibold transition-colors"
+                    >
+                        Tutup
+                    </button>
+                </div>
+            </td>
+        </tr>
+    );
+}
+
 // ── Baris tabel satu user ─────────────────────────────────────────────────────
 function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) {
     const isSelf = user.username === currentUsername;
@@ -163,6 +385,16 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
     // State untuk konfirmasi hapus
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
+
+    // State untuk HMI override panel
+    const [hmiOpen, setHmiOpen] = useState(false);
+
+    function closeAll() {
+        setEditOpen(false);
+        setResetOpen(false);
+        setDeleteOpen(false);
+        setHmiOpen(false);
+    }
 
     // ── Save edit ──────────────────────────────────────────────────────────
     async function handleSaveEdit() {
@@ -330,15 +562,23 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                             </button>
                             <button
                                 className={`${btnSm} bg-scada-steam hover:bg-scada-steam-hover text-white`}
-                                onClick={() => { setResetOpen((v) => !v); setEditOpen(false); setDeleteOpen(false); }}
+                                onClick={() => { setResetOpen((v) => !v); setEditOpen(false); setDeleteOpen(false); setHmiOpen(false); }}
                                 disabled={saving}
                             >
                                 Reset PW
                             </button>
+                            <button
+                                className={`${btnSm} bg-scada-water hover:bg-scada-water-hover text-white`}
+                                onClick={() => { setHmiOpen((v) => !v); setEditOpen(false); setResetOpen(false); setDeleteOpen(false); }}
+                                disabled={saving}
+                                title="Konfigurasi izin HMI khusus untuk user ini"
+                            >
+                                Izin HMI
+                            </button>
                             {!isSelf && (
                                 <button
                                     className={`${btnSm} bg-red-700 hover:bg-red-800 text-white`}
-                                    onClick={() => { setDeleteOpen((v) => !v); setEditOpen(false); setResetOpen(false); }}
+                                    onClick={() => { setDeleteOpen((v) => !v); setEditOpen(false); setResetOpen(false); setHmiOpen(false); }}
                                     disabled={saving || deleting}
                                     title="Hapus akun (akun akan dihapus dan tidak bisa login lagi. Riwayat tetap tersimpan dan username tidak dapat dipakai ulang)"
                                 >
@@ -470,6 +710,14 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                         </div>
                     </td>
                 </tr>
+            )}
+            {/* ── HMI Override Panel ── */}
+            {hmiOpen && canEdit && (
+                <HmiOverridePanel
+                    username={user.username}
+                    onClose={() => setHmiOpen(false)}
+                    onToast={onToast}
+                />
             )}
         </>
     );

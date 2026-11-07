@@ -18,7 +18,7 @@ Dokumen ini mendokumentasikan spesifikasi teknis, arsitektur sistem, pustaka dep
 
 Daftar pustaka dan versi yang tercantum pada `package.json`:
 
-### Dependencies Utama (`package.json:11-20`)
+### Dependencies Utama (`package.json:11-21`)
 - `next`: `16.3.5` — Framework web full-stack React.
 - `react`: `19.2.8` — Library antarmuka komponen UI.
 - `react-dom`: `19.2.8` — Renderer DOM untuk React.
@@ -29,7 +29,7 @@ Daftar pustaka dan versi yang tercantum pada `package.json`:
 - `recharts`: `^3.10.1` — Library visualisasi grafik kurva suhu dan tekanan (`src/app/(app)/trend/page.js:14`, `src/app/print/data-report/[batchNo]/page.js:8`, `src/app/print/trend/[batchNo]/page.js:6`).
 - `fflate`: `^0.8.3` — Pustaka streaming kompresi ZIP untuk pembuatan dan verifikasi arsip backup data (`src/lib/backupArchive.js:23`, `src/lib/backup.test.mjs:5`).
 
-### DevDependencies (`package.json:22-28`)
+### DevDependencies (`package.json:22-27`)
 - `tailwindcss`: `^4` — Utility CSS framework versi 4 (`src/app/globals.css:1`).
 - `@tailwindcss/postcss`: `^4` — Plugin PostCSS untuk Tailwind CSS v4 (`postcss.config.mjs:4`).
 - `eslint`: `^9` — Linter JavaScript (`eslint.config.mjs:3`).
@@ -78,15 +78,17 @@ Variabel lingkungan yang diakses langsung melalui `process.env.*` pada kode sumb
 | `IOT_GATEWAY_PORT` | `src/lib/plc.js:33`, `src/lib/plcAccess.js:28` | Default `39320` di `plc.js`. Pada `plcAccess.js`, bernilai wajib. |
 | `IOT_GATEWAY_USER` | `src/lib/plc.js:34`, `src/lib/plcAccess.js:29` | Default string kosong `""` di `plc.js`. Pada `plcAccess.js`, bernilai wajib untuk autentikasi Basic KEPServerEX. |
 | `IOT_GATEWAY_PASS` | `src/lib/plc.js:35`, `src/lib/plcAccess.js:30` | Default string kosong `""` di `plc.js`. [TIDAK TERVERIFIKASI: password gateway pada instalasi fisik]. Wajib pada `plcAccess.js`. |
-| `NODE_ENV` | `server.js:15`, `src/lib/plc.js:37` | Menentukan mode eksekusi `"production"` atau `"development"`. |
-| `PORT` | `server.js:16` | Nomor port listening HTTP server. Default `3001` (`server.js:16`). |
-| `HOSTNAME` | `server.js:17` | Alamat host binding HTTP server. Default `"0.0.0.0"` (`server.js:17`). |
-| `TRUST_PROXY` | `server.js:25` | Konfigurasi evaluasi header reverse proxy. Bernilai boolean atau string (`server.js:25`). |
+| `NODE_ENV` | `server.js:30`, `src/lib/plc.js:37` | Menentukan mode eksekusi `"production"` atau `"development"`. |
+| `PORT` | `server.js:32` | Nomor port listening HTTP server. Default `3001` (`server.js:32`). |
+| `HOSTNAME` | `server.js:31` | Alamat host binding HTTP server. Default `"0.0.0.0"` / `"localhost"` (`server.js:31`). |
+| `TRUST_PROXY` | `server.js:54` | Konfigurasi evaluasi header reverse proxy. Bernilai boolean atau string (`server.js:54`). |
 | `BACKUP_DIR` | `src/lib/backupService.js:44` | Direktori root penyimpanan backup data. Default `"backups"` (folder lokal proyek). |
 
 ---
 
 ## Change Log
+
+- [2026-11-07] MODIFIED: Memperbarui rentang baris dependencies (`11-21`) dan devDependencies (`22-27`) pada `package.json`, memperbarui baris pembacaan variabel lingkungan di `server.js` (`NODE_ENV:30`, `HOSTNAME:31`, `PORT:32`, `TRUST_PROXY:54`), serta memverifikasi status commit `74e7b89` dan passing 366 unit test.
 
 - [2026-11-05] ADDED: Menambahkan dependensi `fflate` (`^0.8.3`) pada Seksi 2, Background Worker 3 (Backup Scheduler, `server.js:92-97`) pada Seksi 4, variabel lingkungan `BACKUP_DIR` pada Seksi 5, serta memperbarui nomor baris blok reset rantai di `server.js` (baris 101–111).
 - [2026-11-03] MODIFIED: Memperbarui Seksi 2 (`recharts`) dengan menambahkan referensi pemanggilan pada rute cetak kurva mandiri baru `src/app/print/trend/[batchNo]/page.js:6`.

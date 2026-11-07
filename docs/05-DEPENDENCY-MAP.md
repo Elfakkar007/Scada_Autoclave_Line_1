@@ -344,8 +344,8 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `.env.local` | — | — |
 | `.gitignore` | — | — |
 | `README.md` | — | — |
-| `context/ROADMAP (12).md` | — | — |
-| `context/tag_terbaru_kepsrvr.csv` | — | — |
+| `context/ROADMAP (12).md` [REMOVED] | — | — |
+| `context/tag_paling_baru.csv` | — | Acuan pemetaan tag di `src/lib/plc.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcManualCatalog.js`, `plcClock.js` |
 | `context/export_atv.awl` | — | — |
 | `eslint.config.mjs` | — | — |
 | `jsconfig.json` | — | — |
@@ -490,6 +490,8 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 
 ## Change Log
 
+- [2026-11-07] REMOVED: Menandai `context/ROADMAP (12).md` sebagai REMOVED setelah dihapus dari repositori pada commit `74e7b89`.
+- [2026-11-07] MOVED: Mengganti entri CSV master dari `context/tag_terbaru_kepsrvr.csv` menjadi `context/tag_paling_baru.csv` (116 tag, 100% terpetakan ke seluruh modul PLC).
 - [2026-11-05] ADDED: Menambahkan pemetaan node dan hubungan impor untuk modul Backup Data: `fase1/tests/backup_check.mjs`, `src/app/(app)/backup/page.js`, `src/app/api/backup/route.js`, `src/app/api/backup/download/route.js`, `src/lib/backupSchedule.js`, `src/lib/backupArchive.js`, `src/lib/backupService.js`, `src/lib/backup.test.mjs`. Memperbarui relasi impor `server.js` (Backup Scheduler) dan `src/app/api/audit-log/export/route.js` (auditActionLabels).
 - [2026-11-03] ADDED: Menambahkan berkas `src/app/print/trend/[batchNo]/page.js` (meng-import `PermissionGate` dan `SignOffBlock`), `src/lib/auditActionLabels.js`, `src/lib/auditActionLabels.test.mjs`, dan master CSV `context/tag_terbaru_kepsrvr.csv`.
 - [2026-11-03] REMOVED: Menghapus referensi berkas CSV usang `context/SiemensS7-200.csv` dan `context/SiemensS7-200_pintu_NANTI.csv` yang telah dihapus dan digantikan oleh `tag_terbaru_kepsrvr.csv`. Menghapus duplikasi entri `public/satoria-logo.png`.

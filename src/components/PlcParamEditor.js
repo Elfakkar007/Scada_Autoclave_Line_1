@@ -7,6 +7,7 @@ import {
     formatValue, validateField, rawEquals,
 } from "@/lib/plcParamCatalog";
 import PlcDialog from "@/components/PlcDialog";
+import { resolveHmiPermission } from "@/lib/hmiOverrideCatalog";
 
 const INPUT =
     "w-full bg-white border border-scada-idle rounded px-3 py-1.5 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-scada-bg";
@@ -208,7 +209,7 @@ function FieldRow({ def, current, liveValue, showSensorColumn, input, error, edi
 }
 
 // ── Panel satu grup (di-remount tiap ganti tab lewat prop key) ────────────────
-function GroupPanel({ group, perms }) {
+function GroupPanel({ group, perms, hmiOverrides }) {
     const meta = PLC_GROUPS[group];
     const fields = PLC_FIELDS[group];
 
@@ -239,17 +240,67 @@ function GroupPanel({ group, perms }) {
     // showSensorColumn: true untuk kalibrasi — kolom tampil selalu (walau PLC offline)
     const showSensorColumn = group === "calibration";
 
-    const baseEdit =
+    // Pemetaan group PLC → page HMI override
+    // "calibration" dan "machine_params" adalah page override tersendiri
+    // "param1", "param2", "coef" semuanya masuk ke "machine_params"
+    const HMI_PAGE_FOR_GROUP = {
+        calibration: "calibration",
+        param1: "machine_params",
+        param2: "machine_params",
+        coef: "machine_params",
+    };
+    const hmiPage = HMI_PAGE_FOR_GROUP[group] ?? null;
+
+    // Evaluasi izin base: gabungkan RBAC + HMI override per halaman
+    // Jika ada HMI override mode=custom, level item spesifik bisa berbeda dari RBAC
+    const hmiPageOverride = hmiPage ? (hmiOverrides?.[hmiPage] ?? null) : null;
+    const hmiMode = hmiPageOverride?.mode ?? "default";
+
+    // baseEdit: apakah user boleh mengedit setidaknya satu field di grup ini?
+    // Dengan override: true jika RBAC edit ATAU ada override "write" di halaman ini
+    const rbacEdit =
         hasLevel(perms, meta.resource, "edit") &&
         (!meta.writeAction || hasLevel(perms, meta.writeAction, "edit"));
-    const canEditField = (def) =>
-        baseEdit && !def.readOnly && (!def.restricted || hasLevel(perms, def.restricted, "edit"));
-    const writableNow = plcOk && idle?.ok === true;
+    const hmiHasAnyWrite = hmiMode === "custom" &&
+        Object.values(hmiPageOverride?.items ?? {}).some((l) => l === "write");
+    const baseEdit = rbacEdit || hmiHasAnyWrite;
 
+    // Evaluasi izin per field: gabungkan RBAC + HMI override per item
+    const canEditField = (def) => {
+        if (def.readOnly) return false;
+        if (def.restricted && !hasLevel(perms, def.restricted, "edit")) return false;
+
+        // Jika mode override custom dan item ini di-override
+        if (hmiMode === "custom" && hmiPage) {
+            const itemLevel = hmiPageOverride?.items?.[def.key];
+            if (itemLevel !== undefined) {
+                return itemLevel === "write";
+            }
+            // Item tidak di-override → fallback ke RBAC
+        }
+        // Default: ikuti RBAC
+        return rbacEdit;
+    };
+
+    // canReadField: user boleh melihat field (input disabled tapi nilai tampil)?
+    const canReadField = (def) => {
+        if (hmiMode === "custom" && hmiPage) {
+            const itemLevel = hmiPageOverride?.items?.[def.key];
+            if (itemLevel !== undefined) {
+                return itemLevel === "read" || itemLevel === "write";
+            }
+        }
+        // Default: ikuti RBAC (view >= view)
+        return hasLevel(perms, meta.resource, "view");
+    };
+
+    const writableNow = plcOk && idle?.ok === true;
     // Hitung perubahan yang tertunda + galat per field
+    // Field yang di-override "none" (tidak tampil) diabaikan dari pending
     const pending = [];
     const errors = {};
     for (const def of fields) {
+        if (!canReadField(def)) continue; // disembunyikan oleh override
         const typed = inputs[def.key];
         if (typed === undefined || String(typed).trim() === "") continue;
         const v = validateField(def, typed);
@@ -257,6 +308,8 @@ function GroupPanel({ group, perms }) {
         const cur = data?.values?.[def.key];
         if (!cur || cur.raw === null || cur.raw === undefined) continue;
         if (rawEquals(def, v.raw, cur.raw)) continue;
+        // Hanya masukkan ke pending jika user boleh mengedit field ini
+        if (!canEditField(def)) continue;
         pending.push({ def, input: typed, value: v.value, oldValue: cur.value });
     }
     const hasErrors = Object.keys(errors).length > 0;
@@ -332,19 +385,23 @@ function GroupPanel({ group, perms }) {
             )}
 
             <div className="bg-scada-card border border-scada-rule rounded-lg shadow-sm overflow-hidden">
-                {fields.map((def) => (
-                    <FieldRow
-                        key={def.key}
-                        def={def}
-                        current={data?.values?.[def.key]?.value ?? null}
-                        liveValue={liveValues ? (liveValues[def.key] ?? null) : null}
-                        showSensorColumn={showSensorColumn}
-                        input={inputs[def.key]}
-                        error={errors[def.key]}
-                        editable={canEditField(def) && writableNow}
-                        onChange={handleChange}
-                    />
-                ))}
+                {fields.map((def) => {
+                    // Sembunyikan field yang di-override ke "none" (tidak boleh dibaca sama sekali)
+                    if (!canReadField(def)) return null;
+                    return (
+                        <FieldRow
+                            key={def.key}
+                            def={def}
+                            current={data?.values?.[def.key]?.value ?? null}
+                            liveValue={liveValues ? (liveValues[def.key] ?? null) : null}
+                            showSensorColumn={showSensorColumn}
+                            input={inputs[def.key]}
+                            error={errors[def.key]}
+                            editable={canEditField(def) && writableNow}
+                            onChange={handleChange}
+                        />
+                    );
+                })}
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -390,12 +447,18 @@ function GroupPanel({ group, perms }) {
 export default function PlcParamEditor({ title, subtitle, groups }) {
     const [active, setActive] = useState(groups[0]);
     const [perms, setPerms] = useState(null);
+    const [hmiOverrides, setHmiOverrides] = useState(null);
 
     useEffect(() => {
         let cancelled = false;
         fetch("/api/auth/me")
             .then((r) => r.json())
-            .then((json) => { if (!cancelled && json.ok) setPerms(json.user.permissions ?? null); })
+            .then((json) => {
+                if (!cancelled && json.ok) {
+                    setPerms(json.user.permissions ?? null);
+                    setHmiOverrides(json.user.hmiOverrides ?? null);
+                }
+            })
             .catch(() => { });
         return () => { cancelled = true; };
     }, []);
@@ -423,7 +486,7 @@ export default function PlcParamEditor({ title, subtitle, groups }) {
                 </div>
             )}
 
-            <GroupPanel key={active} group={active} perms={perms} />
+            <GroupPanel key={active} group={active} perms={perms} hmiOverrides={hmiOverrides} />
         </main>
     );
 }

@@ -76,6 +76,7 @@ async function loadUserAccess(username) {
             `SELECT u.is_active,
                     u.deleted_at,
                     u.role_id,
+                    u.hmi_overrides,
                     r.key  AS role_key,
                     r.name AS role_name,
                     COALESCE(
@@ -99,6 +100,7 @@ async function loadUserAccess(username) {
             roleKey: row.role_key,
             roleName: row.role_name,
             permissions: row.permissions ?? {},
+            hmiOverrides: row.hmi_overrides ?? null,
         };
     } catch (err) {
         console.error("[auth] Gagal membaca akses user dari database:", err.message);
@@ -144,6 +146,7 @@ export async function requireAuth(cookieStore) {
         roleId: access.roleId,
         roleName: access.roleName,
         permissions: access.permissions,
+        hmiOverrides: access.hmiOverrides,
     };
     return { session, errorResponse: null };
 }

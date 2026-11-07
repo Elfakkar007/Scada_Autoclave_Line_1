@@ -171,15 +171,15 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `context/ROADMAP (12).md`
-- **Tipe**: Dokumentasi
-- **Fungsi**: Mencatat 586 baris riwayat keputusan teknis, arsitektur SCADA, pemetaan tag PLC, dan catatan commit perbaikan sistem.
-- **Export utama**: Tidak ada (berkas teks Markdown referensi).
+### `context/ROADMAP (12).md` [REMOVED]
+- **Tipe**: Dokumentasi (Telah Dihapus)
+- **Fungsi**: Berkas catatan historis 585 baris riwayat keputusan teknis, arsitektur SCADA, pemetaan tag PLC, dan catatan commit perbaikan sistem. Dihapus dari repositori pada commit `74e7b89`.
+- **Export utama**: Tidak ada (arsip).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Tidak ada.
-- **Bukti**: `context/ROADMAP (12).md:1-586`
-- **Catatan**: Dokumen historis pengembangan.
+- **Bukti**: Terhapus pada commit `74e7b89` (sebelumnya `context/ROADMAP (12).md:1-585`).
+- **Catatan**: Status REMOVED — informasi dipertahankan untuk riwayat audit dokumentasi.
 
 ---
 
@@ -461,13 +461,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/plc.js`
 - **Tipe**: Util / Komunikasi REST IoT Gateway PLC
-- **Fungsi**: Menyediakan fungsi pembacaan data sensor PLC Siemens S7-200 via REST API KEPServerEX `/iotgateway/read`, scaling nilai suhu (°C/10) dan tekanan (kPa), serta deteksi fase proses.
+- **Fungsi**: Menyediakan fungsi pembacaan data sensor PLC Siemens S7-200 via REST API KEPServerEX `/iotgateway/read`, scaling nilai suhu (°C/10) dan tekanan (kPa), integrasi target F0 menit (`f0Val`, register VW220 /10), deteksi status buzzer alarm (`M10.6`), pembacaan word alarm mentah (`alrmDor`, `alrmTemp`, `warningBuz`), status perintah door release (`releaseCmd` M1.3), serta deteksi fase proses.
 - **Export utama**: `readPlcSnapshot`, `TAG_MAP`, `PHASE_MAP` (fungsi dan konstanta)
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: `src/app/api/batch/start/route.js`, `src/app/api/batch/stop/route.js`, `src/app/api/plc/reset/route.js`, `src/app/api/status/route.js`, `src/lib/alarmMonitor.js`, `src/lib/trendRecorder.js`
 - **Efek samping / dependensi eksternal**: Melakukan HTTP request GET ke KEPServerEX IoT Gateway (`src/lib/plc.js:145`), membaca `process.env.IOT_GATEWAY_*`.
-- **Bukti**: `src/lib/plc.js:1-290`
-- **Catatan**: Catatan kode: tag L/VW122 konduktivitas dan WATER level air belum memiliki formula kalibrasi (`src/lib/plc.js:200-205`).
+- **Bukti**: `src/lib/plc.js:1-452`
+- **Catatan**: Catatan kode: tag L/VW122 konduktivitas dan WATER level air belum memiliki formula kalibrasi konversi fisik (`src/lib/plc.js:338, 339, 371, 372`). Tag target F0 (VW220) resmi dinamai `F0_VAL` dan dibagi 10 ke satuan menit.
 
 ---
 
@@ -641,18 +641,19 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/page.js`
 - **Tipe**: Client Component / Dashboard Utama
-- **Fungsi**: Merender dashboard pengawasan SCADA utama: polling data sensor PLC real-time setiap 1 detik, diagram interaktif Autoclave, kartu pembacaan 9 sensor suhu, tekanan, status pintu, tombol kontrol proses (START, STOP, Reset), blok Door Sealing/Release, dan panel detail resep berjalan.
+- **Fungsi**: Merender dashboard pengawasan SCADA utama: polling data sensor PLC real-time setiap 1 detik, diagram interaktif Autoclave, kartu pembacaan 9 sensor suhu, tekanan, status pintu, tombol kontrol proses (START, STOP, Reset), blok Door Sealing/Release, panel detail resep berjalan (termasuk F0 Target jika ada), dan peringatan status perintah PLC.
 - **Export utama**: `default` DashboardPage (fungsi komponen React)
 - **Meng-import (internal)**: `src/lib/plcCommandAlert.js`, `src/components/AtvDiagram.js`, `src/lib/atvProcess.js`, `src/components/StartDialog.js`, `src/components/DeletedUserBadge.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Memanggil API `GET /api/status` setiap 1000 ms, `POST /api/batch/stop`, `POST /api/plc/reset`, `POST /api/plc-door` untuk Door Sealing/Release (`src/app/(app)/page.js:385–410`).
-- **Bukti**: `src/app/(app)/page.js:1-982`
+- **Bukti**: `src/app/(app)/page.js:1-1009`
 - **Catatan**:
   - `startAllowed`: Baris 492 (`const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`) berjalan aktif penuh. Baris 493–494 adalah komentar pengembang toggle uji (`// Biarkan baris ini tetap ada untuk testing pop up start ya` dan `// const startAllowed = true;`) yang sengaja dibiarkan pemilik untuk pengujian pop-up modal tanpa terhubung ke mesin fisik (bukan bypass aktif).
-  - State Door: `doorBusy` dan `doorMsg` di baris 213–214 (state dialog dan alasan lama seperti `releaseOpen`/`releaseReason` telah dihapus).
-  - Handler `sendDoor` di baris 385–410 (fungsi lama `handleDoorRelease` telah dihapus).
-  - Gating: `canDoor` baris 523, `sealAllowed` baris 526, `releaseAllowed` baris 527, `doorBlockReason` baris 528.
-  - Blok tombol Door Sealing dan Door Release di baris 793–835 (tanpa modal/alasan, satu klik langsung mengirim ke API).
+  - State Door: `doorBusy` dan `doorMsg` di baris 213–214.
+  - Handler `sendDoor` di baris 385–410.
+  - Gating: `canDoor` baris 523, `doorsClosedForSeal` baris 542, `sealAllowed` baris 543, `releaseAllowed` baris 548, `releaseOn` baris 550, `doorBlockReason` baris 552.
+  - Tampilan F0 Target: Ditampilkan di kartu ringkasan Formula baris 754–759 (`data.setpoints?.f0Val !== null`).
+  - Blok tombol Door Sealing dan Door Release di baris 818–848: Door Release berstatus toggle cerdas dengan teks dinamis (`releaseOn ? "Release: MATIKAN" : "Door Release"`) dan warna indikatif.
   - `eslint-disable-next-line react-hooks/set-state-in-effect` di baris 251 dan 278; `react-hooks/exhaustive-deps` di baris 256.
 
 ---
@@ -911,13 +912,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/batch/start/route.js`
 - **Tipe**: API Route Handler
-- **Fungsi**: Memvalidasi parameter resep, memeriksa keunikan Batch No, memvalidasi input `bottleCount`, memeriksa interlock pintu/seal PLC, menulis setpoint ke register PLC, memverifikasi baca-balik setpoint, mengirim pulsa START (M1.4), menunggu fase proses, dan mencatat data ke `batch_records` (termasuk kolom `bottle_count`).
+- **Fungsi**: Memvalidasi parameter resep, memeriksa keunikan Batch No, memvalidasi input `bottleCount`, memeriksa interlock pintu/seal PLC, menulis setpoint ke register PLC (termasuk tag `F0_VAL` jika `recipe.fo_val_setting` diset), memverifikasi baca-balik seluruh setpoint, mengirim pulsa START (M1.4), menunggu fase proses, dan mencatat data ke `batch_records` (termasuk kolom `bottle_count`).
 - **Export utama**: `POST` (fungsi handler HTTP)
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js`, `src/lib/plc.js`, `src/lib/plcWrite.js`, `src/lib/recipeValidation.js`, `src/lib/batchNo.js`, `src/lib/recipeSnapshot.js`, `src/lib/recipeGuard.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Membuka koneksi PostgreSQL advisory lock (`src/app/api/batch/start/route.js:35`), menulis ke REST API PLC (`src/app/api/batch/start/route.js:390`), menjalankan query `INSERT INTO batch_records` (`src/app/api/batch/start/route.js:606`) dan `audit_log`.
-- **Bukti**: `src/app/api/batch/start/route.js:1-743`
-- **Catatan**: Membaca `bottleCount` / `amount` dari request body (`src/app/api/batch/start/route.js:134-141`). Menyertakan fallback penanganan error `colErr.code === "42703"` (kolom `bottle_count` belum dimigrasi di database) sehingga alur START tidak gagal fatal saat migrasi 006 belum dijalankan.
+- **Efek samping / dependensi eksternal**: Membuka koneksi PostgreSQL advisory lock (`src/app/api/batch/start/route.js:35`), menulis ke REST API PLC (`src/app/api/batch/start/route.js:390`), menjalankan query `INSERT INTO batch_records` (`src/app/api/batch/start/route.js:618`) dan `audit_log`.
+- **Bukti**: `src/app/api/batch/start/route.js:1-755`
+- **Catatan**: Membaca `bottleCount` / `amount` dari request body (`src/app/api/batch/start/route.js:134-141`). Menulis dan memverifikasi setpoint target F0 `F0_VAL` (`Math.round(foValSetting * 10)`). Menyertakan fallback penanganan error `colErr.code === "42703"` (kolom `bottle_count` belum dimigrasi di database) sehingga alur START tidak gagal fatal saat migrasi 006 belum dijalankan.
 
 ---
 
@@ -1427,13 +1428,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/plcAccess.js`
 - **Tipe**: Lib / Akses On-Demand PLC (Server-Only)
-- **Fungsi**: Menyediakan abstraksi komunikasi PLC on-demand untuk modul HMI-web (di luar TAG_MAP polling 1 detik dashboard): pembacaan raw tag tanpa scaling (`readPlcRaw`), serialisasi penguncian tulis via advisory lock `PLC_WRITE_LOCK_KEY` (847291035) dan `START_LOCK_KEY` (`withPlcLocks`), pengecekan fase mesin idle & ketiadaan batch aktif (`checkMachineIdle`), serta fungsi tulis dan verifikasi baca-balik berulang hingga 4,5 detik (`writeAndVerify`, `verifyRaw`).
+- **Fungsi**: Menyediakan abstraksi komunikasi PLC on-demand untuk modul HMI-web (di luar TAG_MAP polling 1 detik dashboard): pembacaan raw tag tanpa scaling (`readPlcRaw`), serialisasi penguncian tulis via advisory lock `PLC_WRITE_LOCK_KEY` (847291035) dan `START_LOCK_KEY` (`withPlcLocks`), pengecekan fase mesin idle & ketiadaan batch aktif (`checkMachineIdle`), serta fungsi tulis dan verifikasi baca-balik berulang (`writeAndVerify`, `verifyRaw`) dengan dukungan opsi timeout/interval kustom (`verifyOpts`) dan pembacaan langsung sebelum jeda sleep.
 - **Export utama**: `PLC_WRITE_LOCK_KEY`, `readPlcRaw`, `withPlcLocks`, `checkMachineIdle`, `writeAndVerify`, `verifyRaw`
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/plcWrite.js` (`writePlcTags`), `src/lib/recipeGuard.js` (`START_LOCK_KEY`), `src/lib/plcParamCatalog.js` (`rawEqualsKind`)
 - **Dipakai oleh**: `src/app/api/plc-params/route.js`, `src/app/api/plc-clock/route.js`, `src/app/api/plc-manual/route.js`
 - **Efek samping / dependensi eksternal**: Memanggil REST API KEPServerEX `/iotgateway/read`, mengelola lock sesi PostgreSQL `pg_try_advisory_lock`, dan mengakses env `IOT_GATEWAY_*` secara fail-closed.
-- **Bukti**: `src/lib/plcAccess.js:1-185`
-- **Catatan**: Server-only runtime. Kunci advisory lock selalu dilepaskan pada blok `finally`.
+- **Bukti**: `src/lib/plcAccess.js:1-192`
+- **Catatan**: Server-only runtime. Kunci advisory lock selalu dilepaskan pada blok `finally`. Loop verifikasi baca-balik menggunakan `do-while` sehingga langsung mengecek respons PLC sebelum jeda interval pertama.
 
 ---
 
@@ -1463,13 +1464,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/plcParamCatalog.js`
 - **Tipe**: Config / Katalog Parameter & Pagar Server PLC
-- **Fungsi**: Sumber kebenaran daftar field parameter PLC yang diizinkan dibaca/ditulis oleh HMI-web (`PLC_FIELDS`: `param1`, `param2`, `coef`, `calibration`), metadata skala/unit/batas min-max, penambahan parameter `foValue` (tag `FO_VALUE`, register VW220, skala 10, unit MIN, rentang 0-99) pada `param1`, grup resource (`PLC_GROUPS`), fase idle (`IDLE_PHASES_PARAMS = [0, 1, 6]`), kunci aksi keselamatan `SAFETY_ACTION = "action.write_safety_params"`, validasi rentang fisik (`validateField`), perbandingan presisi float32 (`rawEquals`), cross-check relasi suhu antar-field (`crossCheck`), dan formatting teks (`formatValue`).
+- **Fungsi**: Sumber kebenaran daftar field parameter PLC yang diizinkan dibaca/ditulis oleh HMI-web (`PLC_FIELDS`: `param1`, `param2`, `coef`, `calibration`), metadata skala/unit/batas min-max, penambahan parameter `foValue` (tag `F0_VAL`, register VW220, skala 10, unit MIN, rentang 0-99, `recipeDriven: true`) pada `param1`, penambahan field kalibrasi `water` (`CAL_WATER`, register VW324, -500..500 raw), grup resource (`PLC_GROUPS`), fase idle (`IDLE_PHASES_PARAMS = [0, 1, 6]`), kunci aksi keselamatan `SAFETY_ACTION = "action.write_safety_params"`, validasi rentang fisik (`validateField`), perbandingan presisi float32 (`rawEquals`), cross-check relasi suhu antar-field (`crossCheck`), dan formatting teks (`formatValue`).
 - **Export utama**: `SAFETY_ACTION`, `PLC_GROUPS`, `IDLE_PHASES_PARAMS`, `PLC_FIELDS`, `getFields`, `getField`, `rawToValue`, `rawEqualsKind`, `rawEquals`, `validateField`, `crossCheck`, `formatValue`
 - **Meng-import (internal)**: Tidak ada
 - **Dipakai oleh**: `src/lib/plcAccess.js`, `src/components/PlcParamEditor.js`, `src/app/api/plc-params/route.js`, `src/app/api/plc-clock/route.js`
 - **Efek samping / dependensi eksternal**: Tidak ada.
-- **Bukti**: `src/lib/plcParamCatalog.js:1-233`
-- **Catatan**: Menjadi batas pagar keamanan server terhadap tag R/W di KEPServerEX agar penulisan di luar field katalog ditolak secara mutlak. Catatan ketidaksesuaian: nama tag di `tag_terbaru_kepsrvr.csv` adalah `"F0_VAL"`, sedangkan di file ini `"FO_VALUE"`.
+- **Bukti**: `src/lib/plcParamCatalog.js:1-236`
+- **Catatan**: Menjadi batas pagar keamanan server terhadap tag R/W di KEPServerEX agar penulisan di luar field katalog ditolak secara mutlak. Tag register VW220 resmi dinamai `"F0_VAL"`, offset konduktivitas `CAL_L` resmi pada register `VW322`, dan offset level air `CAL_WATER` resmi pada register `VW324` selaras dengan `context/tag_paling_baru.csv`.
 
 ---
 
@@ -1487,25 +1488,25 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/plc-manual/route.js`
 - **Tipe**: API Route Handler (Server-Only)
-- **Fungsi**: Mengembalikan status seluruh perintah manual, output aktual PLC, dan status pintu/interlock (`GET`), serta mengeksekusi kontrol manual aktuator (`POST` dengan aksi `enter`, `exit`, atau `set`).
+- **Fungsi**: Mengembalikan status seluruh perintah manual, output aktual PLC, dan status pintu/interlock (`GET`) dengan pembacaan paralel DB tanpa round-trip redundan, serta mengeksekusi kontrol manual aktuator (`POST` dengan aksi `enter`, `exit`, atau `set`) menggunakan verifikasi cepat respons ladder (`BOOL_VERIFY`: 800ms / 100ms).
 - **Export utama**: `GET`, `POST`
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/auditLog.js` (`insertAudit`, `tryAudit`), `src/lib/plcManualCatalog.js`, `src/lib/plcAccess.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (dipanggil via fetch oleh `src/app/(app)/manual/page.js`)
 - **Efek samping / dependensi eksternal**: Menulis tag perintah `MANUAL_OPER` dan `MAN_*` ke PLC via `writeAndVerify`, serta mencatat jejak audit `plc_manual_command`.
-- **Bukti**: `src/app/api/plc-manual/route.js:1-217`
-- **Catatan**: Aksi `exit` (keluar mode manual) didesain sebagai aksi keselamatan: selalu diizinkan tanpa penguncian dan mematikan seluruh perintah aktuator terlebih dahulu sebelum menurunkan bit mode manual M5.0.
+- **Bukti**: `src/app/api/plc-manual/route.js:1-238`
+- **Catatan**: Aksi `exit` (keluar mode manual) didesain sebagai aksi keselamatan: selalu diizinkan tanpa penguncian dan mematikan seluruh perintah aktuator terlebih dahulu sebelum menurunkan bit mode manual M5.0. Verifikasi bit boolean dipercepat melalui `BOOL_VERIFY` agar antarmuka responsif terhadap klik operator.
 
 ---
 
 ### `src/app/api/plc-params/route.js`
 - **Tipe**: API Route Handler (Server-Only)
-- **Fungsi**: Mengembalikan pembacaan nilai PLC saat ini beserta status kesiapan mesin untuk grup parameter yang diminta, serta deret nilai sensor suhu dan tekanan aktual (`liveValues`) untuk grup kalibrasi (`GET`), serta memperbarui nilai parameter mesin atau offset kalibrasi PLC (`PUT`).
+- **Fungsi**: Mengembalikan pembacaan nilai PLC saat ini beserta status kesiapan mesin untuk grup parameter yang diminta, serta deret nilai sensor suhu dan tekanan aktual (`liveValues`, termasuk konduktivitas `l: "L"` dan level air `water: "WATER"`) untuk grup kalibrasi (`GET`), serta memperbarui nilai parameter mesin atau offset kalibrasi PLC (`PUT`).
 - **Export utama**: `GET`, `PUT`
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/auditLog.js` (`insertAudit`, `tryAudit`), `src/lib/plcParamCatalog.js`, `src/lib/plcAccess.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (dipanggil via fetch oleh `src/components/PlcParamEditor.js`)
 - **Efek samping / dependensi eksternal**: Dilindungi izin granular bertingkat (`machine_params` atau `calibration`, ditambah `action.write_calibration` dan `action.write_safety_params` untuk field keselamatan). Mengeksekusi penulisan dengan `withPlcLocks` dan verifikasi baca-balik.
-- **Bukti**: `src/app/api/plc-params/route.js:1-243`
-- **Catatan**: Mewajibkan isian teks alasan perubahan (minimal 3 karakter) yang dicatat ke tabel `audit_log`. Pada `group === "calibration"`, membaca tag `TH`, `T1`–`T6`, `TM`, `TL` (skala /10) dan `P1`, `P2` secara langsung via `readPlcRaw`.
+- **Bukti**: `src/app/api/plc-params/route.js:1-245`
+- **Catatan**: Mewajibkan isian teks alasan perubahan (minimal 3 karakter) yang dicatat ke tabel `audit_log`. Pada `group === "calibration"`, membaca tag `TH`, `T1`–`T6`, `TM`, `TL` (skala /10), `P1`, `P2`, `L`, dan `WATER` secara langsung via `readPlcRaw`.
 
 ---
 
@@ -1535,13 +1536,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/manual/page.js`
 - **Tipe**: Client Component / Halaman Kontrol Manual ("use client")
-- **Fungsi**: Menyajikan antarmuka pengoperasian manual aktuator mesin sterilisasi (katup, pompa sirkulasi, buzzer), indikator lampu perintah vs output fisik aktual, tombol mulai/keluar mode manual, dan polling status interlock secara real-time setiap 1,5 detik.
+- **Fungsi**: Menyajikan antarmuka pengoperasian manual aktuator mesin sterilisasi (katup, pompa sirkulasi, buzzer), indikator lampu perintah vs output fisik aktual, tombol mulai/keluar mode manual, dan polling status interlock secara real-time setiap 500 ms.
 - **Export utama**: `default function ManualPage`
 - **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/plcManualCatalog.js` (`MANUAL_ITEMS`), `src/components/PermissionGate.js`, `src/components/PlcDialog.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/manual`)
-- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/auth/me`, `GET /api/plc-manual` setiap 1500 ms, dan `POST /api/plc-manual`.
+- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/auth/me`, `GET /api/plc-manual` setiap 500 ms, dan `POST /api/plc-manual`.
 - **Bukti**: `src/app/(app)/manual/page.js:1-264`
-- **Catatan**: Dilindungi `PermissionGate resource="manual_control" minLevel="view"`. Menampilkan visualisasi lampu hijau/merah/abu-abu untuk membedakan bit perintah vs output relay aktual.
+- **Catatan**: Dilindungi `PermissionGate resource="manual_control" minLevel="view"`. Menampilkan visualisasi lampu hijau/merah/abu-abu untuk membedakan bit perintah vs output relay aktual. Polling dipercepat ke 500 ms agar status interlock dan lampu indikator sinkron dengan PLC.
 
 ---
 
@@ -1559,64 +1560,65 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/plcDoorCatalog.js`
 - **Tipe**: Config / Katalog Pintu PLC (aman klien & server)
-- **Fungsi**: Katalog pagar, konstanta waktu, dan tag perintah untuk fitur Door Operate. Mendefinisikan fase idle yang diizinkan (`IDLE_PHASES_DOOR = [0, 1]`), waktu pulsa (`SEAL_PULSE_MS = 1500`, `RELEASE_PULSE_MS = 3000` — tebakan), deadman timeout (`DEADMAN_TIMEOUT_MS = 1000`), auto-OFF timer (`AUTO_OFF_MS = 60_000`), daftar tag perintah (`DOOR_CMD_TAGS`), tag wajib (`REQUIRED_TAGS`), tag opsional (`OPTIONAL_TAGS`), serta fungsi `buildDoorState`, `pressureSafe`, dan `checkDoorCommand`.
+- **Fungsi**: Katalog pagar, konstanta waktu, dan tag perintah untuk fitur Door Operate. Mendefinisikan fase idle yang diizinkan (`IDLE_PHASES_DOOR = [0, 1]`), waktu pulsa (`SEAL_PULSE_MS = 1500`, `RELEASE_PULSE_MS = 3000`), deadman timeout (`DEADMAN_TIMEOUT_MS = 1000`), auto-OFF timer (`AUTO_OFF_MS = 60_000`), daftar tag perintah (`DOOR_CMD_TAGS`), tag wajib (`REQUIRED_TAGS`), tag opsional (`OPTIONAL_TAGS`), serta fungsi `buildDoorState`, `pressureSafe`, dan `checkDoorCommand`.
 - **Export utama**: `IDLE_PHASES_DOOR`, `SEAL_PULSE_MS`, `RELEASE_PULSE_MS`, `DEADMAN_TIMEOUT_MS`, `AUTO_OFF_MS`, `DOOR_CMD_TAGS`, `REQUIRED_TAGS`, `OPTIONAL_TAGS`, `ALL_STATE_TAGS`, `buildDoorState`, `pressureSafe`, `checkDoorCommand`
 - **Meng-import (internal)**: `src/lib/plcManualCatalog.js` (`MANUAL_MODE_TAG`, baris 24) — satu-satunya impor internal.
 - **Dipakai oleh**: `src/lib/plcDeadman.js`, `src/app/api/plc-door/route.js`, `src/app/(app)/door-operate/page.js`
 - **Efek samping / dependensi eksternal**: Tidak ada (konstanta dan fungsi murni).
-- **Bukti**: `src/lib/plcDoorCatalog.js:1-163`
-- **Catatan**: Komentar baris 29 menyatakan `RELEASE_PULSE_MS` adalah tebakan `[BELUM]`, perlu dikonfirmasi ke mesin fisik. Fungsi `checkDoorCommand` memvalidasi pagar per aksi (seal/release/drain/unlock/fwd/bwd) secara fail-closed: nilai null = tolak.
+- **Bukti**: `src/lib/plcDoorCatalog.js:1-168`
+- **Catatan**: Fungsi `checkDoorCommand` untuk aksi `release` dibebaskan dari syarat pintu harus tertutup dan seal harus aktif: bila pintu terbuka (fase 0), tekanan chamber dijamin aman sehingga selalu boleh ditekan; bila kedua pintu tertutup (fase 1), wajib memastikan tekanan chamber aman (`P1 <= Safety Press`).
 
 ---
 
 ### `src/lib/plcDeadman.js`
 - **Tipe**: Lib / Pengaman Waktu Door Operate (Server-Only)
-- **Fungsi**: Menyediakan pengaman waktu untuk fitur Door Operate: deadman rantai Forward/Backward (bit rantai mati sendiri bila tidak ada sinyal "run" dalam `DEADMAN_TIMEOUT_MS = 1000` ms) dan auto-OFF Water Drain / Door Unlock setelah `AUTO_OFF_MS = 60_000` ms. Seluruh operasi diserialkan via antrean Promise. Singleton produksi disimpan di `globalThis.__plcDoorSafety`.
+- **Fungsi**: Menyediakan pengaman waktu untuk fitur Door Operate: deadman rantai Forward/Backward (bit rantai mati sendiri bila tidak ada sinyal "run" dalam `DEADMAN_TIMEOUT_MS = 1000` ms, interval loop ±100 ms, retry jeda 100 ms) dan auto-OFF Water Drain / Door Unlock setelah `AUTO_OFF_MS = 60_000` ms. Seluruh operasi diserialkan via antrean Promise. Singleton produksi disimpan di `globalThis.__plcDoorSafety`.
 - **Export utama**: `readDoorState`, `createDoorSafety`, `getDoorSafety`
 - **Meng-import (internal)**: `src/lib/plcDoorCatalog.js` (impor statis, baris 21–23); `src/lib/plcAccess.js` dan `src/lib/plcWrite.js` via **dynamic import** lazy di objek `realDeps` (baris 31–35) agar modul dapat di-tes tanpa PostgreSQL/gateway.
 - **Dipakai oleh**: `src/app/api/plc-door/route.js`
 - **Efek samping / dependensi eksternal**: Memanggil KEPServerEX via `plcAccess.js`/`plcWrite.js`, mengelola `setTimeout` internal. **Server-Only** — jangan di-import dari komponen "use client".
-- **Bukti**: `src/lib/plcDeadman.js:1-246`
-- **Catatan**: Keterbatasan kritis (baris 14–17): bila proses server/PC mati saat bit rantai true, tidak ada yang menulis false — rantai jalan sampai syarat PLC memotong. `server.js` menyiasatinya dengan reset best-effort saat startup (baris 92–105). Perlindungan penuh membutuhkan timeout di ladder PLC.
+- **Bukti**: `src/lib/plcDeadman.js:1-248`
+- **Catatan**: Keterbatasan kritis: bila proses server/PC mati saat bit rantai true, tidak ada yang menulis false — rantai jalan sampai syarat batas fisik PLC memotong (`I1.7`/`I2.0`). `server.js` menyiasatinya dengan reset best-effort saat startup (baris 101–111).
 
 ---
 
 ### `src/app/api/plc-door/route.js`
 - **Tipe**: API Route Handler (Server-Only)
-- **Fungsi**: Mengembalikan status pintu, rantai, dan auto-OFF timer (`GET`), serta mengeksekusi aksi pintu: pulsa `seal`/`release`, toggle `drain`/`unlock` dengan auto-OFF, dan deadman `chain` Forward/Backward (`POST`).
+- **Fungsi**: Mengembalikan status pintu, rantai, status `releaseCmd`, dan auto-OFF timer (`GET`), serta mengeksekusi aksi pintu: pulsa `seal`, toggle ON/OFF `release` (`value: false` untuk mematikan perintah), toggle `drain`/`unlock` dengan auto-OFF, dan deadman `chain` Forward/Backward (`POST`) menggunakan verifikasi cepat `BOOL_VERIFY` (800ms / 100ms).
 - **Export utama**: `GET`, `POST`
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/auditLog.js` (`insertAudit`, `tryAudit`), `src/lib/plcDoorCatalog.js`, `src/lib/plcAccess.js` (`withPlcLocks`, `checkMachineIdle`, `writeAndVerify`, `verifyRaw`), `src/lib/plcWrite.js` (`pulsePlcTag`), `src/lib/plcDeadman.js` (`readDoorState`, `getDoorSafety`)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (dipanggil via fetch oleh `src/app/(app)/door-operate/page.js` dan `src/app/(app)/page.js`)
 - **Efek samping / dependensi eksternal**: Menulis tag PLC via KEPServerEX, mencatat audit `plc_door_command`, `plc_door_command_failed`, `plc_door_chain`.
-- **Bukti**: `src/app/api/plc-door/route.js:1-236`
+- **Bukti**: `src/app/api/plc-door/route.js:1-263`
 - **Catatan**:
-  - **GET** (baris 23–46): guard `requirePermission(cookieStore, "manual_control", "view")` (baris 26).
-  - **POST** (baris 57–236): guard utama `requirePermission(cookieStore, "manual_control", "edit")` (baris 60). **Jalur izin kedua berlaku untuk SEMUA aksi** (`seal`, `release`, `drain`, `unlock`, `chain`) di baris 74–79: lolos bila pemegang `dashboard >= edit` DAN `action.batch_control = edit` (hak yang sama dengan START/STOP), selaras dengan operasi di HMI fisik mesin. Bila kedua jalur gagal, server mengembalikan error 403 dari jalur utama (`manual_control`).
+  - **GET** (baris 27–50): guard `requirePermission(cookieStore, "manual_control", "view")`. Menyertakan status `releaseCmd: !!snap.doorRelease` dari PLC.
+  - **POST** (baris 61–263): guard utama `requirePermission(cookieStore, "manual_control", "edit")`. **Jalur izin kedua berlaku untuk SEMUA aksi** (`seal`, `release`, `drain`, `unlock`, `chain`): lolos bila pemegang `dashboard >= edit` DAN `action.batch_control = edit`.
+  - Aksi `release` mendukung parameter `value: false` untuk menonaktifkan bit perintah `DOOR_RELEASE_CMD` (M1.3) seketika tanpa jeda auto-OFF.
   - Seluruh aksi satu klik langsung tanpa dialog konfirmasi dan tanpa validasi field alasan `reason`.
-  - Audit `plc_door_command` ditulis fail-closed sebelum menulis PLC untuk perintah ON (baris 199–203) dengan deskripsi `"<Label> dijalankan oleh <username> menggunakan SCADA."`; kegagalan audit membatalkan pengiriman perintah ke PLC.
-  - Audit `plc_door_chain` dicatat pada `onStart` (fail-closed, baris 99–103) dan `onEnd` (best-effort via `tryAudit`, baris 105–109).
+  - Audit `plc_door_command` ditulis fail-closed sebelum menulis PLC untuk perintah ON dengan deskripsi `"<Label> dijalankan oleh <username> menggunakan SCADA."`.
+  - Audit `plc_door_chain` dicatat pada `onStart` (fail-closed) dan `onEnd` (best-effort via `tryAudit`).
 
 ---
 
 ### `src/app/(app)/door-operate/page.js`
 - **Tipe**: Client Component / Halaman Door Operate ("use client")
-- **Fungsi**: Menyajikan antarmuka pengendalian pintu autoclave dari web: tombol Door Sealing, Door Release, Water Drain (toggle), Forward/Backward rantai (hold-to-run dengan pointer capture), Door Unlock (toggle), panel status sensor, dan lampu indikator pintu/seal. Seluruh tombol satu klik langsung tanpa modal dialog konfirmasi atau kolom alasan.
+- **Fungsi**: Menyajikan antarmuka pengendalian pintu autoclave dari web: tombol Door Sealing, Door Release (toggle cerdas ON / MATIKAN), Water Drain (toggle), Forward/Backward rantai (hold-to-run dengan loop fire-and-forget 100ms dan pointer capture), Door Unlock (toggle), panel status sensor, dan lampu indikator pintu/seal.
 - **Export utama**: `default function DoorOperatePage`
 - **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`, baris 4), `src/lib/plcDoorCatalog.js` (`checkDoorCommand`, baris 5), `src/components/PermissionGate.js` (baris 6)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/door-operate`)
-- **Efek samping / dependensi eksternal**: Polling `GET /api/plc-door` tiap 1500 ms (baris 108–114), memanggil `POST /api/plc-door` untuk aksi, memanggil `GET /api/auth/me` untuk izin (baris 97–102), menggunakan `navigator.sendBeacon` sebagai fallback saat tab ditutup/blur (baris 126).
-- **Bukti**: `src/app/(app)/door-operate/page.js:1-335`
-- **Catatan**: Dilindungi `PermissionGate resource="manual_control" minLevel="view"` (baris 331). Evaluasi hak aksi `canEdit` mendukung jalur ganda di baris 172–173 (`manual_control` edit ATAU `dashboard` edit + `action.batch_control` edit). Tombol Forward/Backward menggunakan `setPointerCapture` agar gesture tidak terputus saat pointer keluar elemen (baris 65). Sinyal "run" deadman dikirim tiap `HOLD_INTERVAL_MS = 250` ms (baris 13). Memasang listener `blur`/`pagehide`/`visibilitychange` untuk `endHold` (baris 133–142).
+- **Efek samping / dependensi eksternal**: Polling `GET /api/plc-door` tiap 500 ms (baris 106–113), memanggil `POST /api/plc-door` untuk aksi, memanggil `GET /api/auth/me` untuk izin (baris 95–100), menggunakan `navigator.sendBeacon` sebagai fallback saat tab ditutup/blur (baris 124).
+- **Bukti**: `src/app/(app)/door-operate/page.js:1-364`
+- **Catatan**: Dilindungi `PermissionGate resource="manual_control" minLevel="view"`. Evaluasi hak aksi `canEdit` mendukung jalur ganda (`manual_control` edit ATAU `dashboard` edit + `action.batch_control` edit). Tombol Forward/Backward menggunakan pointer capture dengan pengiriman sinyal tick `HOLD_INTERVAL_MS = 100` ms berbasis fire-and-forget (maksimal 3 error berturut-turut sebelum berhenti otomatis). Tombol Door Release kini mendukung pematian langsung via tombol berlabel "Release: MATIKAN".
 
 ---
 
 ### `context/SiemensS7-200_pintu_NANTI.csv` [REMOVED]
 - **Tipe**: Data Referensi (Telah Dihapus)
-- **Fungsi**: Berkas staging pemetaan 6 tag PLC baru untuk fitur Door Operate (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`). Telah dihapus pada commit `021d5e4` karena seluruh 6 tag telah digabungkan ke dalam `context/tag_terbaru_kepsrvr.csv`.
+- **Fungsi**: Berkas staging pemetaan 6 tag PLC baru untuk fitur Door Operate (`DOOR_SEAL_CMD`, `CHAIN_FWD`, `CHAIN_BWD`, `CHAIN_FWD_OUT`, `CHAIN_BWD_OUT`, `DOOR_REL_OUT`). Telah dihapus pada commit `021d5e4` karena seluruh 6 tag telah digabungkan ke dalam `context/tag_terbaru_kepsrvr.csv` (kini `tag_paling_baru.csv`).
 - **Export utama**: Tidak ada (arsip).
 - **Meng-import (internal)**: Tidak ada
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Digantikan oleh `context/tag_terbaru_kepsrvr.csv`.
+- **Efek samping / dependensi eksternal**: Digantikan oleh `context/tag_paling_baru.csv`.
 - **Bukti**: Terhapus pada commit `021d5e4` (sebelumnya `context/SiemensS7-200_pintu_NANTI.csv:1-7`).
 - **Catatan**: Status REMOVED — informasi dipertahankan untuk riwayat audit dokumentasi.
 
@@ -1624,12 +1626,12 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `fase1/tests/plc_door_mock.mjs`
 - **Tipe**: Test / Unit Test Mock
-- **Fungsi**: Menguji 21 skenario pagar `checkDoorCommand` dan mekanisme deadman `createDoorSafety` tanpa membutuhkan gateway PLC nyata atau database (semua dependency di-inject sebagai mock).
+- **Fungsi**: Menguji 21 skenario pagar `checkDoorCommand` dan mekanisme deadman `createDoorSafety` tanpa membutuhkan gateway PLC nyata atau database (semua dependency di-inject sebagai mock). Memverifikasi pelonggaran izin Door Release saat pintu terbuka maupun tertutup aman, serta failsafe pematian rantai.
 - **Export utama**: Tidak ada (script uji Node.js mandiri).
 - **Meng-import (internal)**: `src/lib/plcDoorCatalog.js`, `src/lib/plcDeadman.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (tidak tercakup dalam `fase1/tests/matrix.mjs`)
 - **Efek samping / dependensi eksternal**: Mencetak hasil uji ke stdout (21 pass).
-- **Bukti**: `fase1/tests/plc_door_mock.mjs:1-231` (dijalankan, output: "Semua lolos (21 lolos)")
+- **Bukti**: `fase1/tests/plc_door_mock.mjs:1-235` (dijalankan, output: "Semua lolos (21 lolos)")
 - **Catatan**: Dijalankan secara mandiri dengan `node fase1/tests/plc_door_mock.mjs`.
 
 ---
@@ -1665,8 +1667,8 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 - **Meng-import (internal)**: `src/components/PermissionGate.js`, `src/components/SignOffBlock.js`
 - **Dipakai oleh**: Dibuka via tab baru dari tombol "🖨 Cetak / PDF" di `src/app/(app)/trend/page.js`.
 - **Efek samping / dependensi eksternal**: Mengambil data batch & deret sensor via `GET /api/batch-records/[batchNo]`, mengambil profil user via `GET /api/auth/me`, menggunakan Recharts (`LineChart`, `Line`, dll.), memanggil `window.print()`.
-- **Bukti**: `src/app/print/trend/[batchNo]/page.js:1-394`
-- **Catatan**: Dilindungi `PermissionGate resource="trend" minLevel="view"`. Tinggi grafik disesuaikan ke 360px dengan margin kompak agar seluruh konten (header, grafik, footer, dan `SignOffBlock`) muat tepat dalam 1 halaman A4 landscape tanpa terpotong. Peringatan ESLint `react-hooks/set-state-in-effect` telah diselesaikan dengan memanggil `Promise.resolve().then(() => setLoading(false))` pada baris 176.
+- **Bukti**: `src/app/print/trend/[batchNo]/page.js:1-401`
+- **Catatan**: Dilindungi `PermissionGate resource="trend" minLevel="view"`. Tinggi grafik disesuaikan ke 360px dengan margin kompak agar seluruh konten (header, grafik, footer, dan `SignOffBlock`) muat tepat dalam 1 halaman A4 landscape tanpa terpotong. Menggunakan flag pembatalan `cancelled` pada `useEffect` untuk keamanan cleanup asinkron saat unmount komponen.
 
 ---
 
@@ -1768,6 +1770,9 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ## Change Log
 
+- [2026-11-07] REMOVED: Menandai `context/ROADMAP (12).md` sebagai REMOVED setelah dihapus dari repositori pada commit `74e7b89`.
+- [2026-11-07] MOVED: Mengganti referensi master CSV tag dari `context/tag_terbaru_kepsrvr.csv` (105 tag) menjadi `context/tag_paling_baru.csv` (116 tag, 100% terpetakan).
+- [2026-11-07] MODIFIED: Memperbarui dokumentasi 13 berkas kode sumber yang diselaraskan pada commit `74e7b89`: `src/app/(app)/page.js` (F0 target display, toggle cerdas Door Release "MATIKAN"), `src/app/(app)/door-operate/page.js` (polling 500ms, hold rantai 100ms fire-and-forget, pematian release), `src/app/(app)/manual/page.js` (polling 500ms), `src/app/api/batch/start/route.js` (penulisan & verifikasi tag `F0_VAL`), `src/app/api/plc-door/route.js` (`BOOL_VERIFY` 800ms/100ms, penonaktifan release, status `releaseCmd`), `src/app/api/plc-manual/route.js` (`BOOL_VERIFY`, GET non-blocking query paralel), `src/app/api/plc-params/route.js` (penambahan tag live `L` dan `WATER`), `src/app/print/trend/[batchNo]/page.js` (flag `cancelled` unmount), `src/lib/plc.js` (`DIV10_TAGS` `f0Val`, `buzzer`, `rawWords`, `releaseCmd`), `src/lib/plcAccess.js` (`verifyOpts`, `do-while` baca sebelum sleep), `src/lib/plcDeadman.js` (retry 100ms, loop ±100ms), `src/lib/plcDoorCatalog.js` (pelonggaran interlock door release), `src/lib/plcParamCatalog.js` (resmi tag `F0_VAL` dan `CAL_WATER` register VW324), dan `fase1/tests/plc_door_mock.mjs` (21 skenario uji lulus).
 - [2026-11-05] ADDED: Menambahkan dokumentasi teknis 8 berkas fitur Backup Data: `fase1/tests/backup_check.mjs`, `src/app/(app)/backup/page.js`, `src/app/api/backup/route.js`, `src/app/api/backup/download/route.js`, `src/lib/backupSchedule.js`, `src/lib/backupArchive.js`, `src/lib/backupService.js`, `src/lib/backup.test.mjs`.
 - [2026-11-05] MODIFIED: Memperbarui entri `package.json` (penambahan `fflate`), `.gitignore` (pengecualian `/backups/`), `server.js` (Background Worker 3: Backup Scheduler baris 92–97), `src/components/Navbar.js` (menu Backup baris 27), `src/lib/permissionCatalog.js` (penambahan resource `backup`), `src/lib/auditActionLabels.js` (perluasan ke 54 aksi), `src/lib/auditActionLabels.test.mjs` (171 unit test pass), `src/app/api/audit-log/export/route.js` (translasi aksi & kolom kode aksi), `src/app/print/data-report/[batchNo]/page.js` (separator fase pertama), dan `src/app/print/trend/[batchNo]/page.js` (penyelesaian peringatan linter).
 - [2026-11-03] ADDED: Menambahkan dokumentasi teknis 4 file baru: `context/tag_terbaru_kepsrvr.csv` (master 105 tag PLC), `src/lib/auditActionLabels.js` (kamus translasi 37 aksi audit), `src/lib/auditActionLabels.test.mjs` (117 unit test label audit), dan `src/app/print/trend/[batchNo]/page.js` (lembar cetak kurva trend mandiri A4 landscape).

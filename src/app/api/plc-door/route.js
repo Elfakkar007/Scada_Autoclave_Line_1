@@ -10,8 +10,13 @@ import {
 } from "@/lib/plcAccess";
 import { pulsePlcTag } from "@/lib/plcWrite";
 import { readDoorState, getDoorSafety } from "@/lib/plcDeadman";
+import { canWriteHmiItem } from "@/lib/hmiOverrideCatalog";
 
 const PLC_DOOR_ACTIONS = ["seal", "release", "drain", "unlock", "chain"];
+// Aksi yang diizinkan lewat jalur kedua (dashboard + action.batch_control).
+// chain dan unlock TIDAK termasuk — keduanya memerlukan manual_control:edit
+// atau override HMI eksplisit, karena risikonya lebih tinggi (K3 fisik).
+const BATCH_CTRL_ALLOWED_ACTIONS = ["seal", "release", "drain"];
 const GENERIC_SERVER_ERROR = "Terjadi kesalahan di server. Hubungi admin.";
 const PLC_DOWN = "PLC tidak terbaca. Periksa koneksi KEPServerEX dan PLC.";
 
@@ -65,8 +70,9 @@ export async function GET() {
 }
 
 // ── POST /api/plc-door — manual_control >= edit ───────────────────────────────
-// Jalur kedua: SEMUA aksi juga lolos bagi pemegang dashboard >= edit DAN action.batch_control = edit
-// (hak yang sama dengan START/STOP), agar web setara HMI mesin.
+// Jalur kedua: hanya aksi seal/release/drain yang lolos bagi pemegang dashboard >= edit
+// DAN action.batch_control = edit. Chain dan unlock memerlukan manual_control:edit
+// atau override HMI eksplisit (Fase 2 — izin per user).
 // Body:
 //   { action: "seal" }                                  pulsa Door Sealing
 //   { action: "release", value: true|false }            toggle Door Release (ON=lepas seal, OFF=diam)
@@ -86,11 +92,13 @@ export async function POST(request) {
 
         let session = primary.session;
         if (primary.errorResponse) {
-            // Jalur kedua untuk SEMUA aksi pintu (parity dengan HMI mesin, tempat operator memakai
-            // semuanya): sama dengan START/STOP, yaitu dashboard >= edit DAN action.batch_control = edit.
-            // Pagar mesin tidak berubah: idle, pintu/seal, tekanan, deadman, auto-OFF, audit.
-            // Pengetatan per tombol (mis. Door Unlock) direncanakan lewat izin per user di Fase 2.
-            if (!PLC_DOOR_ACTIONS.includes(body?.action)) return primary.errorResponse;
+            // Jalur kedua untuk aksi DASAR pintu (seal, release, drain).
+            // Chain dan unlock TIDAK diizinkan lewat jalur ini — risikonya lebih tinggi:
+            //   - chain: motor rantai fisik berputar, tidak ada watchdog hardware di PLC S7-200
+            //   - unlock: bypass interlock tekanan, hanya untuk kondisi darurat
+            // Perbaikan keamanan: membatasi BATCH_CTRL_ALLOWED_ACTIONS (bug lama: semua aksi lolos)
+            const action = body?.action;
+            if (!BATCH_CTRL_ALLOWED_ACTIONS.includes(action)) return primary.errorResponse;
             const dash = await requirePermission(cookieStore, "dashboard", "edit");
             if (dash.errorResponse) return primary.errorResponse;
             const batch = await requirePermission(cookieStore, "action.batch_control", "edit");
@@ -100,6 +108,21 @@ export async function POST(request) {
         if (bodyInvalid) return badRequest("Body bukan JSON valid");
         const action = body?.action;
         if (!PLC_DOOR_ACTIONS.includes(action)) return badRequest("Aksi tidak dikenal");
+
+        // Guard tambahan untuk chain dan unlock: cek HMI override per user
+        // (manual_control:edit sudah lolos di atas, tapi bisa dibatasi per item via override)
+        if (action === "chain" || action === "unlock") {
+            const itemKey = action; // "chain" | "unlock"
+            const hmiOverrides = session.hmiOverrides ?? null;
+            const perms = session.permissions ?? {};
+            // canWriteHmiItem: false bila override user melarang item ini
+            if (!canWriteHmiItem(hmiOverrides, perms, "door_operate", itemKey)) {
+                return Response.json(
+                    { ok: false, error: "Anda tidak memiliki izin untuk aksi ini" },
+                    { status: 403 }
+                );
+            }
+        }
 
         const actor = { actor: session.username, actorRole: session.role, entityType: "plc", entityId: "door" };
         const safety = getDoorSafety();
