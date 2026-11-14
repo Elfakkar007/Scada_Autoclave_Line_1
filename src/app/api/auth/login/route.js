@@ -172,8 +172,9 @@ export async function POST(request) {
             role: roleKey,
         });
 
+        const cookieOptions = await sessionCookieOptions();
         const cookieStore = await cookies();
-        cookieStore.set("session_token", token, sessionCookieOptions());
+        cookieStore.set("session_token", token, cookieOptions);
 
         return Response.json({
             ok: true,

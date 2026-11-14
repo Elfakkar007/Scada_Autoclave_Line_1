@@ -409,7 +409,7 @@ function PrintDataReportContent() {
                     ]} />
                     <HRow cols={[
                         { label: "Prod.Spec.:", value: fmtStr(batch.productSpec), flex: 2 },
-                        { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
+                        { label: "Verifier  :", value: fmtStr(batch.verifier), flex: 1 },
                     ]} />
                     <HRow cols={[
                         { label: "Operator  :", value: operatorText(batch.operator, batch.operatorDeleted), flex: 1 },
@@ -507,7 +507,7 @@ function PrintDataReportContent() {
                         <HRow cols={[
                             { label: "Operator  :", value: operatorText(batch.operator, batch.operatorDeleted), flex: 1 },
                             { label: "Batch.No. :", value: fmtStr(batch.batchNo), flex: 1 },
-                            { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
+                            { label: "Amount    :", value: batch.bottleCount !== null && batch.bottleCount !== undefined ? `${batch.bottleCount} Botol` : "-", flex: 1 },
                         ]} />
                         <HRow cols={[
                             { label: "Heat.Begin:", value: fmtTime(batch.heatBegin), flex: 1 },

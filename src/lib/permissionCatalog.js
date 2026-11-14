@@ -35,6 +35,7 @@ export const RESOURCES = [
     { key: "machine_params", group: "page", label: "Parameter Mesin",              levels: PAGE },
     { key: "plc_clock",      group: "page", label: "Pengaturan jam PLC",           levels: PAGE },
     { key: "manual_control", group: "page", label: "Kontrol manual",               levels: PAGE },
+    { key: "settings",       group: "page", label: "Konfigurasi Sistem",           levels: PAGE },
     { key: "backup",         group: "page", label: "Backup data (buat, jadwal, unduh)", levels: PAGE },
     // ── Kunci aksi kritis ────────────────────────────────────────────────────
     { key: "action.batch_control",       group: "action", label: "START / STOP batch",                    levels: ACTION },

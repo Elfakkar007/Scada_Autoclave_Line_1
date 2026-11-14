@@ -18,16 +18,20 @@
 import pool from "./db.js";
 import { readPlcSnapshot } from "./plc.js";
 import { finalizeBatch } from "./batchFinalize.js";
+import { pulsePlcTag } from "./plcWrite.js";
+import { getSetting } from "./settings.js";
 
 // ── Konstanta perilaku recorder — sesuaikan di sini bila perlu ───────────────
 const ROW_INTERVAL_MS = 60_000; // jarak minimum antar baris trend periodik (ms)
 const POST_FINISH_MAX_ROWS = 2;     // maksimal baris tambahan setelah fase 6 (Selesai)
-const IDLE_FINALIZE_MS = 120_000; // durasi idle minimum sebelum auto-finalize (ms)
+const IDLE_FINALIZE_MS_DEFAULT = 120_000; // durasi idle minimum default (ms)
 
 // ── State modul — bertahan di memori selama server hidup ─────────────────────
 let busy = false;     // guard: cegah panggilan rekursif / overlap
 let idleSince = null;      // Date pertama kali fase idle terdeteksi, atau null
 let streakBatchId = null;      // batchId yang sedang dipantau idle-nya
+let zeroPressureStreak = 0;   // berapa kali tick berturut-turut kondisi tekanan <= ambang batas
+let batchPassedSteril = false; // flag: apakah batch saat ini sudah pernah mencapai fase steril (>= 4)
 
 // Throttle log PLC offline: hanya log sekali per menit
 let lastPlcWarnMs = 0;
@@ -232,16 +236,64 @@ export async function recordTrendTick() {
             console.error("[trendRecorder] Gagal INSERT batch_trend:", insertErr.message);
         }
 
-        // ── 6. Rekonsiliasi idle berbasis WAKTU ───────────────────────────────
+        // ── 6. Rekonsiliasi Penghentian Batch Otomatis (Tekanan Nol / Waktu Idle) ──
         try {
             // Reset state kalau batchId berubah (batch baru dimulai)
             if (batchId !== streakBatchId) {
                 idleSince = null;
                 streakBatchId = batchId;
+                zeroPressureStreak = 0;
+                try {
+                    const checkSteril = await pool.query(
+                        `SELECT EXISTS(
+                            SELECT 1 FROM batch_trend
+                            WHERE batch_id = $1 AND phase_code IN (4, 5, 6, 7)
+                        ) AS passed`,
+                        [batchId]
+                    );
+                    batchPassedSteril = checkSteril.rows[0]?.passed ?? false;
+                } catch {
+                    batchPassedSteril = false;
+                }
             }
 
-            // Fase 0 (idle pintu belum siap) atau 1 (idle siap): mulai/pertahankan timer idle
-            // Fase lain (termasuk null): reset timer idle
+            // Tandai bila batch sudah mencapai atau melewati fase steril
+            if (phase !== null && [4, 5, 6, 7].includes(phase)) {
+                batchPassedSteril = true;
+            }
+
+            // Baca preferensi konfigurasi sistem
+            const stopMode = (await getSetting("batch_stop_mode", "pressure_zero")) ?? "pressure_zero";
+            const pressThreshold = Number(await getSetting("batch_stop_pressure_threshold", 0)) || 0;
+            const shouldPulsePlc = (await getSetting("batch_stop_pulse_plc", true)) !== false;
+            const idleFallbackSec = Number(await getSetting("batch_stop_idle_fallback_sec", 120)) || 120;
+            const idleFinalizeMs = idleFallbackSec * 1000;
+
+            let triggeredByPressure = false;
+            let triggeredByIdle = false;
+
+            // ── Jalur A: Auto-Stop berdasarkan Tekanan Nol (P1 & P2 <= ambang batas) ──
+            if (stopMode === "pressure_zero" && batchPassedSteril && runBegin) {
+                const batchElapsedMs = Date.now() - new Date(runBegin).getTime();
+                // Hanya berlaku bila batch sudah berjalan > 90 detik dan mesin di fase akhir (5=Cooling, 6=END, 7=Drain, atau 0/1=Idle)
+                const isLatePhase = phase !== null && [5, 6, 7, 0, 1].includes(phase);
+                const p1Ok = snap.p1 !== null && Number(snap.p1) <= pressThreshold;
+                const p2Ok = snap.p2 === null || Number(snap.p2) <= pressThreshold;
+
+                if (batchElapsedMs > 90_000 && isLatePhase && p1Ok && p2Ok) {
+                    zeroPressureStreak++;
+                    // Debounce: 2 tick berturut-turut (~10 detik stabil) untuk menghindari noise pembacaan sesaat
+                    if (zeroPressureStreak >= 2) {
+                        triggeredByPressure = true;
+                    }
+                } else {
+                    zeroPressureStreak = 0;
+                }
+            } else {
+                zeroPressureStreak = 0;
+            }
+
+            // ── Jalur B: Auto-Stop berdasarkan Durasi Idle (Fallback / Idle Mode) ──
             if (phase === 0 || phase === 1) {
                 if (idleSince === null) {
                     idleSince = new Date();
@@ -250,58 +302,76 @@ export async function recordTrendTick() {
                 idleSince = null;
             }
 
-            // Trigger auto-finalize bila:
-            //   - Mesin sudah idle >= IDLE_FINALIZE_MS
-            //   - Batch sudah berjalan lebih dari 90 detik (hindari false trigger saat startup)
             if (idleSince !== null && runBegin) {
                 const idleElapsedMs = Date.now() - idleSince.getTime();
                 const batchElapsedMs = Date.now() - new Date(runBegin).getTime();
 
-                if (idleElapsedMs >= IDLE_FINALIZE_MS && batchElapsedMs > 90_000) {
-                    console.log(
-                        `[trendRecorder] Auto-finalize dipicu: batch ${batchNo} idle ` +
-                        `${Math.round(idleElapsedMs / 1000)}s, elapsed ${Math.round(batchElapsedMs / 1000)}s`
-                    );
+                if (idleElapsedMs >= idleFinalizeMs && batchElapsedMs > 90_000) {
+                    triggeredByIdle = true;
+                }
+            }
 
-                    const result = await finalizeBatch(batchId, { plcPhase: phase });
+            // ── Eksekusi Finalisasi bila salah satu pemicu aktif ─────────────────
+            if (triggeredByPressure || triggeredByIdle) {
+                const finalizeReason = triggeredByPressure
+                    ? `Tekanan P1 (${snap.p1} kPa) & P2 (${snap.p2 ?? "-"} kPa) <= ${pressThreshold} kPa setelah sterilisasi`
+                    : `PLC kembali Idle selama ${idleSince ? Math.round((Date.now() - idleSince.getTime()) / 1000) : idleFallbackSec}s`;
 
-                    // Reset state idle setelah finalisasi
-                    idleSince = null;
-                    streakBatchId = null;
+                console.log(`[trendRecorder] Auto-finalize dipicu: batch ${batchNo} (${finalizeReason})`);
 
-                    if (!result.alreadyFinalized) {
-                        // Tulis audit log — dibungkus try/catch sendiri (gagal audit tidak fatal)
-                        try {
-                            await pool.query(
-                                `INSERT INTO audit_log
-                                    (actor, actor_role, action, entity_type, entity_id,
-                                     new_value, source, description)
-                                 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
-                                [
-                                    "system",
-                                    "system",
-                                    "batch_auto_finalize",
-                                    "batch",
-                                    batchNo,
-                                    JSON.stringify({
-                                        status: result.status,
-                                        foMin: result.foMin,
-                                        f0Complete: result.f0Complete,
-                                        plcPhaseAtFinalize: phase,
-                                    }),
-                                    "system",
-                                    `Ditutup otomatis: PLC kembali Idle tanpa Stop dari web. Status: ${result.status}`,
-                                ]
-                            );
-                        } catch (auditErr) {
-                            console.error("[trendRecorder] Gagal catat audit auto-finalize:", auditErr.message);
-                        }
+                // Bila dipicu oleh tekanan nol dan PLC belum di idle (masih 5, 6, atau 7) serta pulse PLC aktif:
+                if (triggeredByPressure && shouldPulsePlc && phase !== 0 && phase !== 1) {
+                    try {
+                        console.log(`[trendRecorder] Mengirim pulsa STOP ke PLC untuk mengembalikan fase ${phase} ke Idle`);
+                        await pulsePlcTag("STOP");
+                    } catch (pulseErr) {
+                        console.warn("[trendRecorder] Gagal kirim pulsa STOP ke PLC:", pulseErr.message);
+                    }
+                }
+
+                const result = await finalizeBatch(batchId, { plcPhase: phase });
+
+                // Reset state idle & streak setelah finalisasi
+                idleSince = null;
+                streakBatchId = null;
+                zeroPressureStreak = 0;
+                batchPassedSteril = false;
+
+                if (!result.alreadyFinalized) {
+                    // Tulis audit log — dibungkus try/catch sendiri (gagal audit tidak fatal)
+                    try {
+                        await pool.query(
+                            `INSERT INTO audit_log
+                                (actor, actor_role, action, entity_type, entity_id,
+                                 new_value, source, description)
+                             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+                            [
+                                "system",
+                                "system",
+                                "batch_auto_finalize",
+                                "batch",
+                                batchNo,
+                                JSON.stringify({
+                                    status: result.status,
+                                    foMin: result.foMin,
+                                    f0Complete: result.f0Complete,
+                                    plcPhaseAtFinalize: phase,
+                                    p1: snap.p1,
+                                    p2: snap.p2,
+                                    trigger: triggeredByPressure ? "pressure_zero" : "idle_timeout",
+                                }),
+                                "system",
+                                `Ditutup otomatis: ${finalizeReason}. Status: ${result.status}`,
+                            ]
+                        );
+                    } catch (auditErr) {
+                        console.error("[trendRecorder] Gagal catat audit auto-finalize:", auditErr.message);
                     }
                 }
             }
         } catch (reconErr) {
             // Rekonsiliasi gagal tidak boleh mematikan recorder
-            console.error("[trendRecorder] Error rekonsiliasi idle:", reconErr.message ?? reconErr);
+            console.error("[trendRecorder] Error rekonsiliasi penghentian batch:", reconErr.message ?? reconErr);
         }
 
     } catch (err) {

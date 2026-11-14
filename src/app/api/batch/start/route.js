@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
 import pool from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
+import { hasLevel } from "@/lib/permissionCatalog";
 import { readPlcSnapshot } from "@/lib/plc";
 import { writePlcTags, pulsePlcTag } from "@/lib/plcWrite";
 import { validateRecipe } from "@/lib/recipeValidation";
@@ -131,6 +133,7 @@ async function runStart(request, session) {
         // "operator" dan "actor" dari body DIABAIKAN — diambil dari session
         const { machineId, formulaNo } = body;
         let { batchNo, loadingNo, productName, productSpec } = body;
+        const loadingNoVal = loadingNo && String(loadingNo).trim() !== "" ? String(loadingNo).trim() : null;
         const rawBottleCount = body.bottleCount ?? body.amount;
         let parsedBottleCount = null;
         if (rawBottleCount !== undefined && rawBottleCount !== null && String(rawBottleCount).trim() !== "") {
@@ -143,8 +146,8 @@ async function runStart(request, session) {
         // Operator diambil dari session (tidak bisa dipalsukan)
         const operator = session.fullName ?? session.username;
 
-        // Validasi: semua field identitas wajib tidak boleh kosong
-        const required = { batchNo, loadingNo, machineId, productName, productSpec, formulaNo };
+        // Validasi: semua field identitas wajib tidak boleh kosong (loadingNo kini opsional/dihapus digantikan amount)
+        const required = { batchNo, machineId, productName, productSpec, formulaNo };
         for (const [key, val] of Object.entries(required)) {
             if (!val || String(val).trim() === "") {
                 return Response.json({ ok: false, error: `Field ${key} tidak boleh kosong` }, { status: 400 });
@@ -157,6 +160,99 @@ async function runStart(request, session) {
             return Response.json({ ok: false, error: bn.error }, { status: 400 });
         }
         batchNo = bn.value; // sudah di-trim
+
+        // ── Verifikasi 2 Langkah (Four-Eyes Principle / Dual Authorization) ─────
+        const { verifierUsername, verifierPassword, verifierForm } = body;
+
+        if (
+            typeof verifierUsername !== "string" || !verifierUsername.trim() ||
+            typeof verifierPassword !== "string" || !verifierPassword
+        ) {
+            return Response.json(
+                { ok: false, error: "Kredensial user verifikator (langkah 2) wajib diisi" },
+                { status: 400 }
+            );
+        }
+
+        const vUsername = verifierUsername.trim();
+        // User verifikator TIDAK BOLEH sama dengan operator inisiator
+        if (vUsername.toLowerCase() === session.username.toLowerCase()) {
+            return Response.json(
+                { ok: false, error: "Verifikator harus merupakan user yang berbeda dari operator inisiator (Four-Eyes Principle)" },
+                { status: 400 }
+            );
+        }
+
+        // Ambil data verifikator dari database
+        const vResult = await pool.query(
+            `SELECT u.id, u.username, u.full_name, u.password_hash, u.is_active, u.deleted_at,
+                    r.key AS role_key, r.name AS role_name,
+                    COALESCE(
+                        (SELECT jsonb_object_agg(rp.resource, rp.level)
+                           FROM role_permissions rp
+                          WHERE rp.role_id = u.role_id),
+                        '{}'::jsonb
+                    ) AS permissions
+               FROM users u
+               LEFT JOIN roles r ON r.id = u.role_id
+              WHERE LOWER(u.username) = LOWER($1)`,
+            [vUsername]
+        );
+
+        if (vResult.rows.length === 0 || !vResult.rows[0].is_active || vResult.rows[0].deleted_at !== null) {
+            return Response.json(
+                { ok: false, error: "User verifikator tidak ditemukan atau akun dinonaktifkan" },
+                { status: 401 }
+            );
+        }
+
+        const verifierUser = vResult.rows[0];
+        const vPasswordMatch = await bcrypt.compare(verifierPassword, verifierUser.password_hash);
+        if (!vPasswordMatch) {
+            return Response.json(
+                { ok: false, error: "Password user verifikator salah" },
+                { status: 401 }
+            );
+        }
+
+        // Pastikan verifikator memiliki izin kontrol batch
+        if (
+            !hasLevel(verifierUser.permissions, "dashboard", "view") ||
+            !hasLevel(verifierUser.permissions, "action.batch_control", "edit")
+        ) {
+            return Response.json(
+                { ok: false, error: "User verifikator tidak memiliki izin untuk memverifikasi kontrol batch" },
+                { status: 403 }
+            );
+        }
+
+        // Catat jejak overwrite (koreksi) dari verifikator terhadap data inisiator
+        const initiatorData = body.initiatorForm ?? null;
+        const overwrites = [];
+        if (initiatorData && typeof initiatorData === "object") {
+            if (initiatorData.batchNo && String(initiatorData.batchNo).trim() !== String(batchNo).trim()) {
+                overwrites.push({ field: "batchNo", from: initiatorData.batchNo, to: batchNo });
+            }
+            const initBottle = parseInt(String(initiatorData.bottleCount ?? initiatorData.amount ?? "").replace(/[^\d]/g, ""), 10);
+            if (!isNaN(initBottle) && initBottle !== parsedBottleCount) {
+                overwrites.push({ field: "bottleCount", from: initBottle, to: parsedBottleCount });
+            }
+            if (initiatorData.productName && String(initiatorData.productName).trim() !== String(productName).trim()) {
+                overwrites.push({ field: "productName", from: initiatorData.productName, to: productName });
+            }
+            if (initiatorData.productSpec && String(initiatorData.productSpec).trim() !== String(productSpec).trim()) {
+                overwrites.push({ field: "productSpec", from: initiatorData.productSpec, to: productSpec });
+            }
+            if (initiatorData.machineId && String(initiatorData.machineId).trim() !== String(machineId).trim()) {
+                overwrites.push({ field: "machineId", from: initiatorData.machineId, to: machineId });
+            }
+            if (initiatorData.formulaNo && String(initiatorData.formulaNo).trim() !== String(formulaNo).trim()) {
+                overwrites.push({ field: "formulaNo", from: initiatorData.formulaNo, to: formulaNo });
+            }
+        }
+
+        const verifierFullName = verifierUser.full_name ?? verifierUser.username;
+        const verifierUsernameClean = verifierUser.username;
 
         // Validasi: formulaNo harus ada di tabel recipes
         // SELECT * : dipakai untuk validateRecipe DAN untuk snapshot resep (item 6).
@@ -212,6 +308,11 @@ async function runStart(request, session) {
         // jadi snapshot = apa yang benar-benar dipakai mesin, walau resep di tabel
         // recipes diubah belakangan. Disimpan di batch_records.recipe_snapshot.
         const recipeSnapshot = buildRecipeSnapshot(recipe);
+        recipeSnapshot.initiator = session.username;
+        recipeSnapshot.verifier = verifierUsernameClean;
+        if (overwrites.length > 0) {
+            recipeSnapshot.overwrites = overwrites;
+        }
 
         // Validasi: cek apakah ada batch yang sedang running
         const runningCheck = await pool.query(
@@ -617,16 +718,18 @@ async function runStart(request, session) {
             try {
                 insertResult = await pool.query(
                     `INSERT INTO batch_records
-                        (batch_no, loading_no, operator, operator_username, machine_id, recipe_id,
-                         product_name, product_spec, bottle_count, ctrl_type, ster_temp, cool_temp,
-                         recipe_snapshot, status, run_begin)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, 'running', now())
+                        (batch_no, loading_no, operator, operator_username, verifier, verifier_username,
+                         machine_id, recipe_id, product_name, product_spec, bottle_count, ctrl_type,
+                         ster_temp, cool_temp, recipe_snapshot, status, run_begin)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, 'running', now())
                      RETURNING *`,
                     [
                         String(batchNo).trim(),
-                        String(loadingNo).trim(),
+                        loadingNoVal,
                         operator,
                         session.username,             // operator_username = username akun dari sesi server (bukan dari body)
+                        verifierFullName,
+                        verifierUsernameClean,
                         String(machineId).trim(),
                         recipe.id,
                         String(productName).trim(),
@@ -639,9 +742,9 @@ async function runStart(request, session) {
                     ]
                 );
             } catch (colErr) {
-                // Jika kolom bottle_count belum dimigrasi di pgAdmin (error 42703), fallback simpan tanpa bottle_count
+                // Jika kolom verifier atau bottle_count belum dimigrasi di pgAdmin (error 42703), fallback simpan tanpa kolom tersebut
                 if (colErr.code === "42703") {
-                    console.warn("[batch/start] Kolom bottle_count belum ada di tabel batch_records, fallback tanpa bottle_count:", colErr.message);
+                    console.warn("[batch/start] Kolom verifier/bottle_count belum ada di tabel batch_records, fallback kompatibilitas:", colErr.message);
                     insertResult = await pool.query(
                         `INSERT INTO batch_records
                             (batch_no, loading_no, operator, operator_username, machine_id, recipe_id,
@@ -651,7 +754,7 @@ async function runStart(request, session) {
                          RETURNING *`,
                         [
                             String(batchNo).trim(),
-                            String(loadingNo).trim(),
+                            loadingNoVal,
                             operator,
                             session.username,
                             String(machineId).trim(),
@@ -708,8 +811,11 @@ async function runStart(request, session) {
             );
         }
 
-        // Tulis audit log — actor dari session
+        // Tulis audit log — actor dari session, verifier dicatat lengkap
         try {
+            const corrText = overwrites.length > 0
+                ? ` [Koreksi Verifikator: ${overwrites.map((o) => o.field).join(", ")}]`
+                : "";
             await pool.query(
                 `INSERT INTO audit_log
                     (actor, actor_role, action, entity_type, entity_id, new_value, source, description)
@@ -720,9 +826,20 @@ async function runStart(request, session) {
                     "start_batch",
                     "batch",
                     newBatch.batch_no,
-                    JSON.stringify({ batchNo: newBatch.batch_no, formulaNo, operator, machineId, productName, recipeSnapshot }),
+                    JSON.stringify({
+                        batchNo: newBatch.batch_no,
+                        formulaNo,
+                        operator,
+                        operatorUsername: session.username,
+                        verifier: verifierFullName,
+                        verifierUsername: verifierUsernameClean,
+                        overwrites,
+                        machineId,
+                        productName,
+                        recipeSnapshot,
+                    }),
                     "web",
-                    `Batch ${newBatch.batch_no} dimulai oleh ${session.username} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
+                    `Batch ${newBatch.batch_no} dimulai oleh ${session.username} dan diverifikasi oleh ${verifierUsernameClean}${corrText} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
                 ]
             );
         } catch (auditErr) {
@@ -735,6 +852,7 @@ async function runStart(request, session) {
                 ok: true,
                 batchNo: newBatch.batch_no,
                 operator: newBatch.operator,
+                verifier: newBatch.verifier ?? verifierFullName,
                 machineId: newBatch.machine_id,
                 productName: newBatch.product_name,
                 runBegin: newBatch.run_begin,

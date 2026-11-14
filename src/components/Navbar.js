@@ -31,6 +31,7 @@ const adminMenu = [
     { href: "/audit-log", label: "Audit Log", resource: "audit_log" },
     { href: "/users", label: "Kelola User", resource: "users" },
     { href: "/roles", label: "Role Management", resource: "roles" },
+    { href: "/settings", label: "Konfigurasi Sistem", resource: "settings" },
     { href: "/backup", label: "Backup", resource: "backup" },
 ];
 

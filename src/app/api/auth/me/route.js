@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { getSessionFromCookies } from "@/lib/auth";
 import pool from "@/lib/db";
+import { getSetting } from "@/lib/settings";
 
 // GET /api/auth/me — data sesi terkini untuk klien (Navbar, gating halaman).
 // Semua dibaca dari DB tiap request (bukan dari token): perubahan role/izin oleh
@@ -49,6 +50,7 @@ export async function GET() {
         }
 
         const roleKey = dbUser.role_key ?? "none";
+        const lockscreenMinutes = Number(await getSetting("lockscreen_idle_minutes", 7)) || 7;
 
         return Response.json({
             ok: true,
@@ -60,6 +62,7 @@ export async function GET() {
                 roleName: dbUser.role_name ?? roleKey,  // untuk ditampilkan di UI
                 permissions,
                 hmiOverrides: dbUser.hmi_overrides ?? null,
+                lockscreenIdleMinutes: lockscreenMinutes,
             },
         });
     } catch (error) {

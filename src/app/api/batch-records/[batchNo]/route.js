@@ -52,6 +52,8 @@ export async function GET(request, { params }) {
             loadingNo: row.loading_no,
             operator: row.operator,
             operatorDeleted: row.operator_deleted === true, // akun pembuat batch sudah dihapus-lunak
+            verifier: row.verifier ?? null,
+            verifierUsername: row.verifier_username ?? null,
             machineId: row.machine_id,
             recipeId: row.recipe_id,
             productName: row.product_name,

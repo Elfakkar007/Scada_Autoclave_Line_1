@@ -94,6 +94,9 @@ export const AUDIT_ACTIONS = {
     backup_failed: A("Backup gagal", "stop"),
     backup_settings_update: A("Ubah pengaturan backup", "water"),
     backup_downloaded: A("Unduh backup", "steam"),
+
+    // ── Konfigurasi Sistem ──
+    settings_update: A("Ubah konfigurasi sistem", "water"),
 };
 
 /** Label tampilan; aksi tak dikenal dikembalikan apa adanya. */

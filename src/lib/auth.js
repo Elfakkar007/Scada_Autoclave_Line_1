@@ -15,16 +15,25 @@
 import { SignJWT, jwtVerify } from "jose";
 import pool from "./db.js";
 import { hasLevel, isKnownResource } from "./permissionCatalog.js";
+import { getSetting } from "./settings.js";
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 // ── 1. Buat JWT session token ──────────────────────────────────────────────────
 // payload: { userId, username, fullName, role }
-export async function createSessionToken(payload) {
+export async function createSessionToken(payload, customExpiryHours = null) {
+    let hours = customExpiryHours;
+    if (!hours) {
+        try {
+            hours = Number(await getSetting("session_timeout_hours", 8)) || 8;
+        } catch {
+            hours = 8;
+        }
+    }
     const token = await new SignJWT(payload)
         .setProtectedHeader({ alg: "HS256" })
         .setIssuedAt()
-        .setExpirationTime("8h")
+        .setExpirationTime(`${hours}h`)
         .sign(SECRET);
     return token;
 }
@@ -35,12 +44,20 @@ export async function createSessionToken(payload) {
 // Sekarang ditentukan env COOKIE_SECURE ("true" hanya bila diakses lewat HTTPS).
 // Bila tidak diset, default false.
 // Dipakai oleh login (set) dan sebaiknya juga oleh logout (hapus) supaya atributnya sama.
-export function sessionCookieOptions() {
+export async function sessionCookieOptions(customExpiryHours = null) {
+    let hours = customExpiryHours;
+    if (!hours) {
+        try {
+            hours = Number(await getSetting("session_timeout_hours", 8)) || 8;
+        } catch {
+            hours = 8;
+        }
+    }
     return {
         httpOnly: true,
         secure: process.env.COOKIE_SECURE === "true",
         sameSite: "lax",
-        maxAge: 60 * 60 * 8, // 8 jam, sama dengan masa berlaku JWT
+        maxAge: 60 * 60 * hours,
         path: "/",
     };
 }

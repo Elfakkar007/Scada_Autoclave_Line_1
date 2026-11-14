@@ -18,6 +18,7 @@ const KODE = [
     "plc_door_command", "plc_door_command_failed", "plc_door_chain",
     "export_audit_log", "export_batch_records",
     "backup_created", "backup_failed", "backup_settings_update", "backup_downloaded",
+    "settings_update",
     "create", "update", "delete", "create_product_name", "delete_product_name", "update_product_spec",
     "start_batch", "batch_adopted",
     "update_product_name", "create_product_spec", "delete_product_spec", "start_batch_rejected",

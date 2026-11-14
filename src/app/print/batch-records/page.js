@@ -127,7 +127,7 @@ function BatchRecordsPrintContent() {
                     <table>
                         <thead>
                             <tr>
-                                {["Batch No","Loading","Produk","Operator","Mach.ID","Ster°C",
+                                {["Batch No","Amount","Produk","Operator","Verifier","Mach.ID","Ster°C",
                                   "Run Begin","Run Finish","Total","Heat","Ster","Cool",
                                   "F0Min","FO1","FO2","FO3","FO4","FO5","FO6","FOH","FOM","FOL",
                                   "Status"].map((h) => (
@@ -137,13 +137,14 @@ function BatchRecordsPrintContent() {
                         </thead>
                         <tbody>
                             {rows.length === 0 ? (
-                                <tr><td colSpan={23} style={{ textAlign:"center", padding:8 }}>Tidak ada data</td></tr>
+                                <tr><td colSpan={24} style={{ textAlign:"center", padding:8 }}>Tidak ada data</td></tr>
                             ) : rows.map((r, i) => (
                                 <tr key={i}>
                                     <td style={{ textAlign:"left", whiteSpace:"nowrap", fontWeight:600 }}>{r.batchNo}</td>
-                                    <td>{r.loadingNo || "-"}</td>
+                                    <td>{r.bottleCount !== null && r.bottleCount !== undefined && r.bottleCount !== "" ? r.bottleCount : "-"}</td>
                                     <td className="col-prod">{r.productName || "-"}</td>
                                     <td>{r.operator || "-"}</td>
+                                    <td>{r.verifier || "-"}</td>
                                     <td>{r.machineId || "-"}</td>
                                     <td>{fmtTemp(r.sterTemp)}</td>
                                     <td style={{ whiteSpace:"nowrap" }}>{r.runBegin || "-"}</td>

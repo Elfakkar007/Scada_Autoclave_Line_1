@@ -84,7 +84,7 @@ export async function GET(request) {
         let dataRes;
         try {
             dataRes = await pool.query(
-                `SELECT batch_no, loading_no, product_name, product_spec, bottle_count, operator,
+                `SELECT batch_no, loading_no, product_name, product_spec, bottle_count, operator, verifier,
                         machine_id, ster_temp, run_begin, run_finish, total_time_min,
                         heat_time_min, ster_time_min, cool_time_min,
                         fo_min, fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol,
@@ -103,9 +103,9 @@ export async function GET(request) {
             );
         } catch (queryErr) {
             if (queryErr.code === "42703") {
-                // Kolom bottle_count belum dimigrasi di pgAdmin, fallback NULL
+                // Kolom bottle_count/verifier belum dimigrasi di pgAdmin, fallback NULL
                 dataRes = await pool.query(
-                    `SELECT batch_no, loading_no, product_name, product_spec, NULL::integer AS bottle_count, operator,
+                    `SELECT batch_no, loading_no, product_name, product_spec, NULL::integer AS bottle_count, operator, NULL::text AS verifier,
                             machine_id, ster_temp, run_begin, run_finish, total_time_min,
                             heat_time_min, ster_time_min, cool_time_min,
                             fo_min, fo1, fo2, fo3, fo4, fo5, fo6, foh, fom, fol,
@@ -150,11 +150,12 @@ export async function GET(request) {
         if (format === "json") {
             const data = rows.map((r) => ({
                 batchNo: r.batch_no ?? "",
-                loadingNo: r.loading_no ?? "",
+                amount: r.bottle_count !== null && r.bottle_count !== undefined ? Number(r.bottle_count) : "",
+                bottleCount: r.bottle_count !== null && r.bottle_count !== undefined ? Number(r.bottle_count) : "",
                 productName: r.product_name ?? "",
                 productSpec: r.product_spec ?? "",
-                bottleCount: r.bottle_count !== null && r.bottle_count !== undefined ? Number(r.bottle_count) : "",
                 operator: operatorExport(r),
+                verifier: r.verifier ?? "",
                 machineId: r.machine_id ?? "",
                 sterTemp: fmtNum(r.ster_temp),
                 runBegin: toWIB(r.run_begin),
@@ -186,11 +187,11 @@ export async function GET(request) {
 
         ws.columns = [
             { header: "Batch No", key: "batchNo", width: 16 },
-            { header: "Loading No", key: "loadingNo", width: 14 },
+            { header: "Amount (Botol)", key: "bottleCount", width: 16 },
             { header: "Produk", key: "productName", width: 26 },
             { header: "Spesifikasi", key: "productSpec", width: 20 },
-            { header: "Jumlah Botol", key: "bottleCount", width: 14 },
             { header: "Operator", key: "operator", width: 16 },
+            { header: "Verifikator", key: "verifier", width: 16 },
             { header: "Mach. ID", key: "machineId", width: 12 },
             { header: "Ster. Temp", key: "sterTemp", width: 12 },
             { header: "Run Begin", key: "runBegin", width: 22 },
@@ -221,11 +222,11 @@ export async function GET(request) {
         rows.forEach((r) => {
             ws.addRow({
                 batchNo: r.batch_no ?? "",
-                loadingNo: r.loading_no ?? "",
+                bottleCount: r.bottle_count !== null && r.bottle_count !== undefined ? Number(r.bottle_count) : "",
                 productName: r.product_name ?? "",
                 productSpec: r.product_spec ?? "",
-                bottleCount: r.bottle_count !== null && r.bottle_count !== undefined ? Number(r.bottle_count) : "",
                 operator: operatorExport(r),
+                verifier: r.verifier ?? "",
                 machineId: r.machine_id ?? "",
                 sterTemp: fmtNum(r.ster_temp),
                 runBegin: toWIB(r.run_begin),

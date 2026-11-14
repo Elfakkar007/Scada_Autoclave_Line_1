@@ -225,7 +225,7 @@ export default function PrintCurvePage() {
                     ]} />
                     <HRow cols={[
                         { label: "Prod.Spec.:", value: fmtStr(batch.productSpec), flex: 2 },
-                        { label: "Loading   :", value: fmtStr(batch.loadingNo), flex: 1 },
+                        { label: "Verifier  :", value: fmtStr(batch.verifier), flex: 1 },
                     ]} />
                     <HRow cols={[
                         { label: "Operator  :", value: operatorText(batch.operator, batch.operatorDeleted), flex: 1 },

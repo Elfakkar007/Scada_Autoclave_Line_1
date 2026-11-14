@@ -568,14 +568,18 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 ---
 
 ### `src/components/StartDialog.js`
-- **Tipe**: Client Component / Modal Form START
-- **Fungsi**: Menyediakan antarmuka pop-up form input persiapan batch: pemilihan Batch No otomatis/manual, Loading No, Nama Produk (combobox pencarian & bebas), Spesifikasi Kemasan (combobox pencarian & bebas), Jumlah Botol (amount integer positif), dan Formula Resep sebelum memicu START ke mesin.
+- **Tipe**: Client Component / Modal Form START & Verifikasi 2 Langkah (Four-Eyes Principle dengan Hak Overwrite)
+- **Fungsi**: Menyediakan antarmuka pop-up form input persiapan batch dengan alur verifikasi 4 langkah:
+  1. Langkah 1 (Operator / User 1): pengisian awal Batch No, Amount (integer bulat positif), Nama Produk (combobox), Spesifikasi Kemasan (combobox), Mach. ID, dan Formula.
+  2. Langkah 2 (Verifikasi Berdampingan / Side-by-Side): menampilkan panel kiri (data awal read-only User 1) dan panel kanan (form verifikasi User 2, pre-filled, dengan hak koreksi / *overwrite* mandiri).
+  3. Langkah 3 (Preview Isian Final): ringkasan data akhir terverifikasi beserta rekam jejak koreksi field yang di-overwrite sebelum eksekusi ke PLC.
+  4. Langkah 4 (Otentikasi Kredensial Verifikator): pop-up pemilihan user verifikator dari daftar User Management (akun aktif selain User 1) dan input password verifikator sebagai tanda tangan digital akhir.
 - **Export utama**: `default` StartDialog (fungsi komponen React)
 - **Meng-import (internal)**: `src/lib/batchNo.js`, `src/lib/plcCommandAlert.js`, `src/components/SearchableCombobox.js`
 - **Dipakai oleh**: `src/app/(app)/page.js`
-- **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/products?active=true`, `GET /api/product-specs?active=true`, `GET /api/formulas`, dan `POST /api/batch/start` (`src/components/StartDialog.js:130-195`).
-- **Bukti**: `src/components/StartDialog.js:1-420`
-- **Catatan**: Memvalidasi kelengkapan form, karakter Batch No via `validateBatchNo`, dan validasi numerik bulat positif `bottleCount` (`src/components/StartDialog.js:127-129`). Menggunakan layout grid 2 kolom responsif.
+- **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/products?active=true`, `GET /api/product-specs?active=true`, `GET /api/formulas`, `GET /api/auth/users`, `GET /api/auth/me`, dan `POST /api/batch/start`.
+- **Bukti**: `src/components/StartDialog.js:1-600`
+- **Catatan**: Mendukung hak koreksi (*overwrite*) verifikator tanpa harus mengulang form dari awal, memfilter akun inisiator dari daftar dropdown verifikator, serta memvalidasi password verifikator dan hak akses kontrol batch di sisi server. Modal mengadopsi lebar dinamis (`max-w-md` di langkah 1/4, `max-w-5xl` di langkah 2, dan `max-w-lg` di langkah 3).
 
 ---
 
@@ -1828,7 +1832,72 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
+### `migrations/009_system_settings.sql`
+- **Tipe**: SQL Migration
+- **Fungsi**: Membuat tabel `system_settings` untuk menyimpan konfigurasi sistem tingkat lanjut (masa berlaku sesi login, durasi auto-lockscreen, mode dan ambang batas tekanan auto-stop batch, sinyal pulsa STOP PLC, batas idle cadangan), melakukan seeding konfigurasi default, dan mendaftarkan hak akses izin resource `settings` ke tabel `role_permissions` (role `admin` mendapat `edit`, role `supervisor` dan `qa` mendapat `view`).
+- **Export utama**: DDL SQL (`CREATE TABLE IF NOT EXISTS system_settings ...`)
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Dieksekusi via psql atau script runner migrasi database
+- **Efek samping / dependensi eksternal**: Membuat tabel baru `system_settings` dan menambahkan baris izin pada `role_permissions`.
+- **Bukti**: `migrations/009_system_settings.sql:1-62`
+- **Catatan**: Skema mendukung key-value berbasis JSONB dengan metadata label, kategori, deskripsi, updated_at, dan updated_by untuk audit trail.
+
+---
+
+### `migrations/009_system_settings_rollback.sql`
+- **Tipe**: SQL Migration Rollback
+- **Fungsi**: Membatalkan migrasi 009 dengan menghapus izin resource `settings` dari tabel `role_permissions` dan menghapus tabel `system_settings`.
+- **Export utama**: DDL SQL (`DELETE FROM role_permissions WHERE resource = 'settings'; DROP TABLE IF EXISTS system_settings;`)
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Dieksekusi saat rollback skema 009
+- **Efek samping / dependensi eksternal**: Menghapus data konfigurasi sistem dan izin terkait.
+- **Bukti**: `migrations/009_system_settings_rollback.sql:1-4`
+
+---
+
+### `src/lib/settings.js`
+- **Tipe**: Library Modul Pengaturan Sistem (Universal/Server/Worker)
+- **Fungsi**: Menyediakan antarmuka pembacaan dan pembaruan pengaturan sistem dari tabel `system_settings` dengan in-memory caching TTL 10 detik untuk efisiensi kueri database pada background worker recorder dan API Next.js.
+- **Export utama**: `getAllSettings`, `getSetting`, `invalidateSettingsCache`
+- **Meng-import (internal)**: `src/lib/db.js`
+- **Dipakai oleh**: `src/lib/trendRecorder.js`, `src/lib/auth.js`, `src/app/api/auth/me/route.js`, `src/app/api/settings/route.js`
+- **Efek samping / dependensi eksternal**: Membaca tabel PostgreSQL `system_settings`. Menggunakan import relatif berekstensi `.js` agar aman dimuat di background worker custom server.
+- **Bukti**: `src/lib/settings.js:1-73`
+
+---
+
+### `src/app/api/settings/route.js`
+- **Tipe**: API Route Handler
+- **Fungsi**: Menyediakan endpoint `GET` untuk membaca seluruh konfigurasi sistem (dilindungi izin `settings >= view`) dan `PUT` untuk memperbarui nilai konfigurasi dengan validasi ketat, kewajiban menyertakan alasan tertulis untuk jejak audit GMP, pencatatan otomatis ke `audit_log` (aksi `settings_update`), serta invalidasi cache `src/lib/settings.js` (dilindungi izin `settings >= edit`).
+- **Export utama**: `GET`, `PUT`
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js` (`requirePermission`), `src/lib/settings.js` (`getAllSettings`, `invalidateSettingsCache`), `src/lib/auditLog.js` (`tryAudit`)
+- **Dipakai oleh**: Antarmuka halaman `src/app/(app)/settings/page.js`
+- **Efek samping / dependensi eksternal**: Membaca cookie sesi, memeriksa otorisasi, memperbarui tabel `system_settings`, mencatat jejak audit ke tabel `audit_log`.
+- **Bukti**: `src/app/api/settings/route.js:1-155`
+
+---
+
+### `src/app/(app)/settings/page.js`
+- **Tipe**: Client Component / Antarmuka Konfigurasi Sistem ("use client")
+- **Fungsi**: Menyajikan panel pengaturan sistem yang mencakup: konfigurasi masa berlaku sesi login (jam dengan tombol preset), durasi auto-lockscreen layar diam (menit dengan tombol preset), seleksi kriteria auto-stop batch record (mode tekanan nol $P_1 \& P_2 \le 0\text{ kPa}$ vs idle timeout), ambang batas tekanan stop (kPa), saklar pengiriman pulsa sinyal STOP ke PLC, batas waktu idle cadangan, input alasan perubahan wajib untuk kepatuhan FDA 21 CFR Part 11, dan deteksi state form kotor (`isDirty`).
+- **Export utama**: `default SettingsPage`
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`)
+- **Dipakai oleh**: Rute `/settings` dalam route group `src/app/(app)/`
+- **Efek samping / dependensi eksternal**: Mengambil konfigurasi via `GET /api/settings`, data user via `GET /api/auth/me`, dan mengirim pembaruan via `PUT /api/settings`.
+- **Bukti**: `src/app/(app)/settings/page.js:1-420`
+
+---
+
 ## Change Log
+
+- [2026-11-14] ADDED: Menambahkan dokumentasi teknis fitur Menu Konfigurasi Sistem & Penghentian Otomatis Batch Berdasarkan Tekanan Bejana ($P_1 \& P_2 \le 0\text{ kPa}$): `migrations/009_system_settings.sql`, `migrations/009_system_settings_rollback.sql`, `src/lib/settings.js`, `src/app/api/settings/route.js`, dan `src/app/(app)/settings/page.js`.
+- [2026-11-14] MODIFIED: Memperbarui integrasi sistem:
+  - `src/lib/trendRecorder.js`: Menambahkan logika auto-stop batch otomatis saat sterilisasi telah selesai (fase >= 4) dan tekanan $P_1 \& P_2 \le$ ambang batas (default 0 kPa) stabil selama 10 detik, dengan opsi otomatis mengirim pulsa `STOP` (`M1.5`) ke PLC untuk mereset mesin ke Idle dan mencatat jejak audit lengkap.
+  - `src/lib/auth.js` & `src/app/api/auth/login/route.js`: Mengintegrasikan masa berlaku token sesi JWT dan opsi cookie `session_token` secara dinamis dari `system_settings.session_timeout_hours`.
+  - `src/components/ScreenLock.js` & `src/app/api/auth/me/route.js`: Mengintegrasikan durasi pasif auto-lockscreen secara dinamis dari `system_settings.lockscreen_idle_minutes` tersinkronisasi lintas-tab via `localStorage`.
+  - `src/components/Navbar.js`: Menambahkan navigasi menu "Konfigurasi Sistem" pada grup `adminMenu`.
+  - `src/lib/permissionCatalog.js`: Menambahkan resource `settings` (`levels: PAGE`).
+  - `src/lib/auditActionLabels.js` & `src/lib/auditActionLabels.test.mjs`: Menambahkan label aksi audit `settings_update` (174 unit test lolos).
 
 - [2026-11-07] ADDED: Menambahkan dokumentasi teknis 5 file baru terkait Subsistem User HMI Overrides: `migrations/007_hmi_overrides.sql`, `migrations/007_hmi_overrides_rollback.sql`, `src/lib/hmiOverrideCatalog.js`, `src/hooks/useHmiPermission.js`, dan `src/app/api/users/[username]/hmi-overrides/route.js`.
 - [2026-11-07] MODIFIED: Memperbarui dokumentasi 13 file kode sumber: `src/lib/auth.js` (sinkronisasi session payload `hmiOverrides`), `src/app/api/auth/me/route.js` (return `hmiOverrides`), `src/app/api/plc-door/route.js` (isolasi jalur kedua via `BATCH_CTRL_ALLOWED_ACTIONS` dan guard K3 `chain`/`unlock`), `src/components/ScreenLock.js` (persistensi anti-refresh F5, timeout 7 menit, sinkronisasi multi-tab lewat event storage), `src/components/Navbar.js` (reset storage lockscreen pada logout), `src/app/login/page.js` (reset lockscreen pada login), `src/components/PermissionGate.js` (prop `hmiOverridePage`), `src/components/PlcParamEditor.js` (evaluasi override per field), `src/app/(app)/calibration/page.js` (`hmiOverridePage`), `src/app/(app)/machine-params/page.js` (`hmiOverridePage`), `src/app/(app)/manual/page.js` (evaluasi override tombol manual), `src/app/(app)/door-operate/page.js` (evaluasi override tombol pintu/rantai), dan `src/app/(app)/users/page.js` (panel `HmiOverridePanel` untuk konfigurasi izin per tombol).

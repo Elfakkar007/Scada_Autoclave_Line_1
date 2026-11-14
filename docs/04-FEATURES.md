@@ -85,48 +85,59 @@ Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data sta
 
 ---
 
-## 4. Fitur Memulai Batch Sterilisasi (Start Batch Sequence)
+## 4. Fitur Memulai Batch Sterilisasi (Start Batch Sequence & Dual Verification)
 
 ### Deskripsi Faktual
-Operator membuka modal START, memasukkan Batch No, Loading No, memilih Nama Produk (dropdown/ketik manual), Spesifikasi Kemasan (dropdown/ketik manual), Jumlah Botol (amount integer positif), dan Formula Resep. Sistem mengunci eksekusi START dengan advisory lock `START_LOCK_KEY` agar tidak bisa ditekan ganda, memvalidasi resep, memeriksa ketiadaan batch aktif lain, memeriksa interlock fisik PLC (kedua pintu tertutup dan segel aktif), menulis setpoint resep (7 parameter dasar ditambah target F0 `F0_VAL` jika diisi) ke register PLC, melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records` (termasuk kolom `bottle_count`).
+Proses memulai batch sterilisasi menerapkan **Verifikasi 2 Langkah (Four-Eyes Principle / Dual Authorization)** dengan fleksibilitas koreksi (*overwrite*) verifikator:
+1. **Langkah 1 (Operator / User 1)**: Operator yang sedang login membuka modal START, memasukkan Batch No, Amount / Jumlah Botol (integer bulat positif), memilih Nama Produk (dropdown/ketik manual), Spesifikasi Kemasan (dropdown/ketik manual), dan Formula Resep.
+2. **Langkah 2 (Verifikasi Berdampingan / Side-by-Side)**: Modal melebar menampilkan dua panel berdampingan: panel kiri adalah data awal Operator User 1 (read-only), dan panel kanan adalah form verifikasi User 2 yang awalnya terisi otomatis (*pre-filled*) sama dengan isian User 1, namun User 2 berhak mengoreksi / meng-*overwrite* nilai mana pun jika ada kesalahan ketik dari inisiator.
+3. **Langkah 3 (Preview Isian Final)**: Menampilkan ringkasan data akhir hasil verifikasi User 2 yang akan dikirim ke mesin serta rekam jejak koreksi field yang di-overwrite.
+4. **Langkah 4 (Otentikasi Kredensial Verifikator)**: Pop-up pemilihan akun verifikator langsung dari daftar user terdaftar di sistem (*User Management* via `/api/auth/users`), dengan penyaringan otomatis akun User 1 (sehingga inisiator tidak dapat memverifikasi dirinya sendiri), serta input password verifikator.
+Sistem mengunci eksekusi START dengan advisory lock `START_LOCK_KEY` agar tidak bisa ditekan ganda, memvalidasi verifikator via `bcrypt`, memeriksa hak akses kontrol batch verifikator, memvalidasi resep, memeriksa ketiadaan batch aktif lain, memeriksa interlock fisik PLC (kedua pintu tertutup rapat dan segel aktif), menulis setpoint resep final ke register PLC, melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records` (termasuk kolom `bottle_count`, `verifier`, dan `verifier_username`).
 
 ### Rantai Alur Kode
-1. **Dialog Input**: Tombol "START BATCH" di `src/app/(app)/page.js:380` membuka modal `src/components/StartDialog.js`. Modal menyediakan form 2 kolom responsif, combobox pencarian `SearchableCombobox` untuk Nama Produk dan Spesifikasi Kemasan, serta validasi bilangan bulat positif untuk Jumlah Botol (`bottleCount`).
-2. **Kirim START**: Operator menekan tombol "MULAI PROSES", memicu `handleStartSubmit` yang mengirim request `POST /api/batch/start` (`src/components/StartDialog.js:180`).
-3. **Advisory Lock Server**: Handler `src/app/api/batch/start/route.js:105` memanggil `acquireStartLock()` menggunakan kunci advisory `START_LOCK_KEY` (`7401001` dari `src/lib/recipeGuard.js:10`) pada PostgreSQL (`src/app/api/batch/start/route.js:35`).
-4. **Validasi Parameter**:
+1. **Dialog Input Langkah 1 (Operator)**: Tombol "START BATCH" di `src/app/(app)/page.js:380` membuka modal `src/components/StartDialog.js`. Operator mengisi 6 field identitas batch. Setelah valid, operator menekan tombol "Lanjut ke Verifikasi (User 2) →".
+2. **Dialog Verifikasi Langkah 2 (Side-by-Side Panel)**: Modal beralih ke layout `max-w-5xl`. Panel kiri menampilkan data awal inisiator, panel kanan form verifikasi User 2 yang mendukung overwrite. Field yang diubah diberi penanda visual badge "Dikoreksi Verifikator".
+3. **Preview Langkah 3**: Menampilkan ringkasan data final hasil verifikasi dan catatan koreksi verifikator.
+4. **Otentikasi Langkah 4**: Memilih user verifikator dari dropdown `eligibleVerifiers` (memfilter akun `currentUsername`), memasukkan password, dan menekan tombol "▶ Ya, Mulai Sterilisasi Sekarang".
+5. **Kirim START**: Mengirim request `POST /api/batch/start` dengan data final batch, objek `initiatorForm`, `verifierUsername`, dan `verifierPassword`.
+6. **Advisory Lock Server**: Handler `src/app/api/batch/start/route.js:108` memanggil `acquireStartLock()` menggunakan kunci advisory `START_LOCK_KEY` (`7401001` dari `src/lib/recipeGuard.js:10`) pada PostgreSQL.
+7. **Autentikasi & Verifikasi Verifikator Server-Side**:
+   - Memastikan `verifierUsername` dan `verifierPassword` terisi, dan `verifierUsername` bukan user yang sama dengan sesi operator (`src/app/api/batch/start/route.js:175-190`).
+   - Memverifikasi akun verifikator di tabel `users` (aktif, belum dihapus-lunak, dan kecocokan hash password via `bcrypt.compare`).
+   - Memverifikasi izin verifikator (`dashboard >= view` dan `action.batch_control >= edit`).
+   - Mendeteksi dan merekam jejak overwrite koreksi verifikator terhadap data inisiator ke dalam objek `recipe_snapshot.overwrites`.
+8. **Validasi Parameter Resep & Batch**:
    - Memvalidasi Batch No melalui `validateBatchNo` (`src/lib/batchNo.js:16`).
-   - Memeriksa keunikan Batch No pada tabel `batch_records` (`src/app/api/batch/start/route.js:218`).
-   - Membaca dan memvalidasi `bottleCount` (atau `amount`) dari body (`src/app/api/batch/start/route.js:134-141`).
+   - Memeriksa keunikan Batch No pada tabel `batch_records` (`src/app/api/batch/start/route.js`).
    - Memvalidasi rentang fisik resep melalui `validateRecipe` (`src/lib/recipeValidation.js:52`).
-   - Membaca `recipe.fo_val_setting` jika ada untuk parameter F0 target (`src/app/api/batch/start/route.js:206`).
    - Membangun snapshot formula resep melalui `buildRecipeSnapshot` (`src/lib/recipeSnapshot.js:18`).
-5. **Guard Interlock Mesin**:
-   - Membaca snapshot PLC via `readPlcSnapshot` (`src/app/api/batch/start/route.js:245`).
-   - Menolak jika rawPhase !== 1 (Idle siap) (`src/app/api/batch/start/route.js:290`).
-   - Menolak jika pintu terbuka (`opnFrnt` / `opnRear`), pintu belum rapat tertutup (`!clsFrnt` / `!clsRear`), atau door seal belum aktif (`!door.seal`) (`src/app/api/batch/start/route.js:309-335`).
-   - Menolak jika `ctrlSel === true` (mesin dalam mode F0 manual) (`src/app/api/batch/start/route.js:357`).
-6. **Penulisan Setpoint ke PLC**:
-   - Menyusun pasangan tag: `CTRL_TEMP`, `TEMP_SPACE`, `STER_SET`, `STER_SET_TIME`, `ALRM_PRES`, `COOL1_TEMP`, `COOL2_TEMP`, dan menyertakan `F0_VAL` (`Math.round(foValSetting * 10)`) bila target F0 terdefinisi (`src/app/api/batch/start/route.js:387-393`).
-   - Mengirim request ke KEPServerEX via `writePlcTags` (`src/lib/plcWrite.js:16`).
-7. **Verifikasi Pasca-Tulis**:
-   - Melakukan polling pembacaan ulang setpoint ke PLC hingga 4000 ms (`src/app/api/batch/start/route.js:418-453`), mencocokkan seluruh setpoint dasar dan `F0_VAL`.
-   - Jika terjadi selisih nilai, membatalkan START dan mencatat audit `start_batch_rejected` (`src/app/api/batch/start/route.js:468`).
-8. **Audit Pre-Start (Fail-Closed)**:
-   - Mencatat aksi `plc_setpoints_written` ke tabel `audit_log` via `insertAudit` (`src/app/api/batch/start/route.js:508`). Jika pencatatan audit gagal, proses START dibatalkan.
-9. **Kirim Pulsa START**:
-   - Mengirim pulsa tag START (M1.4): menulis true, jeda 1000 ms, menulis false melalui `pulsePlcTag("START")` (`src/lib/plcWrite.js:58`).
-10. **Polling Fase PLC**:
-    - Memanggil `pollUntilPhase([2, 3, 4], 10000, 500)` (`src/app/api/batch/start/route.js:547`) menunggu hingga register `PROCCES_TEXT` berubah menjadi kode 2 (Filling), 3 (Heating), atau 4 (Steril).
-11. **Pencatatan Batch Record**:
-    - Menjalankan `INSERT INTO batch_records` dengan kolom `bottle_count`, status `'running'`, dan snapshot resep JSON (`src/app/api/batch/start/route.js:618`).
-    - Menyediakan fallback bila kolom `bottle_count` belum ada di database (`colErr.code === "42703"`, `src/app/api/batch/start/route.js:630`).
-    - Mencatat aksi `start_batch` ke tabel `audit_log` (`src/app/api/batch/start/route.js:685`).
+9. **Guard Interlock Mesin**:
+   - Membaca snapshot PLC via `readPlcSnapshot` (`src/app/api/batch/start/route.js`).
+   - Menolak jika rawPhase !== 1 (Idle siap).
+   - Menolak jika pintu terbuka (`opnFrnt` / `opnRear`), pintu belum rapat tertutup (`!clsFrnt` / `!clsRear`), atau door seal belum aktif (`!door.seal`).
+   - Menolak jika `ctrlSel === true` (mesin dalam mode F0 manual).
+10. **Penulisan Setpoint ke PLC**:
+    - Menyusun pasangan tag: `CTRL_TEMP`, `TEMP_SPACE`, `STER_SET`, `STER_SET_TIME`, `ALRM_PRES`, `COOL1_TEMP`, `COOL2_TEMP`, dan menyertakan `F0_VAL` (`Math.round(foValSetting * 10)`) bila target F0 terdefinisi.
+    - Mengirim request ke KEPServerEX via `writePlcTags` (`src/lib/plcWrite.js:16`).
+11. **Verifikasi Pasca-Tulis**:
+    - Melakukan polling pembacaan ulang setpoint ke PLC hingga 4000 ms, mencocokkan seluruh setpoint dasar dan `F0_VAL`.
+    - Jika terjadi selisih nilai, membatalkan START dan mencatat audit `start_batch_rejected`.
+12. **Audit Pre-Start (Fail-Closed)**:
+    - Mencatat aksi `plc_setpoints_written` ke tabel `audit_log` via `insertAudit`. Jika pencatatan audit gagal, proses START dibatalkan.
+13. **Kirim Pulsa START**:
+    - Mengirim pulsa tag START (M1.4): menulis true, jeda 1000 ms, menulis false melalui `pulsePlcTag("START")` (`src/lib/plcWrite.js:58`).
+14. **Polling Fase PLC**:
+    - Memanggil `pollUntilPhase([2, 3, 4], 10000, 500)` menunggu hingga register `PROCCES_TEXT` berubah menjadi kode 2 (Filling), 3 (Heating), atau 4 (Steril).
+15. **Pencatatan Batch Record & Dual Audit Trail**:
+    - Menjalankan `INSERT INTO batch_records` dengan data final yang disetujui verifikator, kolom `bottle_count`, `verifier`, `verifier_username`, status `'running'`, dan snapshot resep JSON.
+    - Menyediakan fallback bila kolom belum ada di database (`colErr.code === "42703"`).
+    - Mencatat aksi `start_batch` ke tabel `audit_log` dengan rincian operator inisiator, verifikator, dan daftar field yang dikoreksi (bila ada).
 
 ### Bukti Kode
-- `src/components/StartDialog.js:1-420`
+- `src/components/StartDialog.js:1-600`
 - `src/components/SearchableCombobox.js:1-204`
-- `src/app/api/batch/start/route.js:1-755`
+- `src/app/api/batch/start/route.js:1-870`
 - `src/lib/recipeGuard.js:1-55`
 - `src/lib/recipeValidation.js:52-120`
 - `src/lib/plcWrite.js:16-85`
@@ -163,20 +174,27 @@ Operator menekan tombol STOP pada dashboard untuk menyelesaikan atau membatalkan
 ## 6. Fitur Perekaman Data Trend Latar Belakang & Finalisasi Otomatis
 
 ### Deskripsi Faktual
-Proses latar belakang berjalan secara independen di Node.js server setiap 5 detik. Jika ada batch yang berstatus `running`, data sensor saat itu disimpan ke tabel `batch_trend`. Jika mesin terdeteksi telah kembali ke status Idle (kode 0 atau 1) selama minimal 120 detik berturut-turut pada batch yang telah berjalan lebih dari 90 detik, sistem secara otomatis menutup dan memfinalisasi batch tersebut.
+Proses latar belakang berjalan secara independen di Node.js server setiap 5 detik. Jika ada batch yang berstatus `running`, data sensor saat itu disimpan ke tabel `batch_trend`. Sistem mendukung penghentian batch otomatis berdasarkan dua mekanisme utama:
+1. **Otomatis Berdasarkan Tekanan Nol ($P_1 \& P_2 \le 0\text{ kPa}$ setelah Sterilisasi)**: Begitu siklus sterilisasi selesai (fase $\ge 4$) dan uap dibuang hingga tekanan chamber ($P_1$) dan jacket ($P_2$) kembali ke tekanan atmosfer ($\le 0\text{ kPa}$) stabil selama 10 detik, batch langsung ditutup otomatis dan sinyal pulsa STOP dikirim ke PLC untuk mematikan status END dan buzzer mesin.
+2. **Cadangan Berbasis Waktu Idle (Idle Timeout Fallback)**: Jika mesin kembali ke status Idle (kode 0 atau 1) selama minimal durasi cadangan (default 120 detik) pada batch yang berjalan lebih dari 90 detik, sistem otomatis menutup batch tersebut.
 
 ### Rantai Alur Kode
 1. **Inisialisasi Interval**: `server.js:46` menjalankan `setInterval(recordTrendTick, 5000)`.
-2. **Pengecekan Batch Berjalan**: `src/lib/trendRecorder.js:26` memeriksa apakah ada batch berstatus `running` di tabel `batch_records`.
-3. **Perekaman Titik Sensor**: Membaca snapshot sensor via `readPlcSnapshot` dan menjalankan `INSERT INTO batch_trend (batch_id, ts, t1, t2, t3, t4, t5, t6, p, th, tm, tl, avg, cond, phase_code)` (`src/lib/trendRecorder.js:60`).
-4. **Deteksi Idle & Auto-Finalize**:
-   - Memeriksa durasi berjalan batch (`durationSec > 90`) dan fase mesin (`rawPhase === 0 || rawPhase === 1`) (`src/lib/trendRecorder.js:75-80`).
-   - Menghitung waktu akumulasi idle mesin. Jika `idleDurationSec >= 120` detik, fungsi memanggil `finalizeBatch(batch.id, { plcPhase: rawPhase })` (`src/lib/trendRecorder.js:80`).
-   - Menulis catatan ke `audit_log` dengan deskripsi bahwa batch difinalisasi otomatis karena mesin idle (`src/lib/trendRecorder.js:85`).
+2. **Pengecekan Batch Berjalan**: `src/lib/trendRecorder.js:45` memeriksa apakah ada batch berstatus `running` di tabel `batch_records`.
+3. **Perekaman Titik Sensor**: Membaca snapshot sensor via `readPlcSnapshot` dan menjalankan `INSERT INTO batch_trend (batch_id, ts, t1, t2, t3, t4, t5, t6, p, th, tm, tl, avg, cond, phase_code)` (`src/lib/trendRecorder.js:202-222`).
+4. **Pelacakan Siklus Sterilisasi**: `src/lib/trendRecorder.js:255` mendeteksi apakah batch telah menyentuh fase steril (`phase IN (4, 5, 6, 7)`).
+5. **Auto-Stop Berdasarkan Tekanan**:
+   - Jika `stopMode === 'pressure_zero'`, batch telah melewati fase steril, dan tekanan $P_1$ serta $P_2 \le$ `pressThreshold` (default 0 kPa) stabil 2 tick berturut-turut (~10 detik) pada fase akhir (5=Cooling, 6=END, 7=Drain, 0/1=Idle):
+   - Jika opsi `batch_stop_pulse_plc` aktif, mengirim denyut sinyal pulsa STOP ke PLC via `pulsePlcTag("STOP")` (`src/lib/trendRecorder.js:315`).
+   - Memanggil `finalizeBatch(batchId, { plcPhase: phase })` (`src/lib/batchFinalize.js`).
+   - Mencatat ke `audit_log` dengan rincian nilai $P_1$, $P_2$, status akhir, dan pemicu `pressure_zero` (`src/lib/trendRecorder.js:330-360`).
+6. **Auto-Stop Berdasarkan Waktu Idle (Fallback)**:
+   - Jika mesin berada di fase 0/1 selama $\ge$ `idleFallbackSec` (default 120 detik) dan batch berjalan $> 90$ detik, memanggil `finalizeBatch` dan mencatat audit log dengan pemicu `idle_timeout`.
 
 ### Bukti Kode
 - `server.js:46-48`
-- `src/lib/trendRecorder.js:20-110`
+- `src/lib/trendRecorder.js:15-370`
+- `src/lib/batchFinalize.js:1-184`
 
 ---
 
@@ -1021,7 +1039,54 @@ Pada halaman Manajemen Pengguna (`/users`), tombol "Izin HMI" di samping tombol 
 
 ---
 
+## 32. Fitur Konfigurasi Sistem & Penghentian Otomatis Batch Berdasarkan Tekanan Bejana (System Settings & Auto-Stop by Pressure)
+
+### Deskripsi Faktual
+Fitur Konfigurasi Sistem menyajikan antarmuka terpusat bagi Administrator untuk mengonfigurasi parameter operasional dan keamanan SCADA tanpa perlu memodifikasi kode sumber atau me-restart server:
+1. **Masa Berlaku Sesi Login (`session_timeout_hours`)**: Mengatur masa aktif cookie dan token JWT (1 hingga 72 jam, default 8 jam) dengan tombol preset 1, 4, 8, 12, dan 24 jam.
+2. **Durasi Auto-Lockscreen Layar Diam (`lockscreen_idle_minutes`)**: Mengatur batas waktu inaktivitas keyboard/mouse sebelum layar terkunci (1 hingga 60 menit, default 7 menit) dengan tombol preset 1, 3, 5, 7, 10, dan 15 menit. Durasi ini disinkronkan secara real-time ke browser klien via `/api/auth/me` dan disimpan ke `localStorage`.
+3. **Penghentian Otomatis Batch Record (Auto-Stop)**:
+   - **Mode Tekanan Nol (`pressure_zero`)**: Batch record secara otomatis ditutup begitu fase sterilisasi selesai (fase $\ge 4$) dan uap dibuang hingga tekanan chamber ($P_1$) serta jacket ($P_2$) berada pada $\le$ ambang batas (default $0\text{ kPa}$) stabil selama 10 detik.
+   - **Sinyal Pulsa STOP PLC (`batch_stop_pulse_plc`)**: Jika aktif, SCADA otomatis mengirim pulsa `STOP` (`M1.5`) ke PLC begitu batch difinalisasi, mematikan status END dan lampu/buzzer mesin agar PLC kembali siap/idle.
+   - **Batas Waktu Idle Cadangan (`batch_stop_idle_fallback_sec`)**: Batas waktu tunggu darurat (default 120 detik) jika sensor tekanan terganggu.
+4. **Kepatuhan FDA 21 CFR Part 11 / cGMP**: Setiap modifikasi konfigurasi sistem mewajibkan pengisian alasan perubahan (minimal 3 karakter), mencatat nilai lama (*old value*) dan baru (*new value*) ke tabel `audit_log` dengan aksi `settings_update`.
+
+### Rantai Alur Kode
+1. **Penyimpanan Skema Database**: Tabel `system_settings` (`migrations/009_system_settings.sql`) memelihara key-value bertipe JSONB dengan label, kategori, deskripsi, waktu pembaruan, dan aktor.
+2. **Lapisan Akses Data & Caching**: Modul `src/lib/settings.js` menyediakan fungsi `getAllSettings()` dan `getSetting(key, default)` dengan mekanisme caching in-memory berdurasi TTL 10 detik untuk menghindari lonjakan beban kueri DB pada background worker recorder (5 detik) dan API.
+3. **Integrasi Sesi Token & Cookie**:
+   - `src/lib/auth.js:23` membaca `session_timeout_hours` saat menerbitkan JWT via `createSessionToken(payload)`.
+   - `src/lib/auth.js:40` menyetel `maxAge` cookie `session_token` secara dinamis.
+   - `src/app/api/auth/login/route.js:174` menerapkan opsi cookie tersebut saat login berhasil.
+4. **Integrasi Auto-Lockscreen**:
+   - Handler `GET /api/auth/me` menyertakan properti `lockscreenIdleMinutes` pada payload data user.
+   - Komponen `src/components/ScreenLock.js` menyimpan nilai milidetik ke `localStorage.getItem("scada_lock_timeout_ms")` dan mengevaluasi inaktivitas berdasarkan durasi dinamis tersebut.
+5. **Integrasi Auto-Stop Trend Recorder**:
+   - Background worker `src/lib/trendRecorder.js` memeriksa pengaturan `batch_stop_mode`, `batch_stop_pressure_threshold`, `batch_stop_pulse_plc`, dan `batch_stop_idle_fallback_sec`.
+   - Mendeteksi apakah batch telah menyentuh fase steril (`phase IN (4, 5, 6, 7)`).
+   - Bila kondisi $P_1 \le \text{threshold}$ dan $P_2 \le \text{threshold}$ terpenuhi selama 2 tick berturut-turut (~10 detik), worker mengirim pulsa `STOP` ke PLC (bila diaktifkan), memanggil `finalizeBatch()`, dan mencatat `batch_auto_finalize` ke `audit_log`.
+6. **API Handler**:
+   - `GET /api/settings`: Dilindungi izin `settings >= view`.
+   - `PUT /api/settings`: Dilindungi izin `settings >= edit`, memvalidasi batas nilai tiap field, memvalidasi alasan perubahan, memperbarui database secara atomik, menginvalidasi cache via `invalidateSettingsCache()`, dan merekam aktivitas ke `audit_log`.
+7. **Antarmuka Halaman UI**: `src/app/(app)/settings/page.js` menyajikan form interaktif dengan pemisahan seksi, tombol preset interaktif, toggle mode auto-stop, indikator dirty state, dan konfirmasi audit.
+
+### Bukti Kode
+- `migrations/009_system_settings.sql:1-62`
+- `migrations/009_system_settings_rollback.sql:1-4`
+- `src/lib/settings.js:1-73`
+- `src/app/api/settings/route.js:1-155`
+- `src/app/(app)/settings/page.js:1-420`
+- `src/lib/trendRecorder.js:235-370`
+- `src/components/ScreenLock.js:6-195`
+- `src/lib/auth.js:20-55`
+- `src/app/api/auth/me/route.js:50-65`
+
+---
+
 ## Change Log
+
+- [2026-11-14] ADDED: Menambahkan dokumentasi Fitur 32 (Fitur Konfigurasi Sistem & Penghentian Otomatis Batch Berdasarkan Tekanan Bejana): `migrations/009_system_settings.sql`, `src/lib/settings.js`, `src/app/api/settings/route.js`, `src/app/(app)/settings/page.js`.
+- [2026-11-14] MODIFIED: Memperbarui Fitur 1 (Masa Berlaku Sesi Dinamis), Fitur 2 (Auto-Lockscreen Timeout Dinamis), Fitur 6 (Auto-Stop Batch Tekanan Nol & Pulsa STOP ke PLC), dan Seksi 28 (Penambahan aksi audit `settings_update`).
 
 - [2026-11-07] ADDED: Menambahkan dokumentasi Fitur 31 (Fitur User HMI Permission Override / Izin Khusus Per Pengguna) mencakup konsep mode default vs kustom, 48 item pada 4 halaman HMI, resolusi izin, promosi akses foreman, backend guard K3, API `hmi-overrides`, dan antarmuka `HmiOverridePanel`.
 - [2026-11-07] MODIFIED: Memperbarui Fitur 2 (Pengunci Layar Otomatis) dengan mekanisme persistensi anti-refresh F5 berbasis localStorage dan sinkronisasi status penguncian multi-tab via event storage.

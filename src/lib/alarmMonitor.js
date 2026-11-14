@@ -274,7 +274,7 @@ async function adoptRunningProcess(snap) {
                  (batch_no, loading_no, operator, machine_id, recipe_id,
                   product_name, product_spec, ctrl_type, ster_temp, cool_temp,
                   recipe_snapshot, status, run_begin)
-             VALUES ($1, 'N/A', 'system', 'SG-40', NULL,
+             VALUES ($1, NULL, 'system', 'SG-40', NULL,
                      '-', '-', 'Time', $2, $3,
                      $4::jsonb, 'running', now())
              RETURNING batch_no`,

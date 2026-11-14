@@ -3,11 +3,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-// Durasi pasif sebelum layar terkunci: 7 menit
-const LOCK_TIMEOUT_MS = 7 * 60 * 1000;
+// Durasi pasif sebelum layar terkunci: default 7 menit (dapat dikonfigurasi via system_settings)
+const DEFAULT_LOCK_TIMEOUT_MS = 7 * 60 * 1000;
+const STORAGE_KEY_TIMEOUT_MS = "scada_lock_timeout_ms";
 const STORAGE_KEY_LOCKED = "scada_screen_locked";
 const STORAGE_KEY_LAST_ACTIVITY = "scada_last_activity";
 const STORAGE_KEY_USER = "scada_lock_user";
+
+function getLockTimeoutMs() {
+    try {
+        const stored = Number(localStorage.getItem(STORAGE_KEY_TIMEOUT_MS));
+        if (stored && stored > 0) return stored;
+    } catch { }
+    return DEFAULT_LOCK_TIMEOUT_MS;
+}
 
 function EyeIcon({ off }) {
     return (
@@ -60,6 +69,14 @@ export default function ScreenLock() {
             .then((json) => {
                 if (active && json.ok) {
                     setUser(json.user);
+                    if (json.user?.lockscreenIdleMinutes) {
+                        try {
+                            localStorage.setItem(
+                                STORAGE_KEY_TIMEOUT_MS,
+                                String(json.user.lockscreenIdleMinutes * 60 * 1000)
+                            );
+                        } catch { }
+                    }
                     try {
                         const storedUser = localStorage.getItem(STORAGE_KEY_USER);
                         if (storedUser && storedUser !== json.user.username) {
@@ -74,10 +91,10 @@ export default function ScreenLock() {
                         } else {
                             localStorage.setItem(STORAGE_KEY_USER, json.user.username);
                         }
-                    } catch {}
+                    } catch { }
                 }
             })
-            .catch(() => {});
+            .catch(() => { });
         return () => {
             active = false;
         };
@@ -94,7 +111,7 @@ export default function ScreenLock() {
                 try {
                     localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
                     localStorage.setItem(STORAGE_KEY_LOCKED, "false");
-                } catch {}
+                } catch { }
             }
         }
     }, []);
@@ -106,18 +123,19 @@ export default function ScreenLock() {
             const storedActivity = Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY));
             const now = Date.now();
 
+            const lockTimeout = getLockTimeoutMs();
             if (isPersistedLocked) {
                 // Sebelumnya sudah terkunci -> pertahankan kunci
                 isLockedRef.current = true;
                 setTimeout(() => setIsLocked(true), 0);
-            } else if (storedActivity && (now - storedActivity >= LOCK_TIMEOUT_MS)) {
-                // Sudah lewat 7 menit sejak aktivitas terakhir tersimpan -> langsung kunci
+            } else if (storedActivity && (now - storedActivity >= lockTimeout)) {
+                // Sudah lewat durasi batas pasif sejak aktivitas terakhir tersimpan -> langsung kunci
                 isLockedRef.current = true;
                 localStorage.setItem(STORAGE_KEY_LOCKED, "true");
                 setTimeout(() => setIsLocked(true), 0);
             } else {
                 // Belum terkunci -> lanjutkan hitungan mundur dari aktivitas terakhir
-                const initialActivity = (storedActivity && storedActivity <= now && (now - storedActivity < LOCK_TIMEOUT_MS))
+                const initialActivity = (storedActivity && storedActivity <= now && (now - storedActivity < lockTimeout))
                     ? storedActivity
                     : now;
                 lastActivityRef.current = initialActivity;
@@ -153,7 +171,7 @@ export default function ScreenLock() {
         };
         window.addEventListener("storage", handleStorageChange);
 
-        // Interval pengecekan pasif 7 menit (tiap 1 detik)
+        // Interval pengecekan (tiap 1 detik)
         const intervalId = setInterval(() => {
             if (isLockedRef.current) return;
 
@@ -165,16 +183,17 @@ export default function ScreenLock() {
                     last = stored;
                     lastActivityRef.current = stored;
                 }
-            } catch {}
+            } catch { }
 
             if (last > 0) {
                 const elapsed = Date.now() - last;
-                if (elapsed >= LOCK_TIMEOUT_MS) {
+                const lockTimeout = getLockTimeoutMs();
+                if (elapsed >= lockTimeout) {
                     isLockedRef.current = true;
                     setIsLocked(true);
                     try {
                         localStorage.setItem(STORAGE_KEY_LOCKED, "true");
-                    } catch {}
+                    } catch { }
                 }
             }
         }, 1000);
@@ -229,7 +248,7 @@ export default function ScreenLock() {
                 try {
                     localStorage.setItem(STORAGE_KEY_LOCKED, "false");
                     localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
-                } catch {}
+                } catch { }
                 setIsLocked(false);
                 setShowModal(false);
                 setPassword("");
@@ -245,7 +264,7 @@ export default function ScreenLock() {
                     localStorage.removeItem(STORAGE_KEY_LOCKED);
                     localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
                     localStorage.removeItem(STORAGE_KEY_USER);
-                } catch {}
+                } catch { }
                 router.push("/login");
             } else {
                 setError(data.error || "Password salah, silakan coba lagi");
@@ -264,7 +283,7 @@ export default function ScreenLock() {
             localStorage.removeItem(STORAGE_KEY_LOCKED);
             localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
             localStorage.removeItem(STORAGE_KEY_USER);
-        } catch {}
+        } catch { }
         try {
             await fetch("/api/auth/logout", { method: "POST" });
         } finally {
@@ -297,7 +316,7 @@ export default function ScreenLock() {
                     </span>
                     <div className="flex flex-col">
                         <span className="text-xs font-bold leading-tight flex items-center gap-1.5">
-                            🔒 Layar Terkunci (Pasif 7 Menit)
+                            🔒 Layar Terkunci
                         </span>
                         <span className="text-[10px] text-zinc-300">
                             Klik di mana saja untuk membuka
@@ -323,7 +342,7 @@ export default function ScreenLock() {
                                     Layar Terkunci
                                 </h2>
                                 <p className="text-xs text-scada-muted">
-                                    Sesi pasif 7 menit. Masukkan password untuk melanjutkan.
+                                    Masukkan password untuk melanjutkan.
                                 </p>
                             </div>
                         </div>
