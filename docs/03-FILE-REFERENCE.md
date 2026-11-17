@@ -461,13 +461,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/plc.js`
 - **Tipe**: Util / Komunikasi REST IoT Gateway PLC
-- **Fungsi**: Menyediakan fungsi pembacaan data sensor PLC Siemens S7-200 via REST API KEPServerEX `/iotgateway/read`, scaling nilai suhu (°C/10) dan tekanan (kPa), integrasi target F0 menit (`f0Val`, register VW220 /10), deteksi status buzzer alarm (`M10.6`), pembacaan word alarm mentah (`alrmDor`, `alrmTemp`, `warningBuz`), status perintah door release (`releaseCmd` M1.3), serta deteksi fase proses.
+- **Fungsi**: Menyediakan fungsi pembacaan data sensor PLC Siemens S7-200 via REST API KEPServerEX `/iotgateway/read`, scaling nilai suhu (°C/10) dan tekanan (kPa), integrasi target F0 menit (`f0Val`, register VW220 /10), deteksi status buzzer alarm (`M10.6`), pembacaan word alarm mentah (`alrmDor`, `alrmTemp`, `warningBuz`), status perintah door release (`releaseCmd` M1.3), pembacaan aktuator LIVE (termasuk `airCmbr` Q1.3), serta deteksi fase proses.
 - **Export utama**: `readPlcSnapshot`, `TAG_MAP`, `PHASE_MAP` (fungsi dan konstanta)
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: `src/app/api/batch/start/route.js`, `src/app/api/batch/stop/route.js`, `src/app/api/plc/reset/route.js`, `src/app/api/status/route.js`, `src/lib/alarmMonitor.js`, `src/lib/trendRecorder.js`
 - **Efek samping / dependensi eksternal**: Melakukan HTTP request GET ke KEPServerEX IoT Gateway (`src/lib/plc.js:145`), membaca `process.env.IOT_GATEWAY_*`.
-- **Bukti**: `src/lib/plc.js:1-452`
-- **Catatan**: Catatan kode: tag L/VW122 konduktivitas dan WATER level air belum memiliki formula kalibrasi konversi fisik (`src/lib/plc.js:338, 339, 371, 372`). Tag target F0 (VW220) resmi dinamai `F0_VAL` dan dibagi 10 ke satuan menit.
+- **Bukti**: `src/lib/plc.js:1-454`
+- **Catatan**: Catatan kode: tag L/VW122 konduktivitas dan WATER level air belum memiliki formula kalibrasi konversi fisik (`src/lib/plc.js:338, 339, 371, 372`). Tag target F0 (VW220) resmi dinamai `F0_VAL` dan dibagi 10 ke satuan menit. Aktuator `airCmbr` (Q1.3) kini terhubung LIVE ke snapshot `valves.airCmbr`.
 
 ---
 
@@ -585,13 +585,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/components/AtvDiagram.js`
 - **Tipe**: Client Component / Diagram Visual Autoclave
-- **Fungsi**: Menggambar skema visual bejana Autoclave Line 1 berbasis elemen SVG, memvisualisasikan status katup (valve), level air, posisi pintu depan/belakang, dan arah sirkulasi pompa secara interaktif.
-- **Export utama**: `default` AtvDiagram (fungsi komponen React)
+- **Fungsi**: Menggambar skema visual bejana Autoclave Line 1 berbasis elemen SVG, memvisualisasikan status katup (valve), level air, posisi pintu depan/belakang, dan arah sirkulasi pompa secara interaktif. Kini dilengkapi label kode tag industri sesuai Manual Operate & ladder PLC (SV1, SV2, CWV1, CWV2, DPWV, SDFC, PWCV, AIR_CMBR, WDV, UOV, WTR_PUMP) pada setiap katup dan pompa.
+- **Export utama**: `default` AtvDiagram (fungsi komponen React), `PhaseGuide`
 - **Meng-import (internal)**: `src/lib/atvProcess.js`
 - **Dipakai oleh**: `src/app/(app)/page.js`
 - **Efek samping / dependensi eksternal**: Tidak ada (komponen SVG presentasi berbasis props data sensor PLC).
-- **Bukti**: `src/components/AtvDiagram.js:1-380`
-- **Catatan**: Menerima props data snapshot PLC: `{ valves, door, level, pump, temp, pressure, phase }`.
+- **Bukti**: `src/components/AtvDiagram.js:1-855`
+- **Catatan**: Menerima props data snapshot PLC: `{ valves, door, level, pump, temp, pressure, phase }`. Memiliki badge plat tag + status pada tiap katup dan pompa tanpa tabrakan visual antar-komponen.
 
 ---
 

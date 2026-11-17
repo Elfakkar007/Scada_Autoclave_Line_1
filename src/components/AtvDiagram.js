@@ -114,7 +114,7 @@ const ARROWS = [
 ];
 
 // Area klik (inspektur)
-const vhot = ([cx, cy]) => ({ x: cx - 36, y: cy - 42, w: 72, h: 80 });
+const vhot = ([cx, cy]) => ({ x: cx - 44, y: cy - 42, w: 88, h: 80 });
 const HOT = {
   steam1: vhot(VALVE_POS.steam1),
   steam2: vhot(VALVE_POS.steam2),
@@ -124,9 +124,9 @@ const HOT = {
   utilOut: vhot(VALVE_POS.utilOut),
   drain: vhot(VALVE_POS.drain),
   softWater: vhot(VALVE_POS.softWater),
-  air: vhot(VALVE_POS.air),
+  air: { x: 1255 - 55, y: 165 - 42, w: 110, h: 80 },
   exhaust: vhot(VALVE_POS.exhaust),
-  pump: { x: 764, y: 486, w: 138, h: 86 },
+  pump: { x: 764, y: 486, w: 138, h: 118 },
   phe: { x: 598, y: 266, w: 70, h: 124 },
   chamber: { x: 842, y: 222, w: 423, h: 213 },
   th: { x: 1024, y: 166, w: 106, h: 42 },
@@ -141,11 +141,61 @@ const HOT = {
 /* ───────────── CSS animasi ───────────── */
 
 const CSS = `
-.atv-flow{stroke-dasharray:11 15;animation:atv-dash .9s linear infinite}
-.atv-flow.dots{stroke-dasharray:1 13;stroke-linecap:round}
-.atv-flow.auto{animation:atv-dash .9s linear infinite,atv-blink 1.8s ease-in-out infinite}
-@keyframes atv-dash{to{stroke-dashoffset:-26}}
-@keyframes atv-blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* ── Gelombang Fluida Dinamis Menyala (Surging Fluid Wave System) ── */
+.atv-wave-aura {
+  stroke-linecap: round;
+  stroke-opacity: 0.35;
+  stroke-dasharray: 26 12 12 14;
+  animation: atv-wave-dash 0.9s linear infinite;
+}
+.atv-wave-aura.dots {
+  stroke-linecap: round;
+  stroke-opacity: 0.35;
+  stroke-dasharray: 8 12 12 12;
+  animation: atv-air-dash 0.65s linear infinite;
+}
+
+.atv-wave-flow {
+  stroke-linecap: round;
+  stroke-opacity: 1;
+  stroke-dasharray: 24 14 10 16;
+  animation: atv-wave-dash 0.9s linear infinite;
+}
+.atv-wave-flow.dots {
+  stroke-linecap: round;
+  stroke-opacity: 1;
+  stroke-dasharray: 6 14 10 14;
+  animation: atv-air-dash 0.65s linear infinite;
+}
+
+.atv-wave-crest {
+  stroke-linecap: round;
+  stroke-opacity: 0.95;
+  stroke-dasharray: 14 50;
+  animation: atv-wave-dash 0.9s linear infinite;
+}
+.atv-wave-crest.dots {
+  stroke-linecap: round;
+  stroke-opacity: 0.95;
+  stroke-dasharray: 4 40;
+  animation: atv-air-dash 0.65s linear infinite;
+}
+
+@keyframes atv-wave-dash {
+  to { stroke-dashoffset: -64; }
+}
+@keyframes atv-air-dash {
+  to { stroke-dashoffset: -44; }
+}
+
+/* Modulasi otomatis (fase AUTO) */
+.atv-wave-aura.auto, .atv-wave-flow.auto, .atv-wave-crest.auto {
+  animation: atv-wave-dash 0.9s linear infinite, atv-blink 1.8s ease-in-out infinite;
+}
+.atv-wave-aura.dots.auto, .atv-wave-flow.dots.auto, .atv-wave-crest.dots.auto {
+  animation: atv-air-dash 0.65s linear infinite, atv-blink 1.8s ease-in-out infinite;
+}
+
 .atv-wheel-auto{animation:atv-blink 1.8s ease-in-out infinite}
 .atv-spin{transform-box:fill-box;transform-origin:center;animation:atv-rot .9s linear infinite}
 @keyframes atv-rot{to{transform:rotate(360deg)}}
@@ -154,14 +204,15 @@ const CSS = `
 .atv-wave{animation:atv-wave 3.2s linear infinite}
 @keyframes atv-wave{to{transform:translateX(-40px)}}
 .atv-pulse{animation:atv-pulse 1.8s ease-in-out infinite}
-@keyframes atv-pulse{0%,100%{opacity:.12}50%{opacity:.5}}
+@keyframes atv-pulse{0%,100%{opacity:.15}50%{opacity:.65}}
 .atv-flash{transform-box:fill-box;transform-origin:center;animation:atv-flash .9s ease-out 1 both}
-@keyframes atv-flash{from{opacity:.9;transform:scale(.55)}to{opacity:0;transform:scale(1.9)}}
+@keyframes atv-flash{from{opacity:.95;transform:scale(.55)}to{opacity:0;transform:scale(2.1)}}
 .atv-arrow-on{animation:atv-glow 1.8s ease-in-out infinite}
-@keyframes atv-glow{0%,100%{opacity:1}50%{opacity:.7}}
+@keyframes atv-glow{0%,100%{opacity:1}50%{opacity:.6}}
+@keyframes atv-blink{0%,100%{opacity:1}50%{opacity:.3}}
 .atv-hot{fill:transparent;pointer-events:all;cursor:pointer;outline:none}
-.atv-hot:hover{fill:rgba(28,110,116,.07)}
-.atv-hot:focus-visible{stroke:#1C6E74;stroke-width:2}
+.atv-hot:hover{fill:rgba(2,132,199,.08)}
+.atv-hot:focus-visible{stroke:#0284C7;stroke-width:2}
 .atv-paused *{animation-play-state:paused!important}
 @media (prefers-reduced-motion:reduce){.atv-root *{animation:none!important}}
 `;
@@ -184,12 +235,33 @@ function FlowLayer({ flows }) {
     <g fill="none" strokeLinejoin="round">
       {flows.map((f) => (
         <g key={f.k}>
-          <path d={f.d} stroke={f.color} strokeOpacity="0.32" strokeWidth="9" />
+          {/* 1. Kanal cairan transparan lembut di dasar pipa */}
           <path
             d={f.d}
             stroke={f.color}
-            strokeWidth={f.dots ? 5 : 4.5}
-            className={`atv-flow${f.dots ? " dots" : ""}${f.auto ? " auto" : ""}`}
+            strokeWidth="8.5"
+            strokeOpacity="0.18"
+          />
+          {/* 2. Aura pendaran gelombang yang berjalan */}
+          <path
+            d={f.d}
+            stroke={f.color}
+            strokeWidth={f.dots ? 8 : 11}
+            className={`atv-wave-aura${f.dots ? " dots" : ""}${f.auto ? " auto" : ""}`}
+          />
+          {/* 3. Tubuh gelombang fluida dinamis menyala utama */}
+          <path
+            d={f.d}
+            stroke={f.color}
+            strokeWidth={f.dots ? 5.5 : 7.5}
+            className={`atv-wave-flow${f.dots ? " dots" : ""}${f.auto ? " auto" : ""}`}
+          />
+          {/* 4. Puncak kilau gelombang 3D putih menyala kontras */}
+          <path
+            d={f.d}
+            stroke="#FFFFFF"
+            strokeWidth={f.dots ? 2.5 : 3.6}
+            className={`atv-wave-crest${f.dots ? " dots" : ""}${f.auto ? " auto" : ""}`}
           />
         </g>
       ))}
@@ -208,13 +280,13 @@ function ArrowTag({ a, active }) {
       <polygon
         points={pts.map((p) => p.join(",")).join(" ")}
         fill={color}
-        fillOpacity={active ? 1 : 0.5}
-        stroke={INK}
-        strokeWidth="1.2"
+        fillOpacity={active ? 1 : 0.45}
+        stroke={active ? INK : "#8A9492"}
+        strokeWidth={active ? "1.6" : "1.2"}
         strokeLinejoin="round"
         className={active ? "atv-arrow-on" : undefined}
       />
-      <text x={a.lx} y={a.ly} fontSize="15" fill={INK} textAnchor={a.anchor || "start"}>
+      <text x={a.lx} y={a.ly} fontSize="14" fontWeight={active ? "700" : "500"} fill={active ? INK : MUTED} textAnchor={a.anchor || "start"}>
         {a.label}
       </text>
     </g>
@@ -229,6 +301,11 @@ function ValveGlyph({ id, st }) {
   const live = s === "open" || s === "auto";
   const wheel = live ? tone : s === "closed" ? "#C8CECC" : "#FFFFFF";
   const text = s === "open" ? "OPEN" : s === "auto" ? "AUTO" : s === "closed" ? "CLOSED" : "-";
+  const tagCode = COMPONENT_INFO[id]?.code ?? id;
+  const isWide = tagCode.length > 5;
+  const boxW = isWide ? 96 : 74;
+  const boxX = -boxW / 2;
+
   return (
     <g transform={`translate(${cx} ${cy})`}>
       {est && (
@@ -250,16 +327,32 @@ function ValveGlyph({ id, st }) {
       {live && (
         <circle key={s} cy="-24" r="16" fill="none" stroke={tone} strokeWidth="2" className="atv-flash" />
       )}
-      <text
-        y="32"
-        fontSize="11"
-        fontWeight="600"
-        textAnchor="middle"
-        fill={live ? tone : MUTED}
-      >
-        {est && s !== "unknown" ? "≈ " : ""}
-        {text}
-      </text>
+      {/* Badge Plat Tag & Status */}
+      <g transform="translate(0 28)">
+        <rect
+          x={boxX}
+          y="-11"
+          width={boxW}
+          height="17"
+          rx="2.5"
+          fill="#FFFFFF"
+          stroke={live ? tone : RULE}
+          strokeWidth="1"
+        />
+        <text
+          y="1.5"
+          fontSize="10"
+          textAnchor="middle"
+          style={SANS}
+        >
+          <tspan fontWeight="700" fill={INK}>{tagCode}</tspan>
+          <tspan fill={RULE}> · </tspan>
+          <tspan fontWeight="600" fill={live ? tone : MUTED}>
+            {est && s !== "unknown" ? "≈ " : ""}
+            {text}
+          </tspan>
+        </text>
+      </g>
     </g>
   );
 }
@@ -272,7 +365,12 @@ function ManualBallValve() {
       <rect x="-25" y="-11" width="50" height="22" rx="3" fill="#C9CFCD" stroke="#3E484B" strokeWidth="1.2" />
       <circle r="8" fill="#B3BAB8" stroke="#3E484B" strokeWidth="1.2" />
       <path d="M0 -11 L4 -20 L62 -23" fill="none" stroke="#3E484B" strokeWidth="1.5" />
-      <text y="32" fontSize="10" textAnchor="middle" fill={MUTED}>MANUAL</text>
+      <g transform="translate(0 28)">
+        <rect x="-35" y="-11" width="70" height="17" rx="2.5" fill="#FFFFFF" stroke={RULE} strokeWidth="1" />
+        <text y="1.5" fontSize="10" fontWeight="700" textAnchor="middle" fill={MUTED} style={SANS}>
+          MANUAL
+        </text>
+      </g>
     </g>
   );
 }
@@ -294,6 +392,7 @@ function Plate({ x, y, w = 106, h = 42, label, value, unit, note }) {
 
 function Pump({ on }) {
   const lamp = on === null ? IDLE : on ? RUN : STOP;
+  const statusText = on === null ? "--" : on ? "RUN" : "STOP";
   return (
     <g>
       {/* dudukan */}
@@ -312,6 +411,15 @@ function Pump({ on }) {
         </g>
       </g>
       <rect x="821" y="516" width="28" height="13" rx="1.5" fill={lamp} stroke={INK} strokeWidth="1.2" />
+      {/* Badge Plat Tag & Status Pompa */}
+      <g transform="translate(835 588)">
+        <rect x="-46" y="-11" width="92" height="17" rx="2.5" fill="#FFFFFF" stroke={on ? RUN : RULE} strokeWidth="1" />
+        <text y="1.5" fontSize="10" textAnchor="middle" style={SANS}>
+          <tspan fontWeight="700" fill={INK}>WTR_PUMP</tspan>
+          <tspan fill={RULE}> · </tspan>
+          <tspan fontWeight="600" fill={on ? RUN : MUTED}>{statusText}</tspan>
+        </text>
+      </g>
     </g>
   );
 }
@@ -354,7 +462,7 @@ function Chamber({ chamber, heat, flowing, doors, sim, noData, running, lampOn }
   const level = chamber === "empty" || chamber === "unknown" || chamber === "draining" ? 0 : chamber === "filling" ? 0.95 : 0.96;
   const trans =
     chamber === "filling" ? "transform 24s linear" : chamber === "draining" ? "transform 14s ease-in" : "transform 1.2s ease-out";
-  const water = mixHex("#6FB1B6", "#D79A4E", heat);
+  const water = mixHex("#38BDF8", "#EA580C", heat);
   const showDoor = !sim && !noData;
   const lamp = noData ? IDLE : lampOn ? RUN : "#2B3436";
   return (
@@ -679,10 +787,10 @@ export function AtvDiagram({
           </span>
         ))}
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded-t-full bg-[#1C6E74]" /> OPEN
+          <span className="inline-block w-3 h-3 rounded-t-full bg-[#0284C7]" /> OPEN
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 rounded-t-full bg-[#1C6E74] opacity-50" /> AUTO (berkedip)
+          <span className="inline-block w-3 h-3 rounded-t-full bg-[#0284C7] opacity-60" /> AUTO (berkedip)
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block w-3 h-3 rounded-t-full bg-[#C8CECC] border border-[#8A9492]" /> CLOSED
@@ -697,7 +805,7 @@ export function AtvDiagram({
             <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="text-[13px] font-semibold text-[#1E2A2E]">{info.name}</span>
               {info.tag && <span className="text-[11px] text-[#5C6B6A]" style={MONO}>tag {info.tag}{info.addr ? ` · ${info.addr}` : ""}</span>}
-              {stateLine && <span className="text-[11px] font-semibold text-[#1C6E74]">{stateLine}</span>}
+              {stateLine && <span className="text-[11px] font-semibold text-[#0284C7]">{stateLine}</span>}
             </div>
             <p className="mt-1 text-[#1E2A2E]">{info.role}</p>
             <p className="mt-0.5 text-[#5C6B6A]">{info.logic}</p>
@@ -715,9 +823,9 @@ export function AtvDiagram({
 /* ───────────── Panel penjelasan fase ───────────── */
 
 const VALVE_NAMES = {
-  steam1: "STEAM 1", steam2: "STEAM 2", waterDrain: "WATER DRAIN",
-  cool1: "COOLING WATER 1", cool2: "COOLING WATER 2", utilOut: "Buang PHE",
-  drain: "DRAIN", air: "COMPRESSED AIR", exhaust: "EXHAUST", softWater: "SOFT WATER",
+  steam1: "STEAM 1 (SV1)", steam2: "STEAM 2 (SV2)", waterDrain: "WATER DRAIN (WDV)",
+  cool1: "COOLING WATER 1 (CWV1)", cool2: "COOLING WATER 2 (CWV2)", utilOut: "Buang PHE (UOV)",
+  drain: "DRAIN (DPWV)", air: "COMPRESSED AIR (AIR_CMBR)", exhaust: "EXHAUST (SDFC)", softWater: "SOFT WATER (PWCV)",
 };
 
 export function PhaseGuide({ mode, step, valves, noData, setpoints, limits }) {

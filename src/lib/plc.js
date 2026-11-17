@@ -80,6 +80,7 @@ const TAG_MAP = {
     steam1: "STEAM_1",
     steam2: "STEAM_2",
     steamExhs: "STEAM_EXHS",
+    airCmbr: "AIR_CMBR",
     cooling1: "COOLING_1",     // dikonfirmasi dari KEPServer Quick Client: underscore, bukan spasi
     cooling2: "COOLING_2",
     wtrFill: "WTR_FILL",
@@ -387,6 +388,7 @@ export async function readPlcSnapshot() {
                 // bitOrNull: tag gagal-baca → null (unknown/abu-abu di diagram),
                 // bukan false (CLOSED). null SENGAJA tidak diubah jadi false.
                 steam1: bitOrNull(v.steam1), steam2: bitOrNull(v.steam2), steamExhs: bitOrNull(v.steamExhs),
+                airCmbr: bitOrNull(v.airCmbr),
                 cooling1: bitOrNull(v.cooling1), cooling2: bitOrNull(v.cooling2),
                 wtrFill: bitOrNull(v.wtrFill), wtrDrain: bitOrNull(v.wtrDrain), wtrPump: bitOrNull(v.wtrPump),
             },

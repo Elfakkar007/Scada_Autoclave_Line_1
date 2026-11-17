@@ -56,17 +56,17 @@ export const STEP_COLOR = {
 /* ───────────── Warna medium (selaras design system + kode warna PDF) ───────────── */
 
 export const MEDIUM = {
-  steam: "#B9762F",  // uap & exhaust (kuning di PDF)
-  water: "#1C6E74",  // air proses / pendingin / soft water (biru di PDF)
-  air: "#5B8FB0",    // udara tekan
-  drainA: "#5E8C61", // WATER DRAIN (hijau di PDF)
-  drainB: "#9C6B98", // DRAIN (pink di PDF)
+  steam: "#FF6A00",  // uap & exhaust (oranye neon menyala terang)
+  water: "#0090FF",  // air proses / pendingin / soft water (biru elektrik menyala)
+  air: "#00D0F5",    // udara tekan (cyan neon menyala)
+  drainA: "#00C853", // WATER DRAIN (kondensat PHE - hijau neon menyala)
+  drainB: "#D500F9", // DRAIN (jalur buang utama - magenta elektrik menyala)
 };
 
 /* ───────────── Sumber status valve ───────────── */
 
-// Elemen diagram → key di data.valves (plc.js). Elemen yang tidak ada di sini
-// belum punya tag (waterDrain, air, utilOut), jadi statusnya ESTIMASI dari profil fase (ditandai "≈").
+// Elemen diagram → key di data.valves (plc.js). Elemen yang belum ada tag
+// di KEPServerEX (waterDrain, utilOut) statusnya ESTIMASI dari profil fase (ditandai "≈").
 export const LIVE_TAG = {
   steam1: "steam1",
   steam2: "steam2",
@@ -75,6 +75,7 @@ export const LIVE_TAG = {
   cool2: "cooling2",
   exhaust: "steamExhs",
   softWater: "wtrFill",
+  air: "airCmbr",
 };
 
 export const VALVE_IDS = [
@@ -297,57 +298,68 @@ export function mixHex(a, b, t) {
 
 export const COMPONENT_INFO = {
   steam1: {
-    name: "STEAM 1", tag: "STEAM_1", addr: "Q0.6",
+    code: "SV1",
+    name: "STEAM 1 (SV1)", tag: "STEAM_1", addr: "Q0.6",
     role: "Jalur uap pertama ke sisi utilitas PHE (katup SV1).",
     logic: "Fase HEATING: membuka saat TH < CTRL_TEMP − 1 °C dan tertahan terbuka sampai TH ≥ CTRL_TEMP (on-off dengan histeresis). Tertutup di fase lain.",
   },
   steam2: {
-    name: "STEAM 2", tag: "STEAM_2", addr: "Q0.7",
+    code: "SV2",
+    name: "STEAM 2 (SV2)", tag: "STEAM_2", addr: "Q0.7",
     role: "Jalur uap kedua (katup SV2), juga pengatur suhu saat sterilisasi.",
     logic: "HEATING: terbuka selama TH < CTRL_TEMP. STERIL.: satu-satunya jalur uap, membuka saat TH < STER_SET + TEMP_SPACE.",
   },
   waterDrain: {
-    name: "WATER DRAIN", tag: null, addr: null,
-    role: "Jalur buang di sisi uap PHE.",
-    logic: "Belum ada tag di KEPServerEX, jadi statusnya estimasi. Menurut ladder, output yang cocok (Q2.1) menyala saat idle, FILLING, awal HEATING, dan 30 detik awal COOLING.",
+    code: "WDV",
+    name: "WATER DRAIN (WDV)", tag: null, addr: "Q2.1",
+    role: "Jalur buang kondensat di sisi uap PHE (Q2.1).",
+    logic: "Menurut ladder logic (SBR1, SBR2, SBR4), output Q2.1 menyala saat idle, FILLING, awal HEATING, dan 30 detik awal COOLING.",
   },
   cool1: {
-    name: "COOLING WATER 1", tag: "COOLING_1", addr: "Q1.1",
+    code: "CWV1",
+    name: "COOLING WATER 1 (CWV1)", tag: "COOLING_1", addr: "Q1.1",
     role: "Air pendingin ke sisi utilitas PHE (katup CWV1).",
     logic: "Fase COOLING: membuka selama suhu acuan ≤ COOL1_TEMP.",
   },
   cool2: {
-    name: "COOLING WATER 2", tag: "COOLING_2", addr: "Q1.7",
+    code: "CWV2",
+    name: "COOLING WATER 2 (CWV2)", tag: "COOLING_2", addr: "Q1.7",
     role: "Air pendingin jalur kedua ke PHE (katup CWV2).",
     logic: "Fase COOLING: membuka 30 detik setelah COOLING mulai dan bertahan sampai pendinginan selesai.",
   },
   utilOut: {
-    name: "Jalur buang PHE → DRAIN", tag: null, addr: null,
-    role: "Membuang kondensat / air dari sisi utilitas PHE melewati sensor conductivity.",
-    logic: "Belum ada tag PLC. Ditampilkan terbuka selama uap mengalir (estimasi).",
+    code: "UOV",
+    name: "Jalur buang PHE (UOV)", tag: null, addr: "Q1.2",
+    role: "Membuang air pendingin utilitas PHE ke DRAIN melewati sensor conductivity (Q1.2).",
+    logic: "Menurut ladder logic (SBR4, SBR5), output Q1.2 membuka saat fase pendinginan / kuras PHE.",
   },
   drain: {
-    name: "DRAIN (bawah)", tag: "WTR_DRAIN", addr: "Q1.4",
+    code: "DPWV",
+    name: "DRAIN Bejana (DPWV)", tag: "WTR_DRAIN", addr: "Q1.4",
     role: "Katup buang air proses dari dasar chamber (DPWV).",
     logic: "Terbuka hanya di fase DRAIN selama waktu drain.",
   },
   air: {
-    name: "COMPRESSED AIR", tag: null, addr: null,
-    role: "Menambah tekanan chamber bila di bawah tekanan target.",
-    logic: "Bekerja otomatis di HEATING (mulai ≥ 80 °C), STERIL., dan COOLING, berpasangan dengan EXHAUST. Belum ada tag PLC, jadi status diestimasi dari fase aktif.",
+    code: "AIR_CMBR",
+    name: "COMPRESSED AIR (AIR_CMBR)", tag: "AIR_CMBR", addr: "Q1.3",
+    role: "Katup injeksi udara tekan ke chamber (AIR_CMBR / Q1.3).",
+    logic: "Dibaca live dari PLC. Menambah tekanan chamber saat P1 di bawah target (mulai ≥ 80 °C di HEATING, STERIL., dan COOLING).",
   },
   exhaust: {
-    name: "EXHAUST", tag: "STEAM_EXHS", addr: "Q1.5",
-    role: "Melepas udara dan tekanan dari chamber (vent).",
+    code: "SDFC",
+    name: "EXHAUST (SDFC)", tag: "STEAM_EXHS", addr: "Q1.5",
+    role: "Melepas udara dan tekanan dari chamber (vent / SDFC).",
     logic: "Terbuka saat FILLING (mengusir udara), saat tekanan melewati target (HEATING/STERIL./COOLING), setelah waktu DRAIN, dan selama END.",
   },
   softWater: {
-    name: "SOFT WATER", tag: "WTR_FILL", addr: "Q2.0",
+    code: "PWCV",
+    name: "SOFT WATER (PWCV)", tag: "WTR_FILL", addr: "Q2.0",
     role: "Katup isi air ke chamber (PWCV).",
     logic: "Terbuka di FILLING sampai sensor level penuh (WATR_INDICATOR) aktif. Ada ball valve manual di jalur yang sama yang tidak dipantau PLC.",
   },
   pump: {
-    name: "Pompa sirkulasi", tag: "WTR_PUMP", addr: "Q3.0",
+    code: "WTR_PUMP",
+    name: "Pompa sirkulasi (WTR_PUMP)", tag: "WTR_PUMP", addr: "Q3.0",
     role: "Menyirkulasikan air proses: dasar chamber → atas chamber → PHE → pompa.",
     logic: "Menyala hanya di HEATING, STERIL., dan COOLING, dengan start bertahap sekitar 8 detik. Mati di FILLING dan DRAIN. Arah aliran mengikuti posisi pompa di gambar (isap dari PHE, tekan ke dasar chamber).",
   },
