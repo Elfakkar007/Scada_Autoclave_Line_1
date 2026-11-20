@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { hasLevel } from "@/lib/permissionCatalog";
 import {
     OVERRIDE_PAGES, OVERRIDE_ITEMS, getItemGroups,
 } from "@/lib/hmiOverrideCatalog";
+import ReAuthModal from "@/components/ReAuthModal";
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
+// ── Toast ───────────────────────────────────────────────────────────────────────────────────────────
 function Toast({ toast }) {
     if (!toast) return null;
     return (
@@ -20,7 +21,7 @@ function Toast({ toast }) {
     );
 }
 
-// ── Badge ─────────────────────────────────────────────────────────────────────
+// ── Badge ───────────────────────────────────────────────────────────────────────────────────────────
 function Badge({ children, colorClass = "bg-scada-idle text-scada-ink" }) {
     return (
         <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold uppercase ${colorClass}`}>
@@ -53,8 +54,8 @@ function unwrapRoles(json) {
         .map((r) => ({ id: r.id, key: r.key, name: r.name ?? r.key }));
 }
 
-// ── Form Tambah User ──────────────────────────────────────────────────────────
-function AddUserForm({ roles, onSave, onCancel }) {
+// ── Form Tambah User ─────────────────────────────────────────────────────────────────────────────
+function AddUserForm({ roles, onSave, onCancel, reAuthRef, currentUsername }) {
     const [form, setForm] = useState({ username: "", fullName: "", roleId: "", password: "" });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -69,6 +70,11 @@ function AddUserForm({ roles, onSave, onCancel }) {
             setError("Pilih role terlebih dahulu");
             return;
         }
+
+        // ── Re-auth sebelum menyimpan ──
+        const ok = await reAuthRef.current?.prompt("tambah user baru");
+        if (!ok) return;
+
         setSaving(true);
         setError(null);
         try {
@@ -149,7 +155,7 @@ function AddUserForm({ roles, onSave, onCancel }) {
     );
 }
 
-// ── HMI Override Panel ────────────────────────────────────────────────────────
+// ── HMI Override Panel ──────────────────────────────────────────────────────────────────────────
 // Panel konfigurasi izin HMI khusus per user. Muncul sebagai row inline di tabel.
 const PAGE_LABELS = {
     calibration:    "Kalibrasi",
@@ -164,7 +170,7 @@ const LEVEL_OPTIONS_ITEM = [
     { value: "write", label: "Lihat & ubah" },
 ];
 
-function HmiOverridePanel({ username, onClose, onToast }) {
+function HmiOverridePanel({ username, onClose, onToast, reAuthRef }) {
     const [overrides, setOverrides] = useState(null);
     const [draft, setDraft] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -195,6 +201,10 @@ function HmiOverridePanel({ username, onClose, onToast }) {
     }, [username]);
 
     async function handleSave() {
+        // ── Re-auth sebelum menyimpan override ──
+        const ok = await reAuthRef.current?.prompt(`simpan izin HMI user ${username}`);
+        if (!ok) return;
+
         setSaving(true);
         try {
             // Bersihkan draft: mode=default → items bisa dikosongkan
@@ -227,6 +237,10 @@ function HmiOverridePanel({ username, onClose, onToast }) {
     }
 
     async function handleReset() {
+        // ── Re-auth sebelum reset override ──
+        const ok = await reAuthRef.current?.prompt(`reset izin HMI user ${username} ke default`);
+        if (!ok) return;
+
         setSaving(true);
         try {
             const res = await fetch(`/api/users/${encodeURIComponent(username)}/hmi-overrides`, {
@@ -368,8 +382,8 @@ function HmiOverridePanel({ username, onClose, onToast }) {
     );
 }
 
-// ── Baris tabel satu user ─────────────────────────────────────────────────────
-function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) {
+// ── Baris tabel satu user ──────────────────────────────────────────────────────────────────────
+function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, reAuthRef }) {
     const isSelf = user.username === currentUsername;
 
     // State untuk form edit inline
@@ -396,8 +410,12 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
         setHmiOpen(false);
     }
 
-    // ── Save edit ──────────────────────────────────────────────────────────
+    // ── Save edit ────────────────────────────────────────────────────────────────────────────────
     async function handleSaveEdit() {
+        // ── Re-auth sebelum menyimpan edit ──
+        const ok = await reAuthRef.current?.prompt(`edit user ${user.username}`);
+        if (!ok) return;
+
         setSaving(true);
         try {
             const res = await fetch(`/api/users/${encodeURIComponent(user.username)}`, {
@@ -424,8 +442,16 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
         }
     }
 
-    // ── Toggle aktif/nonaktif ──────────────────────────────────────────────
+    // ── Toggle aktif/nonaktif ────────────────────────────────────────────────────────────────────
     async function handleToggleActive() {
+        const label = user.isActive
+            ? `nonaktifkan user ${user.username}`
+            : `aktifkan kembali user ${user.username}`;
+
+        // ── Re-auth ──
+        const ok = await reAuthRef.current?.prompt(label);
+        if (!ok) return;
+
         if (user.isActive) {
             // Nonaktifkan
             if (!window.confirm(`Yakin nonaktifkan user ${user.username}?`)) return;
@@ -470,12 +496,17 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
         }
     }
 
-    // ── Reset password ─────────────────────────────────────────────────────
+    // ── Reset password ───────────────────────────────────────────────────────────────────────────
     async function handleResetPassword() {
         if (newPassword.length < 6) {
             onToast("Password minimal 6 karakter", "error");
             return;
         }
+
+        // ── Re-auth sebelum set password ──
+        const ok = await reAuthRef.current?.prompt(`reset password user ${user.username}`);
+        if (!ok) return;
+
         setResetting(true);
         try {
             const res = await fetch(`/api/users/${encodeURIComponent(user.username)}/reset-password`, {
@@ -498,8 +529,12 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
         }
     }
 
-    // ── Hapus lunak (permanent soft-delete) ───────────────────────────────────
+    // ── Hapus lunak (permanent soft-delete) ─────────────────────────────────────────────────────
     async function handleDelete() {
+        // ── Re-auth sebelum hapus ──
+        const ok = await reAuthRef.current?.prompt(`hapus akun ${user.username} secara permanen`);
+        if (!ok) return;
+
         setDeleting(true);
         try {
             const res = await fetch(`/api/users/${encodeURIComponent(user.username)}/delete`, {
@@ -690,7 +725,7 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                                 Nama: <span className="font-semibold">{user.fullName}</span>
                             </p>
                             <p className="text-red-700 text-xs mb-3">
-                                ⚠ Username <span className="font-mono font-semibold">{user.username}</span> tidak bisa dipakai lagi setelah dihapus.
+                                ⚠️ Username <span className="font-mono font-semibold">{user.username}</span> tidak bisa dipakai lagi setelah dihapus.
                             </p>
                             <div className="flex gap-2">
                                 <button
@@ -717,13 +752,14 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast }) 
                     username={user.username}
                     onClose={() => setHmiOpen(false)}
                     onToast={onToast}
+                    reAuthRef={reAuthRef}
                 />
             )}
         </>
     );
 }
 
-// ── Halaman utama ─────────────────────────────────────────────────────────────
+// ── Halaman utama ───────────────────────────────────────────────────────────────────────────────
 export default function UsersPage() {
     const router = useRouter();
     const [authorized, setAuthorized] = useState(false);
@@ -736,6 +772,9 @@ export default function UsersPage() {
     const [rolesError, setRolesError] = useState(null);
     const [showAddForm, setShowAddForm] = useState(false);
     const [toast, setToast] = useState(null);
+
+    // ── Ref untuk ReAuthModal ──
+    const reAuthRef = useRef(null);
 
     // Proteksi level halaman: izin "users" minimal view (ubah = boleh tambah/edit/reset)
     useEffect(() => {
@@ -807,6 +846,9 @@ export default function UsersPage() {
 
     return (
         <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
+            {/* ── ReAuthModal (singleton, dipakai seluruh halaman) ── */}
+            <ReAuthModal ref={reAuthRef} username={currentUsername} />
+
             {/* ── Header ── */}
             <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
@@ -839,6 +881,8 @@ export default function UsersPage() {
             {canEdit && showAddForm && (
                 <AddUserForm
                     roles={roles}
+                    reAuthRef={reAuthRef}
+                    currentUsername={currentUsername}
                     onSave={(newUser) => {
                         setShowAddForm(false);
                         showToast(`User ${newUser.username} berhasil dibuat`);
@@ -878,6 +922,7 @@ export default function UsersPage() {
                                         currentUsername={currentUsername}
                                         onUpdated={fetchUsers}
                                         onToast={showToast}
+                                        reAuthRef={reAuthRef}
                                     />
                                 ))}
                             </tbody>

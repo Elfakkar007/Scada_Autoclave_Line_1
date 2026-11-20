@@ -289,7 +289,9 @@ function PrintDataReportContent() {
 
                 @page sec-data {
                     size: A4 portrait;
-                    margin: 10mm 10mm 16mm 10mm;
+                    /* margin-top: 0 → browser print header (tanggal/judul) tidak punya ruang → tersembunyi.
+                       Konten dikompensasi dengan padding-top di @media print di bawah. */
+                    margin: 0 10mm 16mm 10mm;
                     @bottom-left {
                         content: "Data Record \u2022 Batch: ${batch.batchNo}";
                         font-family: 'IBM Plex Mono','Courier New',monospace;
@@ -299,7 +301,7 @@ function PrintDataReportContent() {
                 }
                 @page sec-curve {
                     size: A4 portrait;
-                    margin: 10mm 10mm 16mm 10mm;
+                    margin: 0 10mm 16mm 10mm;
                     @bottom-left {
                         content: "Temperature Pressure Curve \u2022 Batch: ${batch.batchNo}";
                         font-family: 'IBM Plex Mono','Courier New',monospace;
@@ -309,7 +311,7 @@ function PrintDataReportContent() {
                 }
                 @page sec-alarm {
                     size: A4 landscape;
-                    margin: 10mm 10mm 14mm 10mm;
+                    margin: 0 10mm 14mm 10mm;
                     @bottom-left {
                         content: "Log Alarm & Event \u2022 Batch: ${batch.batchNo}";
                         font-family: 'IBM Plex Mono','Courier New',monospace;
@@ -344,7 +346,8 @@ function PrintDataReportContent() {
                     .page-break { page-break-before: always; break-before: page; }
                     .keep-together { page-break-inside: avoid; break-inside: avoid; }
                     .curve-block { page-break-inside: avoid; break-inside: avoid; }
-                    .print-sheet { width: auto; padding: 0; margin: 0; box-shadow: none; min-height: auto; }
+                    /* padding-top kompensasi margin-top:0 pada @page (agar konten tidak mepet atas) */
+                    .print-sheet { width: auto; padding: 10mm 0 0 0; margin: 0; box-shadow: none; min-height: auto; }
                     .page-break-screen { margin-top: 0; }
                     /* Named page assignment + page break pada transisi section.
                        break-before: page pada sec-curve dan sec-alarm memastikan
@@ -434,7 +437,10 @@ function PrintDataReportContent() {
                     <div style={{ borderBottom: "1px dotted #aaa", padding: "1px 0", fontSize: 11 }}>{f0Row1}</div>
                     <div style={{ borderBottom: "1px dotted #aaa", padding: "1px 0", fontSize: 11 }}>{f0Row2}</div>
                     <div style={{ borderBottom: "1px dotted #aaa", padding: "1px 0", fontSize: 11 }}>
-                        {`F0 Min: ${fmtTemp(batch.foMin)}  FOVal: ${fmtTemp(batch.foValSetting)}`}
+                        {`F0 Min: ${fmtTemp(batch.foMin)}`}
+                        {batch.foValSetting !== null && batch.foValSetting !== undefined
+                            ? `  FOVal: ${fmtTemp(batch.foValSetting)}`
+                            : ""}
                         {batch.f0Meta && batch.f0Meta.complete === false ? "  (* F0 dihitung dari data tidak lengkap)" : ""}
                     </div>
                     <HRow cols={[
@@ -481,7 +487,7 @@ function PrintDataReportContent() {
                                     <td className="trend-td">{fmtTemp(row.tm)}</td>
                                     <td className="trend-td">{fmtTemp(row.tl)}</td>
                                     <td className="trend-td">{fmtTemp(row.avg)}</td>
-                                    <td className="trend-td">{fmtInt(row.cond)}</td>
+                                    <td className="trend-td">{fmtTemp(row.cond)}</td>
                                 </tr>
                             );
                         })}

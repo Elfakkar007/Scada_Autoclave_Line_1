@@ -67,10 +67,10 @@ function rp(pts, r = 18) {
 const BASE_PIPES = [
   { pts: [[182, 118], [548, 118], [548, 297], [610, 297]], r: 18 },   // steam 1 + trunk uap
   { pts: [[182, 190], [548, 190]] },                                   // steam 2
-  { pts: [[182, 265], [548, 265]] },                                   // water drain
+  { pts: [[182, 265], [548, 265]] },                                   // water drain (air pendingin keluar PHE)
   { pts: [[182, 388], [548, 388]] },                                   // cooling 1
   { pts: [[182, 466], [548, 466]] },                                   // cooling 2
-  { pts: [[262, 620], [262, 545], [548, 545], [548, 352], [610, 352]], r: 18 }, // jalur buang + trunk pendingin
+  { pts: [[262, 620], [262, 545], [548, 545], [548, 352], [610, 352]], r: 18 }, // drain sisi uap (kondensat) + trunk pendingin
   { pts: [[660, 297], [718, 297], [718, 165], [1005, 165], [1005, 222]], r: 20 }, // chamber atas ↔ PHE
   { pts: [[660, 352], [718, 352], [718, 515], [770, 515]], r: 20 },    // PHE → pompa
   { pts: [[899, 555], [1005, 555]] },                                  // pompa → dasar chamber
@@ -214,7 +214,7 @@ const CSS = `
 .atv-hot:hover{fill:rgba(2,132,199,.08)}
 .atv-hot:focus-visible{stroke:#0284C7;stroke-width:2}
 .atv-paused *{animation-play-state:paused!important}
-@media (prefers-reduced-motion:reduce){.atv-root *{animation:none!important}}
+
 `;
 
 /* ───────────── Komponen SVG ───────────── */
@@ -547,8 +547,8 @@ const LEGEND_FLOW = [
   ["Uap / exhaust", STEAM],
   ["Air proses & pendingin", WATER],
   ["Udara tekan", AIR],
-  ["Buang (kondensat)", DRAIN_A],
-  ["Buang (DRAIN)", DRAIN_B],
+  ["Buang air pendingin", DRAIN_A],
+  ["Buang kondensat uap", DRAIN_B],
 ];
 
 export function AtvDiagram({
@@ -579,8 +579,11 @@ export function AtvDiagram({
   const steamAny = on("steam1") || on("steam2");
   const coolAny = on("cool1") || on("cool2");
   const pumpOn = pump === true;
-  const draining = on("drain");
-  const loopColor = mixHex(WATER, STEAM, heat);
+  // Warna sirkulasi air proses mengikuti fase: oranye = dipanaskan (HEATING/STERIL.), biru = didinginkan (COOLING).
+  // Fase lain / tidak diketahui: campuran sesuai suhu.
+  const hotPhase = step === "HEATING" || step === "STERIL.";
+  const coolPhase = step === "COOLING";
+  const loopColor = hotPhase ? STEAM : coolPhase ? WATER : mixHex(WATER, STEAM, heat);
 
   /* ── susun aliran ── */
   const flows = [];
@@ -593,10 +596,12 @@ export function AtvDiagram({
     add("st-mid", [[548, 190], [548, 265]], STEAM, { auto: a });
     add("st-low", [[548, 265], [548, 297], [610, 297]], STEAM, { auto: a });
   }
+  // WATER DRAIN = air pendingin keluar dari port atas PHE.
+  // Valve terbuka = pipa selalu beranimasi; jalur penuh dari PHE bila air pendingin sedang masuk.
   if (on("waterDrain")) {
-    const pts = steamAny
-      ? [[548, 265], [182, 265]]
-      : [[610, 297], [548, 297], [548, 265], [182, 265]];
+    const pts = coolAny
+      ? [[610, 297], [548, 297], [548, 265], [182, 265]]
+      : [[548, 265], [182, 265]];
     add("wd", pts, DRAIN_A, { auto: isAuto("waterDrain") });
   }
   if (on("cool1")) add("c1", [[182, 388], [548, 388]], WATER, { auto: isAuto("cool1") });
@@ -606,26 +611,33 @@ export function AtvDiagram({
     add("ct-top", [[548, 388], [548, 352], [610, 352]], WATER, { auto: a });
     if (on("cool2")) add("ct-mid", [[548, 466], [548, 388]], WATER, { auto: isAuto("cool2") && !on("cool1") });
   }
-  if (on("utilOut") && !coolAny) {
-    add("uo", [[610, 352], [548, 352], [548, 545], [262, 545], [262, 620]], DRAIN_B, { auto: isAuto("utilOut") });
-    if (!draining) add("uo-l", [[262, 620], [105, 620]], DRAIN_B, { auto: isAuto("utilOut") });
+  // DRAIN sisi uap = kondensat keluar dari port bawah PHE.
+  // Valve terbuka = pipa selalu beranimasi; jalur penuh dari PHE bila uap sedang masuk.
+  if (on("utilOut")) {
+    const pts = steamAny
+      ? [[610, 352], [548, 352], [548, 545], [262, 545], [262, 620]]
+      : [[548, 545], [262, 545], [262, 620]];
+    add("uo", pts, DRAIN_B, { auto: isAuto("utilOut") });
+    if (!on("drain")) add("uo-l", [[262, 620], [105, 620]], DRAIN_B, { auto: isAuto("utilOut") });
   }
+  // Sirkulasi air proses: dasar chamber → pompa → PHE (masuk dari bawah) → keluar PHE → chamber (dari atas)
   if (pumpOn) {
-    add("l3", [[899, 555], [1005, 555]], loopColor);
-    if (!draining) add("l4", [[1005, 555], [1005, 436]], loopColor);
-    add("l1", [[1005, 222], [1005, 165], [718, 165], [718, 297], [665, 297]], loopColor, { r: 20 });
-    add("core", [[632, 296], [632, 354]], loopColor);
-    add("l2", [[665, 352], [718, 352], [718, 515], [770, 515]], loopColor, { r: 20 });
+    add("l4", [[1005, 436], [1005, 555]], loopColor);
+    add("l3", [[1005, 555], [899, 555]], loopColor);
+    add("l2", [[770, 515], [718, 515], [718, 352], [665, 352]], loopColor, { r: 20 });
+    add("core", [[632, 354], [632, 296]], loopColor);
+    add("l1", [[665, 297], [718, 297], [718, 165], [1005, 165], [1005, 222]], loopColor, { r: 20 });
   }
   if (on("softWater")) {
-    const up = pumpOn && !draining ? 555 : 436;
+    const up = pumpOn ? 555 : 436;
     add("sw", [[1360, 620], [1005, 620], [1005, up]], WATER, { r: 16 });
   }
-  if (draining) add("dr", [[1005, 436], [1005, 620], [105, 620]], DRAIN_B, { r: 16 });
+  // DRAIN bawah (Q1.4): hanya pipa di sekitar valve yang beranimasi (tidak menguras chamber)
+  if (on("drain")) add("dr", [[1005, 620], [105, 620]], DRAIN_B, { auto: isAuto("drain"), r: 16 });
   if (on("air")) add("air", [[1360, 165], [1145, 165], [1145, 222]], AIR, { auto: isAuto("air"), dots: true });
   if (on("exhaust")) add("ex", [[1145, 435], [1145, 518], [1360, 518]], STEAM, { auto: isAuto("exhaust"), dots: true });
 
-  const pheMode = steamAny ? "steam" : coolAny ? "cool" : null;
+  const pheMode = steamAny || hotPhase ? "steam" : coolAny || coolPhase ? "cool" : null;
   const flowing = pumpOn && (chamber === "full" || chamber === "filling");
 
   /* ── inspektur ── */
@@ -824,8 +836,8 @@ export function AtvDiagram({
 
 const VALVE_NAMES = {
   steam1: "STEAM 1 (SV1)", steam2: "STEAM 2 (SV2)", waterDrain: "WATER DRAIN (WDV)",
-  cool1: "COOLING WATER 1 (CWV1)", cool2: "COOLING WATER 2 (CWV2)", utilOut: "Buang PHE (UOV)",
-  drain: "DRAIN (DPWV)", air: "COMPRESSED AIR (AIR_CMBR)", exhaust: "EXHAUST (SDFC)", softWater: "SOFT WATER (PWCV)",
+  cool1: "COOLING WATER 1 (CWV1)", cool2: "COOLING WATER 2 (CWV2)", utilOut: "DRAIN sisi uap (UOV)",
+  drain: "DRAIN bawah (DPWV)", air: "COMPRESSED AIR (AIR_CMBR)", exhaust: "EXHAUST (SDFC)", softWater: "SOFT WATER (PWCV)",
 };
 
 export function PhaseGuide({ mode, step, valves, noData, setpoints, limits }) {

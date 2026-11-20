@@ -23,7 +23,8 @@ import { getSetting } from "./settings.js";
 
 // ── Konstanta perilaku recorder — sesuaikan di sini bila perlu ───────────────
 const ROW_INTERVAL_MS = 60_000; // jarak minimum antar baris trend periodik (ms)
-const POST_FINISH_MAX_ROWS = 2;     // maksimal baris tambahan setelah fase 6 (Selesai)
+// POST_FINISH_MAX_ROWS dihapus: fase 6 (END) boleh terus direkam selama
+// operator belum menekan STOP (tekanan bisa belum nol saat END).
 const IDLE_FINALIZE_MS_DEFAULT = 120_000; // durasi idle minimum default (ms)
 
 // ── State modul — bertahan di memori selama server hidup ─────────────────────
@@ -169,30 +170,29 @@ export async function recordTrendTick() {
             );
             const lastRow = lastRowRes.rows[0] ?? null;
 
-            // Cek apakah fase 6 sudah terlalu banyak baris (batas POST_FINISH_MAX_ROWS)
-            let tooManyFinish = false;
-            if (phase === 6) {
-                const finishCountRes = await pool.query(
-                    `SELECT COUNT(*) FROM batch_trend WHERE batch_id = $1 AND phase_code = 6`,
-                    [batchId]
-                );
-                const finishCount = parseInt(finishCountRes.rows[0].count, 10);
-                if (finishCount >= 1 + POST_FINISH_MAX_ROWS) {
-                    tooManyFinish = true;
-                }
-            }
-
             // Kondisi INSERT:
             //   (a) belum ada baris sama sekali, ATAU
             //   (b) fase berbeda dari baris terakhir (baris peristiwa), ATAU
             //   (c) selisih waktu >= ROW_INTERVAL_MS
-            // Pengecualian: jangan INSERT kalau fase 6 sudah terlalu banyak baris
+            // Pengecualian: jangan INSERT baris fase 0/1 (Idle) jika fase 6 (END)
+            //   sudah pernah direkam — END sudah selesai, operator masih menunggu
+            //   tekanan ke 0 sebelum pencet STOP; baris idle tidak perlu dicatat.
             const noRows = lastRow === null;
             const phaseChanged = lastRow !== null && lastRow.phase_code !== phase;
             const timeElapsed = lastRow !== null &&
                 (Date.now() - new Date(lastRow.ts).getTime()) >= ROW_INTERVAL_MS;
 
-            const shouldInsert = !tooManyFinish && (noRows || phaseChanged || timeElapsed);
+            // Cek apakah fase 6 sudah pernah direkam (supaya baris idle pasca-END tidak muncul)
+            let idleAfterEnd = false;
+            if ((phase === 0 || phase === 1) && lastRow !== null) {
+                const endExistsRes = await pool.query(
+                    `SELECT EXISTS(SELECT 1 FROM batch_trend WHERE batch_id = $1 AND phase_code = 6) AS has_end`,
+                    [batchId]
+                );
+                idleAfterEnd = endExistsRes.rows[0]?.has_end === true;
+            }
+
+            const shouldInsert = !idleAfterEnd && (noRows || phaseChanged || timeElapsed);
 
             if (shouldInsert) {
                 // Hitung avg = rata-rata TH, TM, TL yang tidak null

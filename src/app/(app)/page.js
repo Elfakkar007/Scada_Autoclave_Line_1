@@ -209,6 +209,9 @@ export default function Home() {
   // State untuk dialog START batch (menggantikan halaman /prepare)
   const [startDialogOpen, setStartDialogOpen] = useState(false);
 
+  // State untuk modal Resep Mesin (live setpoints dari PLC)
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
+
   // State untuk tombol Door Sealing / Door Release (satu section dengan START/STOP)
   const [doorBusy, setDoorBusy] = useState(false);          // sedang mengirim perintah pintu?
   const [doorMsg, setDoorMsg] = useState(null);             // { ok, text } atau null
@@ -488,6 +491,8 @@ export default function Home() {
   //   3. Tidak ada batch yang sedang running di DB
   // Ini mencegah START ditekan saat mesin sedang dalam proses (dimulai dari luar web).
   const phaseRaw = phaseObj?.rawValue ?? null;
+  // Mesin dianggap "sedang berjalan" kalau fase termasuk proses aktif (fase 2–7, kecuali 0 dan 1)
+  const isMachineRunning = [2, 3, 4, 5, 6, 7].includes(phaseRaw);
   const PROCESS_PHASES = [2, 3, 4, 5, 7]; // filling, heating, steril, cooling, drain
   // const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
 
@@ -948,6 +953,24 @@ export default function Home() {
                   )}
                 </div>
               )}
+              {/* ── Tombol Resep Mesin: aktif saat mesin berjalan ── */}
+              <div className="pt-1 border-t border-[#D8DEDC]">
+                <button
+                  type="button"
+                  onClick={() => setShowRecipeModal(true)}
+                  disabled={!isMachineRunning}
+                  title={!isMachineRunning ? "Resep mesin hanya bisa dilihat saat mesin berjalan" : "Lihat resep yang sedang dijalankan mesin (dari PLC)"}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-[3px] border border-[#D8DEDC] bg-white text-[13px] font-semibold text-[#1E2A2E] hover:bg-[#EEF1F0] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <span>📋</span>
+                  <span>Resep Mesin</span>
+                </button>
+                {!isMachineRunning && (
+                  <p className="text-[10px] text-[#5C6B6A] mt-1 leading-snug px-0.5">
+                    Tombol aktif saat mesin sedang berjalan.
+                  </p>
+                )}
+              </div>
             </section>
           </aside>
         </div>
@@ -1007,6 +1030,97 @@ export default function Home() {
         onClose={() => setStartDialogOpen(false)}
         onStarted={() => { setStartDialogOpen(false); fetchData(); }}
       />
+
+      {/* ── Modal Resep Mesin: menampilkan setpoints live dari PLC ── */}
+      {showRecipeModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Resep Mesin"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowRecipeModal(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+
+          {/* Panel modal */}
+          <div
+            className="relative z-10 w-full max-w-sm bg-white rounded-[6px] shadow-xl border border-[#D8DEDC] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#D8DEDC]">
+              <div>
+                <h2 className="text-[14px] font-semibold text-[#1E2A2E]">📋 Resep Mesin</h2>
+                <p className="text-[11px] text-[#5C6B6A] mt-0.5">
+                  Nilai diambil langsung dari tag address PLC
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRecipeModal(false)}
+                aria-label="Tutup"
+                className="ml-3 p-1 rounded hover:bg-[#EEF1F0] text-[#5C6B6A] hover:text-[#1E2A2E] transition-colors text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Badge fase aktif */}
+            <div className="px-4 pt-3 pb-1">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#EEF1F0] text-[#1E2A2E] border border-[#D8DEDC]">
+                <span className="w-2 h-2 rounded-full bg-[#4F7A52]" />
+                {data.phase?.label ?? "—"}
+              </span>
+            </div>
+
+            {/* Tabel setpoints */}
+            <div className="px-4 pb-4 pt-2">
+              <table className="w-full text-[13px] border-collapse">
+                <thead>
+                  <tr className="border-b border-[#D8DEDC]">
+                    <th className="text-left text-[11px] font-semibold text-[#5C6B6A] pb-1 pr-2">Parameter</th>
+                    <th className="text-right text-[11px] font-semibold text-[#5C6B6A] pb-1">Nilai</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: "Suhu Kontrol",        tag: "CTRL_TEMP",     val: data.setpoints?.ctrlTemp,    unit: "°C" },
+                    { label: "Suhu Sterilisasi",    tag: "STER_SET",      val: data.setpoints?.sterSet,     unit: "°C" },
+                    { label: "Waktu Sterilisasi",   tag: "STER_SET_TIME", val: data.setpoints?.sterSetTime, unit: "mnt" },
+                    { label: "Suhu Ruang",          tag: "TEMP_SPACE",    val: data.setpoints?.tempSpace,   unit: "°C" },
+                    { label: "Suhu Cooling 1",      tag: "COOL1_TEMP",    val: data.setpoints?.cool1Temp,   unit: "°C" },
+                    { label: "Suhu Cooling 2",      tag: "COOL2_TEMP",    val: data.setpoints?.cool2Temp,   unit: "°C" },
+                    { label: "Alarm Tekanan",       tag: "ALRM_PRES",     val: data.setpoints?.alrmPres,    unit: "kPa" },
+                    { label: "Target F0",           tag: "F0_VAL",        val: data.setpoints?.f0Val,       unit: "min" },
+                  ].map(({ label, tag, val, unit }) => (
+                    <tr key={tag} className="border-b border-[#EEF1F0] last:border-b-0">
+                      <td className="py-1.5 pr-2">
+                        <div className="font-medium text-[#1E2A2E]">{label}</div>
+                        <div className="text-[10px] text-[#8A9BA8] font-mono">{tag}</div>
+                      </td>
+                      <td className="py-1.5 text-right">
+                        {val === null || val === undefined ? (
+                          <span className="text-[#B8C0BE] italic">—</span>
+                        ) : (
+                          <span className="font-semibold text-[#1E2A2E]" style={MONO}>
+                            {val}
+                            <span className="ml-1 text-[11px] font-normal text-[#5C6B6A]">{unit}</span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <p className="mt-3 text-[10px] text-[#8A9BA8] leading-snug">
+                * Ini adalah nilai setpoint aktual yang terbaca dari memori PLC, bukan dari database resep web. Diperbarui setiap 1 detik.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

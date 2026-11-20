@@ -111,9 +111,10 @@ export async function finalizeBatch(batchId, { forceStatus = null, plcPhase = nu
         // ── Satu UPDATE batch_records ─────────────────────────────────────────
         // run_finish: ts baris trend pertama dengan phase_code = 6;
         //   kalau tidak ada (batch di-stop sebelum PLC masuk fase 6), pakai now().
-        // total_time_min: selisih run_begin → run_finish, dibulatkan 1 desimal.
-        //   TODO (pertanyaan terbuka #2): definisi Total.Time di printout lama belum pasti
-        //   (60,0 menit vs Run.Begin→Run.Finish 58,4 menit). Sementara memakai Run.Begin→Run.Finish.
+        // total_time_min: selisih run_begin → ts baris trend TERAKHIR yang direkam
+        //   (bukan fase 6), agar waktu yang dipakai adalah waktu record sebenarnya
+        //   termasuk saat operator menunggu tekanan ke 0 setelah END.
+        //   Kalau tidak ada baris trend sama sekali, fallback ke now().
         // f0_meta: parameter + catatan gap/invalid hasil computeBatchF0 (jsonb).
         // sterilization_result sengaja TIDAK ditulis (tidak ada vonis); kolom dibiarkan di DB.
         await client.query(
@@ -129,8 +130,7 @@ export async function finalizeBatch(batchId, { forceStatus = null, plcPhase = nu
                          ROUND(
                              EXTRACT(EPOCH FROM (
                                  COALESCE(
-                                     (SELECT MIN(ts) FROM batch_trend
-                                      WHERE batch_id = $13 AND phase_code = 6),
+                                     (SELECT MAX(ts) FROM batch_trend WHERE batch_id = $13),
                                      now()
                                  ) - run_begin
                              )) / 60.0, 1

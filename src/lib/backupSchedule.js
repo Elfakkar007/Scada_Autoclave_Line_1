@@ -22,10 +22,12 @@ export const DEFAULT_SETTINGS = {
     interval: "weekly",
     timeOfDay: "02:00",
     generations: 3,
+    autoCopyEnabled: false, // salin otomatis file backup terjadwal ke direktori lain
+    autoCopyDir: "",        // path folder tujuan lokal/flashdisk/LAN
     enabledAt: null, // ISO: kapan toggle terakhir dinyalakan (jangkar jadwal pertama)
     lastScheduledAt: null, // ISO: backup terjadwal terakhir yang BERHASIL
     lastFailedAt: null, // ISO: kegagalan terakhir (dikosongkan saat berhasil)
-    lastResult: null, // { ok, at, file?, sizeBytes?, rows?, error? }
+    lastResult: null, // { ok, at, file?, sizeBytes?, rows?, error?, autoCopy? }
     updatedBy: null,
     updatedAt: null,
 };
@@ -50,6 +52,8 @@ export function normalizeSettings(raw) {
         interval: INTERVAL_OPTIONS.some((o) => o.key === r.interval) ? r.interval : d.interval,
         timeOfDay: typeof r.timeOfDay === "string" && TIME_RE.test(r.timeOfDay) ? r.timeOfDay : d.timeOfDay,
         generations: Math.min(MAX_GENERATIONS, Math.max(MIN_GENERATIONS, gens)),
+        autoCopyEnabled: r.autoCopyEnabled === true,
+        autoCopyDir: typeof r.autoCopyDir === "string" ? r.autoCopyDir.trim() : "",
         enabledAt: isIsoString(r.enabledAt) ? r.enabledAt : null,
         lastScheduledAt: isIsoString(r.lastScheduledAt) ? r.lastScheduledAt : null,
         lastFailedAt: isIsoString(r.lastFailedAt) ? r.lastFailedAt : null,
@@ -70,12 +74,23 @@ export function validateSettingsInput(input) {
     if (!Number.isInteger(input.generations) || input.generations < MIN_GENERATIONS || input.generations > MAX_GENERATIONS) {
         return { error: `Jumlah file tersimpan harus bilangan bulat ${MIN_GENERATIONS} sampai ${MAX_GENERATIONS}` };
     }
+    if (input.autoCopyEnabled !== undefined && typeof input.autoCopyEnabled !== "boolean") {
+        return { error: "Status salin otomatis harus berupa true/false" };
+    }
+    if (input.autoCopyDir !== undefined && typeof input.autoCopyDir !== "string") {
+        return { error: "Direktori salin otomatis harus berupa teks" };
+    }
+    if (input.autoCopyEnabled === true && (!input.autoCopyDir || typeof input.autoCopyDir !== "string" || !input.autoCopyDir.trim())) {
+        return { error: "Direktori tujuan wajib diisi jika salin otomatis diaktifkan" };
+    }
     return {
         value: {
             enabled: input.enabled,
             interval: input.interval,
             timeOfDay: input.timeOfDay,
             generations: input.generations,
+            autoCopyEnabled: input.autoCopyEnabled === true,
+            autoCopyDir: typeof input.autoCopyDir === "string" ? input.autoCopyDir.trim() : "",
         },
     };
 }

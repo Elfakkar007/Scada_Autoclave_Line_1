@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
     RESOURCES,
@@ -8,8 +8,9 @@ import {
     hasLevel,
     normalizePermissions,
 } from "@/lib/permissionCatalog";
+import ReAuthModal from "@/components/ReAuthModal";
 
-// ── Helper bentuk respons API ─────────────────────────────────────────────────
+// ── Helper bentuk respons API ──────────────────────────────────────────────────────────────────
 // Dibuat tahan terhadap variasi nama field (camelCase / snake_case) dan pembungkus
 // respons. Yang TIDAK boleh ditebak: izin. Bila respons detail tidak memuat
 // `permissions`, halaman menolak mengedit (bukan menampilkan "semua none").
@@ -52,7 +53,7 @@ const ACTIVE_CLASS = {
     edit: "bg-scada-water text-white",
 };
 
-// ── Toast & Badge (pola sama dengan halaman Kelola User) ─────────────────────
+// ── Toast & Badge ──────────────────────────────────────────────────────────────────────────────
 function Toast({ toast }) {
     if (!toast) return null;
     return (
@@ -76,7 +77,7 @@ function Badge({ children, colorClass = "bg-scada-idle text-scada-ink" }) {
 const inputClass = "w-full bg-white border border-scada-idle rounded px-3 py-2 text-sm text-scada-ink focus:outline-none focus:border-scada-water transition-colors disabled:opacity-60 disabled:cursor-not-allowed";
 const labelClass = "block text-xs text-scada-muted uppercase mb-1";
 
-// ── Matriks izin: resource × level ───────────────────────────────────────────
+// ── Matriks izin: resource × level ────────────────────────────────────────────────────────────
 function PermissionMatrix({ perms, original, disabled, onChange }) {
     const groups = [
         { id: "page", title: "Halaman" },
@@ -112,7 +113,7 @@ function PermissionMatrix({ perms, original, disabled, onChange }) {
                                         <td className="px-4 py-2 text-sm">
                                             {r.label}
                                             {changed && (
-                                                <span className="ml-2 text-xs text-scada-water font-semibold">● diubah</span>
+                                                <span className="ml-2 text-xs text-scada-water font-semibold">◀ diubah</span>
                                             )}
                                         </td>
                                         <td className="px-4 py-2">
@@ -147,8 +148,8 @@ function PermissionMatrix({ perms, original, disabled, onChange }) {
     );
 }
 
-// ── Form buat role ────────────────────────────────────────────────────────────
-function CreateRoleForm({ roles, onCreated, onCancel }) {
+// ── Form buat role ─────────────────────────────────────────────────────────────────────────────
+function CreateRoleForm({ roles, onCreated, onCancel, reAuthRef }) {
     const [form, setForm] = useState({ name: "", key: "", description: "", copyFromRoleId: "" });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -159,6 +160,11 @@ function CreateRoleForm({ roles, onCreated, onCancel }) {
             setError("Nama role wajib diisi");
             return;
         }
+
+        // ── Re-auth sebelum membuat role ──
+        const ok = await reAuthRef.current?.prompt(`buat role baru "${form.name.trim()}"`);
+        if (!ok) return;
+
         setSaving(true);
         setError(null);
         try {
@@ -240,11 +246,12 @@ function CreateRoleForm({ roles, onCreated, onCancel }) {
     );
 }
 
-// ── Halaman utama ─────────────────────────────────────────────────────────────
+// ── Halaman utama ───────────────────────────────────────────────────────────────────────────────
 export default function RolesPage() {
     const router = useRouter();
     const [authorized, setAuthorized] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
+    const [currentUsername, setCurrentUsername] = useState("");
 
     const [roles, setRoles] = useState([]);
     const [loadingList, setLoadingList] = useState(true);
@@ -262,6 +269,9 @@ export default function RolesPage() {
     const [showCreate, setShowCreate] = useState(false);
     const [toast, setToast] = useState(null);
 
+    // ── Ref untuk ReAuthModal ──
+    const reAuthRef = useRef(null);
+
     function showToast(msg, type = "success") {
         setToast({ msg, type });
         setTimeout(() => setToast(null), type === "error" ? 6000 : 3000);
@@ -276,6 +286,7 @@ export default function RolesPage() {
                 if (json.ok && hasLevel(perms, "roles", "view")) {
                     setAuthorized(true);
                     setCanEdit(hasLevel(perms, "roles", "edit"));
+                    setCurrentUsername(json.user.username ?? "");
                 } else {
                     router.replace("/");
                 }
@@ -386,6 +397,11 @@ export default function RolesPage() {
             showToast("Nama role wajib diisi", "error");
             return;
         }
+
+        // ── Re-auth sebelum menyimpan perubahan role ──
+        const ok = await reAuthRef.current?.prompt(`simpan perubahan role "${draft.name.trim()}"`);
+        if (!ok) return;
+
         setSaving(true);
         try {
             const res = await fetch(`/api/roles/${encodeURIComponent(detail.id)}`, {
@@ -415,6 +431,11 @@ export default function RolesPage() {
     async function handleDelete() {
         if (!detail) return;
         if (!window.confirm(`Hapus role "${detail.name}"? Tindakan ini tidak bisa dibatalkan.`)) return;
+
+        // ── Re-auth sebelum menghapus role ──
+        const ok = await reAuthRef.current?.prompt(`hapus role "${detail.name}"`);
+        if (!ok) return;
+
         setDeleting(true);
         try {
             const res = await fetch(`/api/roles/${encodeURIComponent(detail.id)}`, { method: "DELETE" });
@@ -447,6 +468,9 @@ export default function RolesPage() {
 
     return (
         <main className="min-h-screen bg-scada-bg text-scada-ink p-6">
+            {/* ── ReAuthModal (singleton, dipakai seluruh halaman) ── */}
+            <ReAuthModal ref={reAuthRef} username={currentUsername} />
+
             {/* ── Header ── */}
             <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
@@ -471,6 +495,7 @@ export default function RolesPage() {
             {canEdit && showCreate && (
                 <CreateRoleForm
                     roles={roles}
+                    reAuthRef={reAuthRef}
                     onCancel={() => setShowCreate(false)}
                     onCreated={(newId, name) => {
                         setShowCreate(false);

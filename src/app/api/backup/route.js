@@ -65,6 +65,7 @@ export async function POST(request) {
             file: { kind: r.kind, name: r.name, sizeBytes: r.sizeBytes, sha256: r.sha256 },
             rows: Object.fromEntries(Object.entries(r.manifest.tables).map(([k, t]) => [k, t.rows])),
             complete: r.manifest.complete,
+            autoCopy: r.autoCopy ?? null,
         });
     } catch (error) {
         if (error?.code === "BUSY") {

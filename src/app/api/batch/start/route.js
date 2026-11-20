@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { hasLevel } from "@/lib/permissionCatalog";
 import { readPlcSnapshot } from "@/lib/plc";
 import { writePlcTags, pulsePlcTag } from "@/lib/plcWrite";
 import { validateRecipe } from "@/lib/recipeValidation";
@@ -161,47 +160,42 @@ async function runStart(request, session) {
         }
         batchNo = bn.value; // sudah di-trim
 
-        // ── Verifikasi 2 Langkah (Four-Eyes Principle / Dual Authorization) ─────
-        const { verifierUsername, verifierPassword, verifierForm } = body;
+        // ── Verifikasi Self (operator memverifikasi dirinya sendiri) ───────────
+        const { verifierUsername, verifierPassword } = body;
 
         if (
-            typeof verifierUsername !== "string" || !verifierUsername.trim() ||
             typeof verifierPassword !== "string" || !verifierPassword
         ) {
             return Response.json(
-                { ok: false, error: "Kredensial user verifikator (langkah 2) wajib diisi" },
+                { ok: false, error: "Password verifikasi wajib diisi" },
                 { status: 400 }
             );
         }
 
-        const vUsername = verifierUsername.trim();
-        // User verifikator TIDAK BOLEH sama dengan operator inisiator
-        if (vUsername.toLowerCase() === session.username.toLowerCase()) {
+        // verifierUsername yang dikirim harus sama dengan user yang login
+        const vUsername = session.username;
+        if (
+            verifierUsername &&
+            typeof verifierUsername === "string" &&
+            verifierUsername.trim().toLowerCase() !== vUsername.toLowerCase()
+        ) {
             return Response.json(
-                { ok: false, error: "Verifikator harus merupakan user yang berbeda dari operator inisiator (Four-Eyes Principle)" },
+                { ok: false, error: "Username verifikator tidak cocok dengan akun yang sedang login" },
                 { status: 400 }
             );
         }
 
-        // Ambil data verifikator dari database
+        // Ambil data user yang sedang login dari database untuk verifikasi password
         const vResult = await pool.query(
-            `SELECT u.id, u.username, u.full_name, u.password_hash, u.is_active, u.deleted_at,
-                    r.key AS role_key, r.name AS role_name,
-                    COALESCE(
-                        (SELECT jsonb_object_agg(rp.resource, rp.level)
-                           FROM role_permissions rp
-                          WHERE rp.role_id = u.role_id),
-                        '{}'::jsonb
-                    ) AS permissions
+            `SELECT u.id, u.username, u.full_name, u.password_hash, u.is_active, u.deleted_at
                FROM users u
-               LEFT JOIN roles r ON r.id = u.role_id
               WHERE LOWER(u.username) = LOWER($1)`,
             [vUsername]
         );
 
         if (vResult.rows.length === 0 || !vResult.rows[0].is_active || vResult.rows[0].deleted_at !== null) {
             return Response.json(
-                { ok: false, error: "User verifikator tidak ditemukan atau akun dinonaktifkan" },
+                { ok: false, error: "Akun tidak ditemukan atau dinonaktifkan" },
                 { status: 401 }
             );
         }
@@ -210,45 +204,9 @@ async function runStart(request, session) {
         const vPasswordMatch = await bcrypt.compare(verifierPassword, verifierUser.password_hash);
         if (!vPasswordMatch) {
             return Response.json(
-                { ok: false, error: "Password user verifikator salah" },
+                { ok: false, error: "Password salah. Masukkan password akun Anda dengan benar." },
                 { status: 401 }
             );
-        }
-
-        // Pastikan verifikator memiliki izin kontrol batch
-        if (
-            !hasLevel(verifierUser.permissions, "dashboard", "view") ||
-            !hasLevel(verifierUser.permissions, "action.batch_control", "edit")
-        ) {
-            return Response.json(
-                { ok: false, error: "User verifikator tidak memiliki izin untuk memverifikasi kontrol batch" },
-                { status: 403 }
-            );
-        }
-
-        // Catat jejak overwrite (koreksi) dari verifikator terhadap data inisiator
-        const initiatorData = body.initiatorForm ?? null;
-        const overwrites = [];
-        if (initiatorData && typeof initiatorData === "object") {
-            if (initiatorData.batchNo && String(initiatorData.batchNo).trim() !== String(batchNo).trim()) {
-                overwrites.push({ field: "batchNo", from: initiatorData.batchNo, to: batchNo });
-            }
-            const initBottle = parseInt(String(initiatorData.bottleCount ?? initiatorData.amount ?? "").replace(/[^\d]/g, ""), 10);
-            if (!isNaN(initBottle) && initBottle !== parsedBottleCount) {
-                overwrites.push({ field: "bottleCount", from: initBottle, to: parsedBottleCount });
-            }
-            if (initiatorData.productName && String(initiatorData.productName).trim() !== String(productName).trim()) {
-                overwrites.push({ field: "productName", from: initiatorData.productName, to: productName });
-            }
-            if (initiatorData.productSpec && String(initiatorData.productSpec).trim() !== String(productSpec).trim()) {
-                overwrites.push({ field: "productSpec", from: initiatorData.productSpec, to: productSpec });
-            }
-            if (initiatorData.machineId && String(initiatorData.machineId).trim() !== String(machineId).trim()) {
-                overwrites.push({ field: "machineId", from: initiatorData.machineId, to: machineId });
-            }
-            if (initiatorData.formulaNo && String(initiatorData.formulaNo).trim() !== String(formulaNo).trim()) {
-                overwrites.push({ field: "formulaNo", from: initiatorData.formulaNo, to: formulaNo });
-            }
         }
 
         const verifierFullName = verifierUser.full_name ?? verifierUser.username;
@@ -310,9 +268,7 @@ async function runStart(request, session) {
         const recipeSnapshot = buildRecipeSnapshot(recipe);
         recipeSnapshot.initiator = session.username;
         recipeSnapshot.verifier = verifierUsernameClean;
-        if (overwrites.length > 0) {
-            recipeSnapshot.overwrites = overwrites;
-        }
+        // Self-verification: tidak ada overwrite (operator = verifikator)
 
         // Validasi: cek apakah ada batch yang sedang running
         const runningCheck = await pool.query(
@@ -811,11 +767,8 @@ async function runStart(request, session) {
             );
         }
 
-        // Tulis audit log — actor dari session, verifier dicatat lengkap
+        // Tulis audit log — actor dari session, verifier = operator itu sendiri (self-verify)
         try {
-            const corrText = overwrites.length > 0
-                ? ` [Koreksi Verifikator: ${overwrites.map((o) => o.field).join(", ")}]`
-                : "";
             await pool.query(
                 `INSERT INTO audit_log
                     (actor, actor_role, action, entity_type, entity_id, new_value, source, description)
@@ -833,13 +786,13 @@ async function runStart(request, session) {
                         operatorUsername: session.username,
                         verifier: verifierFullName,
                         verifierUsername: verifierUsernameClean,
-                        overwrites,
+                        selfVerified: true,
                         machineId,
                         productName,
                         recipeSnapshot,
                     }),
                     "web",
-                    `Batch ${newBatch.batch_no} dimulai oleh ${session.username} dan diverifikasi oleh ${verifierUsernameClean}${corrText} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
+                    `Batch ${newBatch.batch_no} dimulai dan diverifikasi oleh ${session.username} (Formula: ${formulaNo}) | Setpoint & START berhasil ditulis ke PLC, fase terkonfirmasi`,
                 ]
             );
         } catch (auditErr) {

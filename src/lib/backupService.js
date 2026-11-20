@@ -79,20 +79,24 @@ async function patchSettings(patch) {
 
 /**
  * Ubah pengaturan jadwal dari UI. Audit ditulis SEBELUM berkas diubah (gagal audit = tidak berubah).
- * @param {{enabled:boolean, interval:string, timeOfDay:string, generations:number}} value  (sudah divalidasi)
+ * @param {{enabled:boolean, interval:string, timeOfDay:string, generations:number, autoCopyEnabled?:boolean, autoCopyDir?:string}} value  (sudah divalidasi)
  */
 export async function updateSettings(value, actor, actorRole) {
     const cur = await readSettings();
     const now = new Date();
     const turnedOn = value.enabled && !cur.enabled;
+    const copyDesc = value.autoCopyEnabled ? `, salin otomatis ke "${value.autoCopyDir}"` : "";
     await insertAudit(pool, {
         actor, actorRole,
         action: "backup_settings_update",
         entityType: "backup",
         entityId: "terjadwal",
-        oldValue: { enabled: cur.enabled, interval: cur.interval, timeOfDay: cur.timeOfDay, generations: cur.generations },
+        oldValue: {
+            enabled: cur.enabled, interval: cur.interval, timeOfDay: cur.timeOfDay, generations: cur.generations,
+            autoCopyEnabled: cur.autoCopyEnabled, autoCopyDir: cur.autoCopyDir,
+        },
         newValue: value,
-        description: `Pengaturan backup terjadwal diubah oleh ${actor}: ${value.enabled ? "aktif" : "nonaktif"}, interval ${value.interval}, jam ${value.timeOfDay}, simpan ${value.generations} file terakhir.`,
+        description: `Pengaturan backup terjadwal diubah oleh ${actor}: ${value.enabled ? "aktif" : "nonaktif"}, interval ${value.interval}, jam ${value.timeOfDay}, simpan ${value.generations} file terakhir${copyDesc}.`,
     });
     return patchSettings({
         ...value,
@@ -101,6 +105,23 @@ export async function updateSettings(value, actor, actorRole) {
         updatedBy: actor,
         updatedAt: now.toISOString(),
     });
+}
+
+/** Uji apakah direktori tujuan ada dan dapat ditulisi. */
+export async function testDirectoryAccess(targetDir) {
+    if (!targetDir || typeof targetDir !== "string" || !targetDir.trim()) {
+        return { ok: false, error: "Direktori tujuan tidak boleh kosong" };
+    }
+    const cleanDir = resolveP(targetDir.trim());
+    try {
+        await mkdir(cleanDir, { recursive: true });
+        const testFile = joinP(cleanDir, `.write_test_${Date.now()}.tmp`);
+        await writeFile(testFile, "test", "utf8");
+        await rm(testFile, { force: true });
+        return { ok: true, path: cleanDir };
+    } catch (err) {
+        return { ok: false, error: `Direktori tidak dapat diakses atau tidak ada izin tulis: ${err.message}` };
+    }
 }
 
 // ── Kunci ─────────────────────────────────────────────────────────────────────
@@ -223,15 +244,37 @@ export async function runBackup({ kind, range = null, actor, actorRole = null })
         const fileName = path.basename(finalPath);
         const rows = totalRows(manifest);
 
+        // Salin otomatis ke direktori eksternal (berlaku untuk scheduled & manual jika diaktifkan)
+        let autoCopy = null;
+        const s = await readSettings();
+        if (s.autoCopyEnabled && s.autoCopyDir) {
+            try {
+                const targetDir = resolveP(s.autoCopyDir);
+                await mkdir(targetDir, { recursive: true });
+                const targetPath = joinP(targetDir, fileName);
+                await fsp.copyFile(/*turbopackIgnore: true*/ finalPath, targetPath);
+                autoCopy = { ok: true, path: targetPath };
+                console.log(`[backup] Salinan otomatis (${kind}) berhasil: ${targetPath}`);
+            } catch (copyErr) {
+                console.error(`[backup] Salinan otomatis (${kind}) gagal:`, copyErr.message);
+                autoCopy = { ok: false, error: copyErr.message, targetDir: s.autoCopyDir };
+            }
+        }
+
         if (kind === "scheduled") {
-            const s = await readSettings();
             await rotateScheduled(s.generations);
             await patchSettings({
                 lastScheduledAt: now.toISOString(),
                 lastFailedAt: null,
-                lastResult: { ok: true, at: now.toISOString(), file: fileName, sizeBytes, rows },
+                lastResult: { ok: true, at: now.toISOString(), file: fileName, sizeBytes, rows, autoCopy },
             });
         }
+
+        const copyNotice = autoCopy
+            ? autoCopy.ok
+                ? `; salinan otomatis tersimpan di ${autoCopy.path}`
+                : `; salinan otomatis GAGAL (${autoCopy.error})`
+            : "";
 
         await tryAudit({
             actor, actorRole,
@@ -242,11 +285,12 @@ export async function runBackup({ kind, range = null, actor, actorRole = null })
                 kind, range: manifest.range, complete: manifest.complete, sizeBytes, sha256,
                 rows: Object.fromEntries(Object.entries(manifest.tables).map(([k, v]) => [k, v.rows])),
                 via: kind === "scheduled" ? "scheduler" : "web",
+                autoCopy,
             },
-            description: `Backup ${kind === "scheduled" ? "terjadwal" : "manual"} dibuat oleh ${actor}: ${fileName}, ${rows} baris, ${sizeBytes} byte, SHA-256 ${sha256}${manifest.complete ? "" : " (PARSIAL: rentang tanggal)"}.`,
+            description: `Backup ${kind === "scheduled" ? "terjadwal" : "manual"} dibuat oleh ${actor}: ${fileName}, ${rows} baris, ${sizeBytes} byte, SHA-256 ${sha256}${manifest.complete ? "" : " (PARSIAL: rentang tanggal)"}${copyNotice}.`,
         }, "backup");
 
-        return { kind, name: fileName, sizeBytes, sha256, rows, manifest };
+        return { kind, name: fileName, sizeBytes, sha256, rows, manifest, autoCopy };
     } catch (err) {
         if (tmpPath) await rm(tmpPath, { force: true }).catch(() => {});
         if (kind === "scheduled") {

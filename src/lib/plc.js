@@ -86,6 +86,13 @@ const TAG_MAP = {
     wtrFill: "WTR_FILL",
     wtrDrain: "WTR_DRAIN",
     wtrPump: "WTR_PUMP",
+    // Dua drain PHE (tag BARU — import tag_address_autoclave_line_1.csv ke KEPServerEX dulu).
+    // Dipetakan dari perilaku SCADA lama + ladder, dikonfirmasi lewat penjelasan P&ID:
+    //   drainSteam Q1.0 = drain sisi uap PHE (kondensat kembali ke boiler): nyala FILLING, HEATING, STERIL.
+    //   drainCool  Q1.2 = drain sisi air pendingin PHE (kembali ke cooling tower): nyala selama COOLING
+    // Bila tag belum ada di KEPServerEX, nilainya null -> valve tampil "unknown" (tidak merusak snapshot).
+    drainSteam: "DRAIN_STEAM",
+    drainCool: "DRAIN_COOL",
     // Pintu & seal
     doorSeal: "DOOR_SEAL",
     doorRelease: "DOOR_RELEASE",
@@ -344,8 +351,8 @@ async function readPlcTags() {
  *                           terkonfirmasi dari layar SCADA lama)
  *   conductivity,         (raw dari tag L/VW122 — TODO: scaling belum dikonfirmasi)
  *   level,                (raw dari tag WATER/VW124 — TODO: scaling belum dikonfirmasi)
- *   valves: { steam1, steam2, steamExhs, cooling1, cooling2,
- *             wtrFill, wtrDrain, wtrPump },
+ *   valves: { steam1, steam2, steamExhs, airCmbr, cooling1, cooling2,
+ *             wtrFill, wtrDrain, wtrPump, drainSteam, drainCool },
  *   door:   { seal, locked, bypass, clsFrnt, clsRear, opnFrnt, opnRear },
  *             locked = alias lama untuk bypass (M6.0) — dipertahankan agar UI tidak rusak.
  *             bypass = true artinya interlock pintu dilewati (BAHAYA: jangan izinkan START).
@@ -391,6 +398,7 @@ export async function readPlcSnapshot() {
                 airCmbr: bitOrNull(v.airCmbr),
                 cooling1: bitOrNull(v.cooling1), cooling2: bitOrNull(v.cooling2),
                 wtrFill: bitOrNull(v.wtrFill), wtrDrain: bitOrNull(v.wtrDrain), wtrPump: bitOrNull(v.wtrPump),
+                drainSteam: bitOrNull(v.drainSteam), drainCool: bitOrNull(v.drainCool),
             },
             door: {
                 // locked = alias lama untuk doorLock (M6.0). Dipertahankan agar UI yang ada tidak rusak.
