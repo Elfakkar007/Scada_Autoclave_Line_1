@@ -2,6 +2,7 @@ import "../globals.css";
 import Navbar from "@/components/Navbar";
 import AlarmCenter from "@/components/AlarmCenter";
 import ScreenLock from "@/components/ScreenLock";
+import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 
 export const metadata = {
   title: "SCADA Super Water Sterilizer",
@@ -19,15 +20,17 @@ export const metadata = {
 // menampilkan overlay transparan dan meminta verifikasi password saat layar diklik.
 export default function AppLayout({ children }) {
   return (
-    <div className="flex h-screen overflow-hidden bg-scada-bg text-scada-ink">
-      <Navbar />
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-        <AlarmCenter />
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {children}
+    <ConfirmDialogProvider>
+      <div className="flex h-screen overflow-hidden bg-scada-bg text-scada-ink">
+        <Navbar />
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+          <AlarmCenter />
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {children}
+          </div>
         </div>
+        <ScreenLock />
       </div>
-      <ScreenLock />
-    </div>
+    </ConfirmDialogProvider>
   );
 }

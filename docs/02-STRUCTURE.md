@@ -2,6 +2,8 @@
 
 ## Change Log (terbaru di atas)
 
+- [2026-11-21] ADDED: Menambahkan entri pohon direktori untuk `start-scada.bat` (root launcher), migrasi `008_dual_verification_batch_records.sql` & `009_system_settings.sql` ke `migrations/`, script `scripts/clean-db-for-production.sql`, rute `settings/` ke `src/app/(app)/`, sub-endpoint `backup/check-dir/` dan endpoint `settings/` ke `src/app/api/`, komponen `ReAuthModal.js` ke `src/components/`, serta pustaka `settings.js` ke `src/lib/`.
+- [2026-11-21] MOVED: Mengganti referensi berkas CSV master di folder `context/` dari `tag_paling_baru.csv` (116 tag) menjadi `SiemensS7-200_autoclave_pharma_1.csv` (118 tag).
 - [2026-11-07] ADDED: Menambahkan berkas migrasi `007_hmi_overrides.sql` & `007_hmi_overrides_rollback.sql` ke `migrations/`, endpoint `hmi-overrides/` ke `src/app/api/users/[username]/`, folder `src/hooks/` (`useHmiPermission.js`), serta pustaka `hmiOverrideCatalog.js` ke `src/lib/` untuk subsistem User HMI Overrides.
 - [2026-11-07] MOVED: Mengganti referensi berkas CSV tag master di folder `context/` dari `tag_terbaru_kepsrvr.csv` (105 tag) menjadi `tag_paling_baru.csv` (116 tag).
 - [2026-11-07] REMOVED: Menghapus berkas `context/ROADMAP (12).md` dari pohon direktori aktif setelah dihapus dari repositori pada commit `74e7b89`.
@@ -13,14 +15,15 @@ Dokumen ini menyajikan pohon direktori proyek `scada-sterilizer` beserta deskrip
 
 ```text
 scada-sterilizer/
-├── context/                             # Berkas referensi PLC Siemens S7-200, tabel CSV pemetaan tag master (tag_paling_baru.csv 116 tag), dan program ladder AWL export_atv.awl.
+├── context/                             # Berkas referensi PLC Siemens S7-200, tabel CSV pemetaan tag master (SiemensS7-200_autoclave_pharma_1.csv 118 tag), dan program ladder AWL export_atv.awl.
 ├── docs/                                # Dokumentasi teknis sistem, inventarisasi file, peta relasi kode, dan spesifikasi fitur.
 ├── fase1/                               # Skrip dan berkas verifikasi pengujian modul Role Management (Fase 1).
 │   └── tests/                           # Skrip uji otomatis matriks perizinan role, mock interlock pintu, dan verifikasi backup database.
-├── migrations/                          # Berkas migrasi skema database PostgreSQL (termasuk 006 bottle_count, 007 hmi_overrides) dan dump cadangan.
+├── migrations/                          # Berkas migrasi skema database PostgreSQL (termasuk 006 bottle_count, 007 hmi_overrides, 008 dual_verification, 009 system_settings) dan dump cadangan.
 ├── public/                              # Aset statis web publik, logo perusahaan format SVG/PNG, dan berkas audio notifikasi.
 │   └── sounds/                          # Berkas audio WAV pemutar peringatan suara saat alarm aktif.
-├── scripts/                             # Script utilitas baris perintah (CLI) untuk pembuatan hash password bcrypt di luar web.
+├── scripts/                             # Script utilitas CLI: pembuatan hash password bcrypt (hash-password.js) dan pembersihan database pra-produksi (clean-db-for-production.sql).
+├── start-scada.bat                      # Berkas batch launcher SCADA produksi untuk Windows (klik dua kali langsung start).
 └── src/                                 # Direktori kode sumber utama aplikasi Next.js SCADA.
     ├── app/                             # Lapisan App Router Next.js berisi halaman antarmuka, layout, style global, dan route handler API.
     │   ├── (app)/                       # Route group aplikasi berotentikasi yang dilengkapi navigasi utama, banner alarm, dan pengunci layar.
@@ -29,7 +32,7 @@ scada-sterilizer/
     │   │   ├── backup/                  # Halaman administrasi backup data manual, konfigurasi backup terjadwal, dan riwayat unduhan arsip.
     │   │   ├── calibration/             # Halaman kalibrasi offset sensor suhu, tekanan, dan konduktivitas pada PLC (mendukung HMI override).
     │   │   ├── data-report/             # Halaman daftar riwayat batch proses sterilisasi autoclave dengan fitur pencarian dan filter status.
-    │   │   │   └── [batchNo]/           # Halaman laporan rinci satu nomor batch yang menampilkan metadata, kalkulasi F0, dan tabel trend.
+    │   │   │   └── [batchNo]/           # Halaman laporan rinci satu nomor batch yang menampilkan metadata, verifikator, kalkulasi F0, dan tabel trend.
     │   │   ├── door-operate/            # Halaman pengendalian pintu autoclave (Door Sealing, Door Release, drain, bypass, rantai maju/mundur dengan HMI override).
     │   │   ├── formula/                 # Halaman pengelolaan parameter resep sterilisasi dengan validasi rentang fisik dan proteksi saat batch berjalan.
     │   │   ├── machine-params/          # Halaman pengelolaan parameter mesin PLC (Setting 1 & 2 dan Pressure Coefficient dengan HMI override).
@@ -37,6 +40,7 @@ scada-sterilizer/
     │   │   ├── plc-clock/               # Halaman pemantauan jam RTC PLC Siemens S7-200 dan sinkronisasi dengan waktu PC.
     │   │   ├── products/                # Halaman pengelolaan master nama produk dan spesifikasi kemasan dengan tab ganda.
     │   │   ├── roles/                   # Halaman administrasi peran pengguna (Role Management), penugasan matriks izin resource, dan kloning role.
+    │   │   ├── settings/                # Halaman konfigurasi sistem (durasi sesi, auto-lockscreen, batas auto-stop tekanan P1 & P2 <= 0 kPa, dan pulsa STOP PLC).
     │   │   ├── trend/                   # Halaman visualisasi kurva grafik suhu 9 sensor dan tekanan per nomor batch.
     │   │   └── users/                   # Halaman administrasi akun pengguna (operator/admin), penugasan role, reset password, aktivasi/hapus-lunak, dan konfigurasi Izin Khusus HMI.
     │   ├── api/                         # Kumpulan endpoint backend Next.js Route Handler untuk operasi database dan integrasi ke PLC.
@@ -52,17 +56,18 @@ scada-sterilizer/
     │   │   ├── auth/                    # Endpoint penanganan autentikasi sesi pengguna, login, logout, dan status verifikasi akun.
     │   │   │   ├── login/               # Endpoint verifikasi kredensial login dengan batas percobaan gagal 5 kali per 15 menit.
     │   │   │   ├── logout/              # Endpoint pencatatan audit log penutupan sesi dan penghapusan cookie session_token.
-    │   │   │   ├── me/                  # Endpoint verifikasi payload JWT sesi dan pengembalian detail akun, role, izin lengkap, serta konfigurasi hmiOverrides dari database.
-    │   │   │   ├── unlock/              # Endpoint autentikasi ulang kata sandi pengguna untuk membuka pengunci layar screen lock.
+    │   │   │   ├── me/                  # Endpoint verifikasi payload JWT sesi dan pengembalian detail akun, role, izin lengkap, konfigurasi hmiOverrides, dan durasi lockscreen.
+    │   │   │   ├── unlock/              # Endpoint autentikasi ulang kata sandi pengguna untuk membuka pengunci layar screen lock atau re-autentikasi tindakan.
     │   │   │   └── users/               # Endpoint publik penyedia daftar username dan nama lengkap operator untuk form login.
     │   │   ├── backup/                  # Endpoint pembacaan status, konfigurasi jadwal, dan pembuatan arsip backup manual.
+    │   │   │   ├── check-dir/           # Endpoint verifikasi akses dan hak tulis direktori sekunder untuk salinan otomatis arsip backup.
     │   │   │   └── download/            # Endpoint streaming pengunduhan file arsip ZIP backup dengan pencatatan audit log.
     │   │   ├── batch/                   # Endpoint orkestrasi kontrol eksekusi proses batch sterilisasi ke pengontrol mesin.
-    │   │   │   ├── start/               # Endpoint validasi resep, penulisan setpoint PLC, pengiriman pulsa START, dan pembuatan batch_records.
+    │   │   │   ├── start/               # Endpoint validasi resep, penulisan setpoint PLC, verifikasi mandiri kata sandi operator, pengiriman pulsa START, dan pembuatan batch_records.
     │   │   │   └── stop/                # Endpoint pengiriman pulsa STOP PLC, perhitungan F0 akhir, dan finalisasi status batch.
     │   │   ├── batch-records/           # Endpoint penelusuran riwayat catatan batch sterilisasi dengan filter tanggal dan status.
-    │   │   │   ├── [batchNo]/           # Endpoint detail batch record tunggal beserta seluruh deret titik data sensor tabel batch_trend.
-    │   │   │   └── export/              # Endpoint ekspor komprehensif seluruh parameter batch ke berkas spreadsheet Excel XLSX dan JSON.
+    │   │   │   ├── [batchNo]/           # Endpoint detail batch record tunggal beserta verifikator dan seluruh deret titik data sensor tabel batch_trend.
+    │   │   │   └── export/              # Endpoint ekspor komprehensif seluruh parameter batch ke berkas spreadsheet Excel XLSX (kolom Amount & Verifikator) dan JSON.
     │   │   ├── formulas/                # Endpoint daftar seluruh formula resep sterilisasi dan penambahan resep baru oleh admin.
     │   │   │   └── [formulaNo]/         # Endpoint pengambilan, pembaruan, dan penghapusan resep sterilisasi berdasarkan nomor formula.
     │   │   ├── plc/                     # Endpoint interaksi dan manipulasi langsung tag komunikasi pengontrol PLC.
@@ -78,6 +83,7 @@ scada-sterilizer/
     │   │   ├── roles/                   # Endpoint manajemen master role dan konfigurasi matriks perizinan sistem.
     │   │   │   ├── [id]/                # Endpoint pengambilan detail, pembaruan izin, dan penghapusan entitas custom role non-sistem.
     │   │   │   └── options/             # Endpoint daftar ringkas pilihan role (id, key, name) untuk pengisian dropdown UI pengguna.
+    │   │   ├── settings/                # Endpoint pembacaan (GET) dan pembaruan (PUT) konfigurasi sistem dari tabel system_settings.
     │   │   ├── status/                  # Endpoint pembacaan gabungan data sensor PLC secara real-time dan status batch yang sedang berjalan.
     │   │   └── users/                   # Endpoint manajemen akun pengguna untuk menampilkan daftar user dan pendaftaran akun baru.
     │   │       └── [username]/          # Endpoint pengubahan profil (nama lengkap, role_id) dan penonaktifan akun pengguna.
@@ -94,9 +100,9 @@ scada-sterilizer/
     │       │       └── curve/           # Format cetak khusus grafik kurva suhu 9 sensor dan tekanan satu halaman penuh (A4 landscape).
     │       └── trend/                   # Modul cetak kurva mandiri grafik suhu & tekanan per nomor batch.
     │           └── [batchNo]/           # Format cetak grafik kurva suhu 9 sensor dan tekanan satu halaman penuh (A4 landscape) dengan SignOffBlock.
-    ├── components/                      # Komponen antarmuka modular (dashboard, diagram ATV, modal START, combobox pencarian, badge deleted user, PermissionGate, blok tanda tangan, editor parameter PLC, dan ScreenLock).
+    ├── components/                      # Komponen antarmuka modular (dashboard, diagram ATV, modal START, combobox pencarian, badge deleted user, PermissionGate, blok tanda tangan, editor parameter PLC, ScreenLock, dan ReAuthModal).
     ├── hooks/                           # Kumpulan React hooks kustom aplikasi (evaluasi izin HMI per item via useHmiPermission).
-    └── lib/                             # Modul logika bisnis, driver database, komunikasi IoT gateway, pemantau alarm, katalog izin, akses PLC on-demand, katalog parameter, kontrol manual, konverter RTC, formula F0, pengaman pintu, kamus label audit, katalog & validator HMI override, dan layanan arsip/penjadwalan backup data.
+    └── lib/                             # Modul logika bisnis, driver database, komunikasi IoT gateway, pemantau alarm, katalog izin, akses PLC on-demand, katalog parameter, kontrol manual, konverter RTC, formula F0, pengaman pintu, kamus label audit, katalog & validator HMI override, layanan arsip/penjadwalan backup, dan modul konfigurasi sistem (settings.js).
         └── __fixtures__/                # Berkas data referensi uji cetak dan catatan proses nyata batch tanggal 03-10-2026.
 ```
 
@@ -104,6 +110,8 @@ scada-sterilizer/
 
 ## Change Log
 
+- [2026-11-21] ADDED: Menambahkan rute `settings/` ke `src/app/(app)/`, sub-endpoint `backup/check-dir/` dan endpoint `settings/` ke `src/app/api/`, launcher `start-scada.bat`, skrip `clean-db-for-production.sql`, migrasi `008_...` dan `009_...`, komponen `ReAuthModal.js`, serta pustaka `settings.js`.
+- [2026-11-21] MOVED: Mengganti referensi master CSV di `context/` dari `tag_paling_baru.csv` (116 tag) menjadi `SiemensS7-200_autoclave_pharma_1.csv` (118 tag, mengintegrasikan tag katup PHE DRAIN_COOL Q1.2 dan DRAIN_STEAM Q1.0).
 - [2026-11-07] MOVED: Mengganti referensi berkas CSV tag master di folder `context/` dari `tag_terbaru_kepsrvr.csv` (105 tag) menjadi `tag_paling_baru.csv` (116 tag).
 - [2026-11-07] REMOVED: Menghapus berkas `context/ROADMAP (12).md` dari pohon direktori aktif setelah dihapus dari repositori pada commit `74e7b89`.
 - [2026-11-05] ADDED: Menambahkan rute `backup/` ke `src/app/(app)/`, endpoint `backup/` dan `backup/download/` ke `src/app/api/`, serta modul layanan backup (`backupArchive`, `backupSchedule`, `backupService`, `backup.test.mjs`, `backup_check.mjs`) ke `src/lib/` dan `fase1/tests/`.

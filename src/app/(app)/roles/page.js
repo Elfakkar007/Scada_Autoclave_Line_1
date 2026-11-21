@@ -9,6 +9,7 @@ import {
     normalizePermissions,
 } from "@/lib/permissionCatalog";
 import ReAuthModal from "@/components/ReAuthModal";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // ── Helper bentuk respons API ──────────────────────────────────────────────────────────────────
 // Dibuat tahan terhadap variasi nama field (camelCase / snake_case) dan pembungkus
@@ -249,6 +250,7 @@ function CreateRoleForm({ roles, onCreated, onCancel, reAuthRef }) {
 // ── Halaman utama ───────────────────────────────────────────────────────────────────────────────
 export default function RolesPage() {
     const router = useRouter();
+    const confirm = useConfirm();
     const [authorized, setAuthorized] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
     const [currentUsername, setCurrentUsername] = useState("");
@@ -376,7 +378,22 @@ export default function RolesPage() {
 
     function selectRole(id) {
         if (id === selectedId) return;
-        if (dirty && !window.confirm("Perubahan belum disimpan. Pindah role dan buang perubahan?")) return;
+        if (dirty) {
+            // Gunakan ConfirmDialog async — tapi selectRole bukan async, bungkus dengan then
+            confirm({
+                title: "Buang Perubahan?",
+                description: "Perubahan pada role ini belum disimpan. Pindah ke role lain akan membuang semua perubahan yang belum disimpan.",
+                confirmText: "Pindah & Buang",
+                cancelText: "Tetap di Sini",
+                variant: "warning",
+            }).then((ok) => {
+                if (!ok) return;
+                setDetail(null);
+                setDraft(null);
+                setSelectedId(id);
+            });
+            return;
+        }
         setDetail(null);
         setDraft(null);
         setSelectedId(id);
@@ -430,11 +447,19 @@ export default function RolesPage() {
 
     async function handleDelete() {
         if (!detail) return;
-        if (!window.confirm(`Hapus role "${detail.name}"? Tindakan ini tidak bisa dibatalkan.`)) return;
+
+        const ok = await confirm({
+            title: `Hapus Role "${detail.name}"?`,
+            description: "Tindakan ini tidak bisa dibatalkan. Role akan dihapus secara permanen dari sistem.",
+            confirmText: "Hapus Permanen",
+            cancelText: "Batalkan",
+            variant: "danger",
+        });
+        if (!ok) return;
 
         // ── Re-auth sebelum menghapus role ──
-        const ok = await reAuthRef.current?.prompt(`hapus role "${detail.name}"`);
-        if (!ok) return;
+        const authOk = await reAuthRef.current?.prompt(`hapus role "${detail.name}"`);
+        if (!authOk) return;
 
         setDeleting(true);
         try {

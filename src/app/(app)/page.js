@@ -7,6 +7,7 @@ import { AtvDiagram, PhaseGuide } from "@/components/AtvDiagram";
 import { STEPS, PHASE_CODE_TO_STEP, STEP_COLOR } from "@/lib/atvProcess";
 import StartDialog from "@/components/StartDialog";
 import DeletedUserBadge from "@/components/DeletedUserBadge";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 /* ─────────────────────────────────────────────────────────────
    Product material masih belum ada tag PLC-nya (murni data resep
@@ -191,6 +192,7 @@ function PhaseTimeline({ activePhase, selectedPhase, learn, onSelect, durations 
 /* ─────────────── Halaman ─────────────── */
 
 export default function Home() {
+  const confirm = useConfirm();
   const [data, setData] = useState(null);
   const [stopping, setStopping] = useState(false);
   // true bila /api/status sendiri gagal dijangkau (server web mati / jaringan putus).
@@ -320,9 +322,17 @@ export default function Home() {
     setLearnStep(p);
   }
 
+
   async function handleStop() {
     if (stopping) return; // cegah double-click
-    if (!window.confirm(`Yakin ingin menghentikan batch ${data.batchNo}?`)) return;
+    const ok = await confirm({
+      title: "Hentikan Batch?",
+      description: `Batch ${data.batchNo} akan dihentikan. Mesin akan menghentikan proses sterilisasi.`,
+      confirmText: "Ya, Hentikan",
+      cancelText: "Batalkan",
+      variant: "warning",
+    });
+    if (!ok) return;
     setStopping(true);
     setCmdAlert(null);
     try {
@@ -494,12 +504,12 @@ export default function Home() {
   // Mesin dianggap "sedang berjalan" kalau fase termasuk proses aktif (fase 2–7, kecuali 0 dan 1)
   const isMachineRunning = [2, 3, 4, 5, 6, 7].includes(phaseRaw);
   const PROCESS_PHASES = [2, 3, 4, 5, 7]; // filling, heating, steril, cooling, drain
-  // const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
+  const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;
 
   // =====================================================================================
 
   // Biarkan baris ini tetap ada untuk testing pop up start ya
-  const startAllowed = true; 
+  // const startAllowed = true; 
 
   // Mesin berjalan dari luar web (belum ada batch di DB, tapi fase proses)
   const machineRunningExternal = !data.running && !noData && data.plcOk === true &&
@@ -1085,14 +1095,14 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {[
-                    { label: "Suhu Kontrol",        tag: "CTRL_TEMP",     val: data.setpoints?.ctrlTemp,    unit: "°C" },
-                    { label: "Suhu Sterilisasi",    tag: "STER_SET",      val: data.setpoints?.sterSet,     unit: "°C" },
-                    { label: "Waktu Sterilisasi",   tag: "STER_SET_TIME", val: data.setpoints?.sterSetTime, unit: "mnt" },
-                    { label: "Suhu Ruang",          tag: "TEMP_SPACE",    val: data.setpoints?.tempSpace,   unit: "°C" },
-                    { label: "Suhu Cooling 1",      tag: "COOL1_TEMP",    val: data.setpoints?.cool1Temp,   unit: "°C" },
-                    { label: "Suhu Cooling 2",      tag: "COOL2_TEMP",    val: data.setpoints?.cool2Temp,   unit: "°C" },
-                    { label: "Alarm Tekanan",       tag: "ALRM_PRES",     val: data.setpoints?.alrmPres,    unit: "kPa" },
-                    { label: "Target F0",           tag: "F0_VAL",        val: data.setpoints?.f0Val,       unit: "min" },
+                    { label: "Suhu Kontrol", tag: "CTRL_TEMP", val: data.setpoints?.ctrlTemp, unit: "°C" },
+                    { label: "Suhu Sterilisasi", tag: "STER_SET", val: data.setpoints?.sterSet, unit: "°C" },
+                    { label: "Waktu Sterilisasi", tag: "STER_SET_TIME", val: data.setpoints?.sterSetTime, unit: "mnt" },
+                    { label: "Suhu Ruang", tag: "TEMP_SPACE", val: data.setpoints?.tempSpace, unit: "°C" },
+                    { label: "Suhu Cooling 1", tag: "COOL1_TEMP", val: data.setpoints?.cool1Temp, unit: "°C" },
+                    { label: "Suhu Cooling 2", tag: "COOL2_TEMP", val: data.setpoints?.cool2Temp, unit: "°C" },
+                    { label: "Alarm Tekanan", tag: "ALRM_PRES", val: data.setpoints?.alrmPres, unit: "kPa" },
+                    { label: "Target F0", tag: "F0_VAL", val: data.setpoints?.f0Val, unit: "min" },
                   ].map(({ label, tag, val, unit }) => (
                     <tr key={tag} className="border-b border-[#EEF1F0] last:border-b-0">
                       <td className="py-1.5 pr-2">

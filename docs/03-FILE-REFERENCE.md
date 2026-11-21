@@ -1,18 +1,18 @@
 # Referensi File Teknis (File Reference)
 
-Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dalam proyek `scada-sterilizer` (total 155 file, 148 file di luar folder `docs/`, 7 file dokumentasi di `docs/`). Seluruh deskripsi, nama fungsi, export, import, dan nomor baris diverifikasi langsung dari kode sumber tanpa praduga atau spekulasi.
+Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dalam proyek `scada-sterilizer` (total 166 file, 159 file di luar folder `docs/`, 7 file dokumentasi di `docs/`). Seluruh deskripsi, nama fungsi, export, import, dan nomor baris diverifikasi langsung dari kode sumber tanpa praduga atau spekulasi.
 
 ---
 
 ### `package.json`
 - **Tipe**: Config / Manifest
-- **Fungsi**: Mendefinisikan nama paket, versi, scripts build/dev, serta dependensi pustaka proyek Next.js, driver PostgreSQL, dan kompresi ZIP `fflate`.
+- **Fungsi**: Mendefinisikan nama paket, versi, scripts build/dev/start (`cross-env NODE_ENV=production node server.js`), serta dependensi pustaka proyek Next.js, driver PostgreSQL, dan kompresi ZIP `fflate`.
 - **Export utama**: Tidak ada (berkas JSON manifest).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Menentukan runtime engine dan pustaka eksternal yang diinstal pada `node_modules`.
-- **Bukti**: `package.json:1-31`
-- **Catatan**: Menambahkan dependensi `fflate: ^0.8.3` untuk kebutuhan arsip streaming backup. Tidak ada TODO/FIXME tertulis.
+- **Bukti**: `package.json:1-28`
+- **Catatan**: Script `start` menggunakan `cross-env` (`package.json:8`). Dependensi `cross-env: ^10.1.0` terpasang di `node_modules` dan tercatat di `package-lock.json:23`, namun tidak tertulis di blok `devDependencies` `package.json`.
 
 ---
 
@@ -112,6 +112,18 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
+### `start-scada.bat`
+- **Tipe**: Script Launcher (Windows Batch)
+- **Fungsi**: Memulai server SCADA Sterilizer mode produksi pada sistem operasi Windows. Memeriksa keberadaan biner `node` di PATH sistem, berpindah ke direktori skrip via `cd /d "%~dp0"`, dan mengeksekusi `npm run start` (membuka port 3001).
+- **Export utama**: Tidak ada (skrip batch Windows).
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Dijalankan langsung oleh operator pabrik via shortcut desktop atau klik dua kali di File Explorer.
+- **Efek samping / dependensi eksternal**: Menjalankan shell `cmd.exe` dan memicu proses Node.js produksi `cross-env NODE_ENV=production node server.js`.
+- **Bukti**: `start-scada.bat:1-34`
+- **Catatan**: Berhenti dan menampilkan pesan error bila Node.js belum terpasang di sistem.
+
+---
+
 ### `scripts/hash-password.js`
 - **Tipe**: Script CLI
 - **Fungsi**: Menghasilkan string hash bcrypt dari argumen baris perintah atau input default serta mencetak contoh query INSERT pengguna dengan penugasan `role_id` ke tabel `roles`.
@@ -121,6 +133,18 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 - **Efek samping / dependensi eksternal**: Menulis output string hash password dan contoh query INSERT ke konsol terminal.
 - **Bukti**: `scripts/hash-password.js:1-26`
 - **Catatan**: Menggunakan subquery `(SELECT id FROM roles WHERE key = 'admin')` untuk `role_id`. Kolom legacy `users.role` sudah dihapus.
+
+---
+
+### `scripts/clean-db-for-production.sql`
+- **Tipe**: SQL DDL/DML Script (Commissioning Database)
+- **Fungsi**: Membersihkan seluruh data uji coba dan dummy dari database PostgreSQL (`scada-atv1`) sebelum serah terima rilis produksi. Mengosongkan data transaksi via `TRUNCATE CASCADE` (`alarm_log`, `audit_log`, `batch_trend`, `batch_records`), menghapus seluruh akun pengguna, menyuntikkan 1 akun administrator placeholder (`admin` / `Admin1234!`), mereset sequence tabel ke ID 1, serta mempertahankan master data (`roles`, `role_permissions`).
+- **Export utama**: DDL & DML SQL (`BEGIN; ... COMMIT; SELECT ... COUNT(*) ...`)
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Dieksekusi secara manual oleh DBA / teknisi sistem via pgAdmin Query Tool atau `psql`.
+- **Efek samping / dependensi eksternal**: Menghapus permanen seluruh riwayat transaksi dan data user di database.
+- **Bukti**: `scripts/clean-db-for-production.sql:1-68`
+- **Catatan**: Password awal admin wajib segera diganti setelah login pertama kali di antarmuka web.
 
 ---
 
@@ -148,14 +172,25 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
-### `context/tag_paling_baru.csv`
+### `context/tag_paling_baru.csv` [MOVED/RENAMED]
+- **Tipe**: Data Referensi (Telah Berganti Nama)
+- **Fungsi**: Berkas CSV master 116 tag PLC. Telah diganti namanya menjadi `context/SiemensS7-200_autoclave_pharma_1.csv` pada commit `30a4364` dan diselaraskan pada commit `c7d9c4b`.
+- **Export utama**: Tidak ada (arsip).
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Digantikan oleh `context/SiemensS7-200_autoclave_pharma_1.csv`.
+- **Bukti**: Git rename commit `c7d9c4b`.
+- **Catatan**: Status MOVED/RENAMED — informasi dipertahankan untuk riwayat audit dokumentasi.
+
+---
+
+### `context/SiemensS7-200_autoclave_pharma_1.csv`
 - **Tipe**: Data Referensi
-- **Fungsi**: Berkas master pemetaan tag KEPServerEX terbaru berisi 116 baris tag PLC Siemens S7-200 (VW, VD, Q, I, M, VB) lengkap dengan alamat register memori, tipe data, scan rate, dan deskripsi fungsinya. Mengonsolidasi seluruh tag sensor, alarm per bit & word, parameter mesin, offset kalibrasi (termasuk CAL_L VW322 dan CAL_WATER VW324), kontrol pintu, kontrol manual (`MAN_*`), dan jam RTC PLC (`R_*` & `S_*`).
+- **Fungsi**: Berkas master pemetaan tag KEPServerEX resmi terbaru berisi 118 baris tag PLC Siemens S7-200 (VW, VD, Q, I, M, VB) lengkap dengan alamat register memori, tipe data, scan rate, dan deskripsi fungsinya. Mengonsolidasi seluruh tag sensor, alarm per bit & word, parameter mesin, offset kalibrasi (termasuk CAL_L VW322 dan CAL_WATER VW324), kontrol pintu, kontrol manual (`MAN_*`), jam RTC PLC (`R_*` & `S_*`), serta 2 tag drain PHE baru: `DRAIN_COOL` (Q1.2) dan `DRAIN_STEAM` (Q1.0).
 - **Export utama**: Tidak ada (berkas teks CSV referensi).
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: Menjadi acuan validitas nama dan register tag pada `src/lib/plc.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcManualCatalog.js`, dan `plcClock.js`.
-- **Bukti**: `context/tag_paling_baru.csv:1-117` (1 baris header + 116 baris tag data).
-- **Catatan**: 116/116 tag kini 100% terpetakan dan terintegrasi ke seluruh lapisan web. Tag register VW220 resmi dinamai `"F0_VAL"` dan telah terhubung penuh ke backend snapshot PLC, verifikasi setpoint resep batch, halaman Parameter Mesin, serta tampilan F0 Target di Dashboard.
+- **Bukti**: `context/SiemensS7-200_autoclave_pharma_1.csv:1-119` (1 baris header + 118 baris tag data).
+- **Catatan**: Seluruh 118 tag kini 100% terpetakan dan terintegrasi ke seluruh lapisan web. Mencatat koreksi lapangan: label COOLING 1 (Q1.1) dan COOLING 2 (Q1.7) di SCADA lama tertukar (konfirmasi operator), dan tag pada berkas ini telah diselaraskan dengan benar. Tag `DRAIN_COOL` (Q1.2) memantau katup pembuangan air pendingin PHE dan `DRAIN_STEAM` (Q1.0) memantau katup kondensat uap PHE. Tag register VW220 resmi dinamai `"F0_VAL"`.
 
 ---
 
@@ -233,13 +268,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/auth.js`
 - **Tipe**: Util / Autentikasi & Otorisasi (Server-Only)
-- **Fungsi**: Menyediakan pembuatan token sesi JWT berdurasi 8 jam, verifikasi sesi dari cookies, opsi keamanan cookie, query data izin pengguna dan konfigurasi `hmi_overrides` real-time dari database (`loadUserAccess`), serta guard otorisasi `requireAuth`, `requirePermission`, dan `requireAnyPermission`. Guard legacy `requireAdmin` telah dihapus.
+- **Fungsi**: Menyediakan pembuatan token sesi JWT dengan masa berlaku dinamis yang membaca konfigurasi `system_settings.session_timeout_hours` (default 8 jam), verifikasi sesi dari cookies, opsi keamanan cookie `sessionCookieOptions` dinamis, query data izin pengguna dan konfigurasi `hmi_overrides` real-time dari database (`loadUserAccess`), serta guard otorisasi `requireAuth`, `requirePermission`, dan `requireAnyPermission`. Guard legacy `requireAdmin` telah dihapus.
 - **Export utama**: `createSessionToken`, `sessionCookieOptions`, `verifySessionToken`, `getSessionFromCookies`, `requireAuth`, `requirePermission`, `requireAnyPermission` (fungsi)
-- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/permissionCatalog.js`
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/permissionCatalog.js`, `src/lib/settings.js`
 - **Dipakai oleh**: Seluruh route handler API berotentikasi di `src/app/api/*`
-- **Efek samping / dependensi eksternal**: Membaca variabel lingkungan `JWT_SECRET` (`src/lib/auth.js:19`), `COOKIE_SECURE` (`src/lib/auth.js:41`), membaca/memodifikasi cookies HTTP, dan menjalankan query ke tabel `users`, `roles`, serta `role_permissions`.
-- **Bukti**: `src/lib/auth.js:1-197`
-- **Catatan**: Perubahan role/izin serta `hmi_overrides` pengguna di database langsung berlaku pada request berikutnya tanpa menunggu masa berlaku JWT berakhir. Objek sesi menyertakan field `hmiOverrides` (`src/lib/auth.js:102, 148`).
+- **Efek samping / dependensi eksternal**: Membaca variabel lingkungan `JWT_SECRET` (`src/lib/auth.js:19`), `COOKIE_SECURE` (`src/lib/auth.js:50`), membaca/memodifikasi cookies HTTP, membaca tabel `system_settings`, dan menjalankan query ke tabel `users`, `roles`, serta `role_permissions`.
+- **Bukti**: `src/lib/auth.js:1-214`
+- **Catatan**: Perubahan role/izin serta `hmi_overrides` pengguna di database langsung berlaku pada request berikutnya tanpa menunggu masa berlaku JWT berakhir. Objek sesi menyertakan field `hmiOverrides`. Durasi kedaluwarsa JWT dan cookie disinkronkan otomatis dari konfigurasi sistem.
 
 ---
 
@@ -317,13 +352,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/batchFinalize.js`
 - **Tipe**: Util / Finalisasi Batch
-- **Fungsi**: Menghitung durasi fase waktu sterilisasi, menghitung nilai akhir F0 seluruh sensor, menentukan status batch (finished/aborted), dan mengupdate tabel `batch_records`.
+- **Fungsi**: Menghitung durasi fase waktu sterilisasi, menghitung total waktu batch (`total_time_min`) dari selisih `run_begin` hingga timestamp baris trend terakhir yang direkam (`MAX(ts)`), menghitung nilai akhir F0 seluruh sensor, menentukan status batch (finished/aborted), dan memperbarui tabel `batch_records`.
 - **Export utama**: `finalizeBatch` (fungsi asynchronous)
-- **Meng-import (internal)**: `src/lib/batchFinalize.js`, `src/lib/db.js`, `src/lib/f0.js`
-- **Dipakai oleh**: `src/app/api/batch/stop/route.js`, `src/lib/batchFinalize.js`, `src/lib/trendRecorder.js`
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/f0.js`
+- **Dipakai oleh**: `src/app/api/batch/stop/route.js`, `src/lib/trendRecorder.js`
 - **Efek samping / dependensi eksternal**: Melakukan transaksi query UPDATE pada tabel `batch_records` (`src/lib/batchFinalize.js:80`).
-- **Bukti**: `src/lib/batchFinalize.js:1-160`
-- **Catatan**: Menggunakan advisory lock anti-race condition saat finalisasi paralel (`src/lib/batchFinalize.js:25`).
+- **Bukti**: `src/lib/batchFinalize.js:1-165`
+- **Catatan**: Menggunakan advisory lock anti-race condition saat finalisasi paralel. Nilai `total_time_min` secara resmi memakai data titik trend aktual terakhir (termasuk fase penantian tekanan stabil), menyelesaikan pertanyaan terbuka kalkulasi waktu total.
 
 ---
 
@@ -365,13 +400,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/atvProcess.js`
 - **Tipe**: Util / Analisis Proses Autoclave
-- **Fungsi**: Menganalisis deret data trend untuk mendeteksi waktu awal fase pemanasan, sterilisasi, dan pendinginan berdasarkan perubahan kode fase PLC.
-- **Export utama**: `analyzeProcessPhases` (fungsi)
+- **Fungsi**: Menganalisis deret data trend untuk mendeteksi waktu awal fase pemanasan, sterilisasi, dan pendinginan berdasarkan perubahan kode fase PLC, serta memetakan seluruh status katup/aktuator proses secara 100% LIVE dari snapshot tag PLC (termasuk `drainCool` Q1.2, `drainSteam` Q1.0, dan `airCmbr` Q1.3).
+- **Export utama**: `analyzeProcessPhases`, `PHASE_NAMES` (fungsi & kamus)
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: `src/app/(app)/page.js`, `src/components/AtvDiagram.js`
 - **Efek samping / dependensi eksternal**: Tidak ada (pure function).
-- **Bukti**: `src/lib/atvProcess.js:1-65`
-- **Catatan**: Mendeteksi transisi fase: 3 (heating), 4 (steril), dan 5 (cooling).
+- **Bukti**: `src/lib/atvProcess.js:1-85`
+- **Catatan**: Katup drain PHE sisi uap (`DRAIN_STEAM`) dan drain PHE sisi pendingin (`DRAIN_COOL`) serta udara tekan (`AIR_CMBR`) kini 100% terhubung ke tag live PLC nyata, tidak lagi menggunakan estimasi fase simbolis ("≈").
 
 ---
 
@@ -461,13 +496,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/plc.js`
 - **Tipe**: Util / Komunikasi REST IoT Gateway PLC
-- **Fungsi**: Menyediakan fungsi pembacaan data sensor PLC Siemens S7-200 via REST API KEPServerEX `/iotgateway/read`, scaling nilai suhu (°C/10) dan tekanan (kPa), integrasi target F0 menit (`f0Val`, register VW220 /10), deteksi status buzzer alarm (`M10.6`), pembacaan word alarm mentah (`alrmDor`, `alrmTemp`, `warningBuz`), status perintah door release (`releaseCmd` M1.3), pembacaan aktuator LIVE (termasuk `airCmbr` Q1.3), serta deteksi fase proses.
+- **Fungsi**: Menyediakan fungsi pembacaan data sensor PLC Siemens S7-200 via REST API KEPServerEX `/iotgateway/read`, scaling nilai suhu (°C/10) dan tekanan (kPa), integrasi target F0 menit (`f0Val`, register VW220 /10), deteksi status buzzer alarm (`M10.6`), pembacaan word alarm mentah (`alrmDor`, `alrmTemp`, `warningBuz`), status perintah door release (`releaseCmd` M1.3), pembacaan seluruh aktuator LIVE (termasuk `airCmbr` Q1.3, `drainSteam` Q1.0, dan `drainCool` Q1.2), serta deteksi fase proses.
 - **Export utama**: `readPlcSnapshot`, `TAG_MAP`, `PHASE_MAP` (fungsi dan konstanta)
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: `src/app/api/batch/start/route.js`, `src/app/api/batch/stop/route.js`, `src/app/api/plc/reset/route.js`, `src/app/api/status/route.js`, `src/lib/alarmMonitor.js`, `src/lib/trendRecorder.js`
 - **Efek samping / dependensi eksternal**: Melakukan HTTP request GET ke KEPServerEX IoT Gateway (`src/lib/plc.js:145`), membaca `process.env.IOT_GATEWAY_*`.
-- **Bukti**: `src/lib/plc.js:1-454`
-- **Catatan**: Catatan kode: tag L/VW122 konduktivitas dan WATER level air belum memiliki formula kalibrasi konversi fisik (`src/lib/plc.js:338, 339, 371, 372`). Tag target F0 (VW220) resmi dinamai `F0_VAL` dan dibagi 10 ke satuan menit. Aktuator `airCmbr` (Q1.3) kini terhubung LIVE ke snapshot `valves.airCmbr`.
+- **Bukti**: `src/lib/plc.js:1-468`
+- **Catatan**: Tag PHE drain (`DRAIN_STEAM` Q1.0 dan `DRAIN_COOL` Q1.2) serta katup chamber air (`AIR_CMBR` Q1.3) kini 100% aktif dan terpetakan di `TAG_MAP` selaras dengan master CSV `SiemensS7-200_autoclave_pharma_1.csv` (118 tag). Tag L/VW122 konduktivitas dan WATER level air belum memiliki formula kalibrasi konversi fisik.
 
 ---
 
@@ -509,13 +544,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/trendRecorder.js`
 - **Tipe**: Background Worker / Perekam Trend
-- **Fungsi**: Membaca snapshot PLC setiap 5 detik, menyimpan rekaman sensor ke tabel `batch_trend`, dan memicu auto-finalize batch jika mesin idle selama minimal 120 detik.
+- **Fungsi**: Membaca snapshot PLC setiap 5 detik, menyimpan rekaman sensor ke tabel `batch_trend`, serta mengevaluasi auto-stop batch berdasarkan konfigurasi sistem dinamis: mode tekanan bejana ($P_1 \& P_2 \le 0\text{ kPa}$ stabil $\ge 10$ detik setelah fase sterilisasi selesai) dengan opsi otomatis mengirim pulsa `STOP` (M1.5) ke PLC, atau fallback mode idle durasi waktu tertentu.
 - **Export utama**: `recordTrendTick` (fungsi asynchronous)
-- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/plc.js`, `src/lib/batchFinalize.js`
+- **Meng-import (internal)**: `src/lib/db.js`, `src/lib/plc.js`, `src/lib/batchFinalize.js`, `src/lib/settings.js`, `src/lib/plcWrite.js`, `src/lib/auditLog.js`
 - **Dipakai oleh**: `server.js`
-- **Efek samping / dependensi eksternal**: Menjalankan query `INSERT INTO batch_trend` dan memanggil `finalizeBatch` jika idle terdeteksi (`src/lib/trendRecorder.js:80`).
-- **Bukti**: `src/lib/trendRecorder.js:1-140`
-- **Catatan**: Dipanggil secara berkala via `setInterval` pada `server.js:46`.
+- **Efek samping / dependensi eksternal**: Menjalankan query `INSERT INTO batch_trend`, membaca tabel `system_settings`, mengirim pulsa PLC `pulsePlcTag`, mencatat `audit_log`, dan memanggil `finalizeBatch`.
+- **Bukti**: `src/lib/trendRecorder.js:1-255`
+- **Catatan**: Dipanggil secara berkala via `setInterval` pada `server.js:46`. Mengeliminasi ketergantungan manual operator untuk menghentikan batch pasca pendinginan.
 
 ---
 
@@ -533,25 +568,25 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/components/ScreenLock.js`
 - **Tipe**: Client Component / Security Overlay
-- **Fungsi**: Mengunci antarmuka otomatis setelah 7 menit tanpa interaksi pengguna (inaktivitas mouse/keyboard) dan meminta verifikasi password untuk membuka kembali. Status penguncian dan waktu aktivitas persisten di `localStorage` sehingga kebal terhadap penyegaran halaman (F5) dan tersinkronisasi lintas-tab secara real-time via event `storage`.
+- **Fungsi**: Mengunci antarmuka otomatis setelah periode inaktivitas pengguna (inaktivitas mouse/keyboard) dan meminta verifikasi password untuk membuka kembali. Durasi batas pasif kini dikonfigurasi dinamis dari `system_settings.lockscreen_idle_minutes` (default 7 menit bila tidak diatur), tersimpan di `localStorage.scada_lock_timeout_ms`, serta kebal terhadap refresh halaman (F5) dan tersinkronisasi lintas-tab secara real-time via event `storage`.
 - **Export utama**: `default` ScreenLock (fungsi komponen React)
 - **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
 - **Dipakai oleh**: `src/app/(app)/layout.js`
-- **Efek samping / dependensi eksternal**: Menambahkan event listener global (`pointerdown`, `keydown`, `storage`), membaca dan menulis kunci `scada_screen_locked`, `scada_last_activity`, `scada_lock_user` pada `localStorage`, memanggil API `POST /api/auth/unlock` (`src/components/ScreenLock.js:235`), dan mengalihkan ke `/login` jika sesi kedaluwarsa.
-- **Bukti**: `src/components/ScreenLock.js:1-429`
-- **Catatan**: Waktu timeout ditentukan oleh konstanta `LOCK_TIMEOUT_MS = 7 * 60 * 1000` (`src/components/ScreenLock.js:7`). Kunci `scada_screen_locked` dibersihkan saat login baru (`src/app/login/page.js:192`) dan saat logout (`src/components/Navbar.js:90`, `src/components/ScreenLock.js:275`).
+- **Efek samping / dependensi eksternal**: Menambahkan event listener global (`pointerdown`, `keydown`, `storage`), membaca dan menulis kunci `scada_screen_locked`, `scada_last_activity`, `scada_lock_user`, `scada_lock_timeout_ms` pada `localStorage`, memanggil API `POST /api/auth/unlock` (`src/components/ScreenLock.js:235`), dan mengalihkan ke `/login` jika sesi kedaluwarsa.
+- **Bukti**: `src/components/ScreenLock.js:1-416`
+- **Catatan**: Kunci `scada_screen_locked` dibersihkan saat login baru (`src/app/login/page.js:192`) dan saat logout (`src/components/Navbar.js:90`, `src/components/ScreenLock.js:275`).
 
 ---
 
 ### `src/components/Navbar.js`
 - **Tipe**: Client Component / Navigasi
-- **Fungsi**: Merender bar navigasi atas aplikasi, logo Satoria Pharma, indikator menu utama, menu mesin HMI (Parameter Mesin, Kalibrasi, Jam PLC, Kontrol Manual, **Door Operate**), menu administrasi (Audit Log, Kelola User, Role Management, **Backup**), identitas pengguna aktif, dan tombol logout. Menyaring visibilitas menu berdasarkan izin role RBAC serta promosi visibilitas otomatis dari konfigurasi `hmiOverrides` pengguna.
+- **Fungsi**: Merender bar navigasi atas aplikasi, logo Satoria Pharma, indikator menu utama, menu mesin HMI (Parameter Mesin, Kalibrasi, Jam PLC, Kontrol Manual, **Door Operate**), menu administrasi (Audit Log, Kelola User, Role Management, **Konfigurasi Sistem**, **Backup**), identitas pengguna aktif, dan tombol logout. Menyaring visibilitas menu berdasarkan izin role RBAC serta promosi visibilitas otomatis dari konfigurasi `hmiOverrides` pengguna.
 - **Export utama**: `default` Navbar (fungsi komponen React)
 - **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/hmiOverrideCatalog.js` (`hasHmiOverrideAccess`)
 - **Dipakai oleh**: `src/app/(app)/layout.js`
 - **Efek samping / dependensi eksternal**: Memanggil API `POST /api/auth/logout` dan membersihkan kunci `localStorage` saat tombol Logout diklik (`src/components/Navbar.js:89-94`), polling `/api/auth/me` setiap 60 detik (`src/components/Navbar.js:81`).
-- **Bukti**: `src/components/Navbar.js:1-187`
-- **Catatan**: Menu mesin disaring menggunakan `hasLevel(user?.permissions, item.resource, "view") || hasHmiOverrideAccess(user?.hmiOverrides, overridePage)` (`src/components/Navbar.js:101-112`) sehingga pengguna dengan role tanpa izin halaman (mis. operator/foreman) tetap dapat melihat menu yang di-override khusus.
+- **Bukti**: `src/components/Navbar.js:1-169`
+- **Catatan**: Menu administrasi kini mencakup rute `/settings` (Konfigurasi Sistem) yang dilindungi izin resource `settings` (`src/components/Navbar.js:34`). Menu mesin disaring menggunakan `hasLevel(user?.permissions, item.resource, "view") || hasHmiOverrideAccess(user?.hmiOverrides, overridePage)`.
 
 ---
 
@@ -568,30 +603,40 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 ---
 
 ### `src/components/StartDialog.js`
-- **Tipe**: Client Component / Modal Form START & Verifikasi 2 Langkah (Four-Eyes Principle dengan Hak Overwrite)
-- **Fungsi**: Menyediakan antarmuka pop-up form input persiapan batch dengan alur verifikasi 4 langkah:
-  1. Langkah 1 (Operator / User 1): pengisian awal Batch No, Amount (integer bulat positif), Nama Produk (combobox), Spesifikasi Kemasan (combobox), Mach. ID, dan Formula.
-  2. Langkah 2 (Verifikasi Berdampingan / Side-by-Side): menampilkan panel kiri (data awal read-only User 1) dan panel kanan (form verifikasi User 2, pre-filled, dengan hak koreksi / *overwrite* mandiri).
-  3. Langkah 3 (Preview Isian Final): ringkasan data akhir terverifikasi beserta rekam jejak koreksi field yang di-overwrite sebelum eksekusi ke PLC.
-  4. Langkah 4 (Otentikasi Kredensial Verifikator): pop-up pemilihan user verifikator dari daftar User Management (akun aktif selain User 1) dan input password verifikator sebagai tanda tangan digital akhir.
+- **Tipe**: Client Component / Modal Form START & Self-Verification Operator ("use client")
+- **Fungsi**: Menyediakan antarmuka pop-up form input persiapan batch dengan alur verifikasi 2 tahap:
+  1. Langkah 1 (Operator): pengisian awal Batch No, Amount (jumlah botol, integer bulat positif), Nama Produk (combobox), Spesifikasi Kemasan (combobox), Mach. ID, dan Formula. `loadingNo` tidak lagi diwajibkan (digantikan oleh amount).
+  2. Langkah 2 (Preview & Konfirmasi): menampilkan ringkasan data akhir terverifikasi (Batch No, Amount, Produk, Spesifikasi, Mesin, Formula, parameter suhu & waktu sterilisasi), diikuti form verifikasi mandiri di mana operator yang sedang login memasukkan password akunnya sendiri (`verifierPassword`) sebagai tanda tangan digital sebelum eksekusi setpoint dan pulsa START dikirim ke PLC.
 - **Export utama**: `default` StartDialog (fungsi komponen React)
 - **Meng-import (internal)**: `src/lib/batchNo.js`, `src/lib/plcCommandAlert.js`, `src/components/SearchableCombobox.js`
 - **Dipakai oleh**: `src/app/(app)/page.js`
-- **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/products?active=true`, `GET /api/product-specs?active=true`, `GET /api/formulas`, `GET /api/auth/users`, `GET /api/auth/me`, dan `POST /api/batch/start`.
-- **Bukti**: `src/components/StartDialog.js:1-600`
-- **Catatan**: Mendukung hak koreksi (*overwrite*) verifikator tanpa harus mengulang form dari awal, memfilter akun inisiator dari daftar dropdown verifikator, serta memvalidasi password verifikator dan hak akses kontrol batch di sisi server. Modal mengadopsi lebar dinamis (`max-w-md` di langkah 1/4, `max-w-5xl` di langkah 2, dan `max-w-lg` di langkah 3).
+- **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/products?active=true`, `GET /api/product-specs?active=true`, `GET /api/formulas`, `GET /api/auth/me`, dan `POST /api/batch/start`.
+- **Bukti**: `src/components/StartDialog.js:1-531`
+- **Catatan**: Menghilangkan dependensi pemilihan verifikator sekunder terpisah dari dropdown, menggantikannya dengan mekanisme otentikasi mandiri operator (self-authentication / re-auth) dengan input kata sandi akun login.
 
 ---
 
 ### `src/components/AtvDiagram.js`
 - **Tipe**: Client Component / Diagram Visual Autoclave
-- **Fungsi**: Menggambar skema visual bejana Autoclave Line 1 berbasis elemen SVG, memvisualisasikan status katup (valve), level air, posisi pintu depan/belakang, dan arah sirkulasi pompa secara interaktif. Kini dilengkapi label kode tag industri sesuai Manual Operate & ladder PLC (SV1, SV2, CWV1, CWV2, DPWV, SDFC, PWCV, AIR_CMBR, WDV, UOV, WTR_PUMP) pada setiap katup dan pompa.
+- **Fungsi**: Menggambar skema visual bejana Autoclave Line 1 berbasis elemen SVG, memvisualisasikan status katup (valve), level air, posisi pintu depan/belakang, dan arah sirkulasi pompa secara interaktif. Dilengkapi sistem animasi gelombang fluida dinamis menyala (Surging Fluid Wave System) dan seluruh katup kini terhubung ke tag live PLC: SV1 (`STEAM_1`), SV2 (`STEAM_2`), CWV1 (`COOLING_1`), CWV2 (`COOLING_2`), DPWV (`WTR_DRAIN`), SDFC (`STEAM_EXHS`), PWCV (`WTR_FILL`), AIR_CMBR (`AIR_CMBR`), CWV_DRAIN (`DRAIN_COOL`), UOV (`DRAIN_STEAM`), dan pompa `WTR_PUMP`.
 - **Export utama**: `default` AtvDiagram (fungsi komponen React), `PhaseGuide`
 - **Meng-import (internal)**: `src/lib/atvProcess.js`
 - **Dipakai oleh**: `src/app/(app)/page.js`
 - **Efek samping / dependensi eksternal**: Tidak ada (komponen SVG presentasi berbasis props data sensor PLC).
-- **Bukti**: `src/components/AtvDiagram.js:1-855`
+- **Bukti**: `src/components/AtvDiagram.js:1-864`
 - **Catatan**: Menerima props data snapshot PLC: `{ valves, door, level, pump, temp, pressure, phase }`. Memiliki badge plat tag + status pada tiap katup dan pompa tanpa tabrakan visual antar-komponen.
+
+---
+
+### `src/components/ReAuthModal.js`
+- **Tipe**: Client Component / Modal Re-Autentikasi Keamanan ("use client")
+- **Fungsi**: Modal pop-up verifikasi identitas (kata sandi) pengguna untuk melindungi tindakan administratif sensitif dari eksekusi tanpa izin saat komputer ditinggal operator. Diimplementasikan menggunakan pola React `forwardRef` dan method `useImperativeHandle` `prompt(actionLabel)` yang mengembalikan `Promise<boolean>` (resolve `true` bila password cocok, `false` bila dibatalkan).
+- **Export utama**: `default ReAuthModal`
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: `src/app/(app)/roles/page.js`, `src/app/(app)/users/page.js`
+- **Efek samping / dependensi eksternal**: Memanggil endpoint `POST /api/auth/unlock` (`src/components/ReAuthModal.js:103`), menampilkan avatar huruf inisial dan username aktif (read-only), serta input kata sandi dengan toggle visibilitas mata.
+- **Bukti**: `src/components/ReAuthModal.js:1-249`
+- **Catatan**: Dipanggil sebelum eksekusi aksi sensitif: membuat role baru, menghapus role, menyimpan matriks izin role, membuat user baru, mereset kata sandi user, mengeksekusi hapus-lunak user, dan menyimpan izin khusus HMI user.
 
 ---
 
@@ -645,19 +690,20 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/page.js`
 - **Tipe**: Client Component / Dashboard Utama
-- **Fungsi**: Merender dashboard pengawasan SCADA utama: polling data sensor PLC real-time setiap 1 detik, diagram interaktif Autoclave, kartu pembacaan 9 sensor suhu, tekanan, status pintu, tombol kontrol proses (START, STOP, Reset), blok Door Sealing/Release, panel detail resep berjalan (termasuk F0 Target jika ada), dan peringatan status perintah PLC.
+- **Fungsi**: Merender dashboard pengawasan SCADA utama: polling data sensor PLC real-time setiap 1 detik, diagram interaktif Autoclave, kartu pembacaan 9 sensor suhu, tekanan, status pintu, tombol kontrol proses (START, STOP, Reset), blok Door Sealing/Release, panel detail resep berjalan, tombol dan modal pop-up "Resep Mesin" pembacaan setpoint live dari PLC saat siklus aktif, dan peringatan status perintah PLC.
 - **Export utama**: `default` DashboardPage (fungsi komponen React)
 - **Meng-import (internal)**: `src/lib/plcCommandAlert.js`, `src/components/AtvDiagram.js`, `src/lib/atvProcess.js`, `src/components/StartDialog.js`, `src/components/DeletedUserBadge.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Memanggil API `GET /api/status` setiap 1000 ms, `POST /api/batch/stop`, `POST /api/plc/reset`, `POST /api/plc-door` untuk Door Sealing/Release (`src/app/(app)/page.js:385–410`).
-- **Bukti**: `src/app/(app)/page.js:1-1009`
+- **Bukti**: `src/app/(app)/page.js:1-1126`
 - **Catatan**:
-  - `startAllowed`: Baris 492 (`const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`) berjalan aktif penuh. Baris 493–494 adalah komentar pengembang toggle uji (`// Biarkan baris ini tetap ada untuk testing pop up start ya` dan `// const startAllowed = true;`) yang sengaja dibiarkan pemilik untuk pengujian pop-up modal tanpa terhubung ke mesin fisik (bukan bypass aktif).
+  - `startAllowed` (TEMUAN KRITIS): Evaluasi kesiapan mesin di baris 498 (`// const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`) saat ini dalam kondisi NONAKTIF (dikomentari), sementara baris 502 (`const startAllowed = true;`) DIAKTIFKAN SECARA HARDCODED. Ini menyebabkan tombol START selalu aktif tanpa memverifikasi kesiapan PLC dan status batch yang sedang berjalan.
+  - Tombol & Modal "Resep Mesin": Baris 956–973 merender tombol "📋 Resep Mesin" yang aktif hanya bila mesin sedang berjalan (`isMachineRunning = [2, 3, 4, 5, 6, 7].includes(phaseRaw)`). Menampilkan modal pop-up (baris 1035–1124) berisi tabel pembacaan setpoints langsung dari memori register PLC (CTRL_TEMP, STER_SET, STER_SET_TIME, TEMP_SPACE, COOL1_TEMP, COOL2_TEMP, ALRM_PRES, F0_VAL).
   - State Door: `doorBusy` dan `doorMsg` di baris 213–214.
   - Handler `sendDoor` di baris 385–410.
-  - Gating: `canDoor` baris 523, `doorsClosedForSeal` baris 542, `sealAllowed` baris 543, `releaseAllowed` baris 548, `releaseOn` baris 550, `doorBlockReason` baris 552.
-  - Tampilan F0 Target: Ditampilkan di kartu ringkasan Formula baris 754–759 (`data.setpoints?.f0Val !== null`).
-  - Blok tombol Door Sealing dan Door Release di baris 818–848: Door Release berstatus toggle cerdas dengan teks dinamis (`releaseOn ? "Release: MATIKAN" : "Door Release"`) dan warna indikatif.
+  - Gating: `canDoor` baris 527, `doorsClosedForSeal` baris 546, `sealAllowed` baris 547, `releaseAllowed` baris 552, `releaseOn` baris 554, `doorBlockReason` baris 556.
+  - Tampilan F0 Target: Ditampilkan di kartu ringkasan Formula baris 758–763 (`data.setpoints?.f0Val !== null`).
+  - Blok tombol Door Sealing dan Door Release di baris 822–852: Door Release berstatus toggle cerdas dengan teks dinamis (`releaseOn ? "Release: MATIKAN" : "Door Release"`) dan warna indikatif.
   - `eslint-disable-next-line react-hooks/set-state-in-effect` di baris 251 dan 278; `react-hooks/exhaustive-deps` di baris 256.
 
 ---
@@ -700,13 +746,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/data-report/[batchNo]/page.js`
 - **Tipe**: Client Component / Halaman Detail Batch
-- **Fungsi**: Menampilkan laporan lengkap satu batch sterilisasi: metadata batch, informasi produk (termasuk Amount / Jumlah Botol), parameter waktu tahapan fase, nilai akumulasi letalitas F0 seluruh sensor, tabel deret waktu trend sensor, dan tombol navigasi cetak laporan.
+- **Fungsi**: Menampilkan laporan lengkap satu batch sterilisasi: metadata batch, informasi produk (termasuk Amount / Jumlah Botol), identitas operator dan verifikator (self-verification/re-autentikasi), parameter waktu tahapan fase, nilai akumulasi letalitas F0 seluruh sensor, tabel deret waktu trend sensor, dan tombol navigasi cetak laporan.
 - **Export utama**: `default` BatchDetailPage (fungsi komponen React)
-- **Meng-import (internal)**: Tidak ada (hanya library eksternal / Node.js bawaan)
+- **Meng-import (internal)**: `src/components/DeletedUserBadge.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/batch-records/[batchNo]` dan membuka tab cetak `/print/data-report/[batchNo]` (`src/app/(app)/data-report/[batchNo]/page.js:35-80`).
-- **Bukti**: `src/app/(app)/data-report/[batchNo]/page.js:1-355`
-- **Catatan**: Menampilkan jumlah botol (`batch.bottleCount`) pada kartu Informasi Produk (`src/app/(app)/data-report/[batchNo]/page.js:255-261`) dan peringatan jika kalkulasi F0 dihitung dari data trend yang tidak lengkap (`f0Meta.complete === false`).
+- **Efek samping / dependensi eksternal**: Memanggil API `GET /api/batch-records/[batchNo]` dan membuka tab cetak `/print/data-report/[batchNo]`.
+- **Bukti**: `src/app/(app)/data-report/[batchNo]/page.js:1-365`
+- **Catatan**: Menampilkan nama Verifikator (`batch.verifier` / `batch.verifier_username` dari migrasi 008) dengan badge user terhapus (`DeletedUserBadge`), menggantikan field lama Loading No. Menampilkan jumlah botol (`batch.bottleCount`) pada kartu Informasi Produk dan peringatan jika kalkulasi F0 dihitung dari data trend yang tidak lengkap (`f0Meta.complete === false`).
 
 ---
 
@@ -748,13 +794,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/users/page.js`
 - **Tipe**: Client Component / Halaman Kelola Pengguna ("use client")
-- **Fungsi**: Menyediakan antarmuka administrasi akun pengguna bagi admin: pendaftaran user baru, pengubahan nama lengkap/role, aktivasi/penonaktifan akun, reset kata sandi, serta konfigurasi khusus izin HMI per pengguna (HMI Permission Overrides) melalui modal dialog `HmiOverridePanel`.
+- **Fungsi**: Menyediakan antarmuka administrasi akun pengguna bagi admin: pendaftaran user baru, pengubahan nama lengkap/role, aktivasi/penonaktifan akun, reset kata sandi, serta konfigurasi khusus izin HMI per pengguna (HMI Permission Overrides) melalui modal dialog `HmiOverridePanel`, dilindungi konfirmasi verifikasi ulang kata sandi (`ReAuthModal`).
 - **Export utama**: `default` UsersPage (fungsi komponen React)
-- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/hmiOverrideCatalog.js` (`OVERRIDE_PAGES`, `OVERRIDE_ITEMS`, `getItemGroups`)
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`), `src/lib/hmiOverrideCatalog.js` (`OVERRIDE_PAGES`, `OVERRIDE_ITEMS`, `getItemGroups`), `src/components/ReAuthModal.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun (rute halaman `/users`)
 - **Efek samping / dependensi eksternal**: Memanggil endpoint API `GET /api/auth/me`, `GET/POST/PUT/DELETE /api/users`, `POST /api/users/[username]/reset-password`, serta `GET/PUT /api/users/[username]/hmi-overrides`.
-- **Bukti**: `src/app/(app)/users/page.js:1-890`
-- **Catatan**: Dilindungi proteksi level halaman: pengguna tanpa izin `users >= view` langsung dialihkan ke dashboard (`/`). Tombol "Izin HMI" membuka drawer/modal `HmiOverridePanel` untuk mengatur mode (default vs custom) dan izin per-item (none, read, write) pada 4 halaman HMI (kalibrasi, parameter mesin, kontrol manual, dan operasi pintu).
+- **Bukti**: `src/app/(app)/users/page.js:1-930`
+- **Catatan**: Dilindungi proteksi level halaman: pengguna tanpa izin `users >= view` langsung dialihkan ke dashboard (`/`). Setiap aksi kritis mutasi user (tambah, edit, reset password, hapus/soft-delete, ubah override HMI) memicu dialog `ReAuthModal` untuk meminta verifikasi ulang password user aktif sebelum request dikirim ke backend. Tombol "Izin HMI" membuka drawer/modal `HmiOverridePanel` untuk mengatur mode (default vs custom) dan izin per-item (none, read, write) pada 4 halaman HMI.
 
 ---
 
@@ -916,13 +962,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/batch/start/route.js`
 - **Tipe**: API Route Handler
-- **Fungsi**: Memvalidasi parameter resep, memeriksa keunikan Batch No, memvalidasi input `bottleCount`, memeriksa interlock pintu/seal PLC, menulis setpoint ke register PLC (termasuk tag `F0_VAL` jika `recipe.fo_val_setting` diset), memverifikasi baca-balik seluruh setpoint, mengirim pulsa START (M1.4), menunggu fase proses, dan mencatat data ke `batch_records` (termasuk kolom `bottle_count`).
+- **Fungsi**: Memvalidasi parameter resep, memeriksa keunikan Batch No, memvalidasi input `bottleCount`, memverifikasi kata sandi operator (`verifierPassword`) via `bcrypt.compare` (Self-Verification / Tanda Tangan Digital), memeriksa interlock pintu/seal PLC, menulis setpoint ke register PLC (termasuk tag `F0_VAL` jika `recipe.fo_val_setting` diset), memverifikasi baca-balik seluruh setpoint, mengirim pulsa START (M1.4), menunggu fase proses, dan mencatat data ke `batch_records` (termasuk kolom `bottle_count`, `verifier`, dan `verifier_username`).
 - **Export utama**: `POST` (fungsi handler HTTP)
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js`, `src/lib/plc.js`, `src/lib/plcWrite.js`, `src/lib/recipeValidation.js`, `src/lib/batchNo.js`, `src/lib/recipeSnapshot.js`, `src/lib/recipeGuard.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
-- **Efek samping / dependensi eksternal**: Membuka koneksi PostgreSQL advisory lock (`src/app/api/batch/start/route.js:35`), menulis ke REST API PLC (`src/app/api/batch/start/route.js:390`), menjalankan query `INSERT INTO batch_records` (`src/app/api/batch/start/route.js:618`) dan `audit_log`.
-- **Bukti**: `src/app/api/batch/start/route.js:1-755`
-- **Catatan**: Membaca `bottleCount` / `amount` dari request body (`src/app/api/batch/start/route.js:134-141`). Menulis dan memverifikasi setpoint target F0 `F0_VAL` (`Math.round(foValSetting * 10)`). Menyertakan fallback penanganan error `colErr.code === "42703"` (kolom `bottle_count` belum dimigrasi di database) sehingga alur START tidak gagal fatal saat migrasi 006 belum dijalankan.
+- **Efek samping / dependensi eksternal**: Mengimpor pustaka eksternal `bcryptjs`, membuka koneksi PostgreSQL advisory lock (`src/app/api/batch/start/route.js:36`), menulis ke REST API PLC (`src/app/api/batch/start/route.js:445`), menjalankan query `INSERT INTO batch_records` (`src/app/api/batch/start/route.js:675`) dan `audit_log`.
+- **Bukti**: `src/app/api/batch/start/route.js:1-757`
+- **Catatan**: Membaca `bottleCount` / `amount` dari request body (`src/app/api/batch/start/route.js:136-143`), sedangkan `loadingNo` kini bersifat opsional. Memvalidasi kata sandi operator yang login sebagai verifikator mandiri (`verifierPassword`). Menyimpan `verifier` dan `verifier_username` ke tabel `batch_records` (`migrations/008_dual_verification_batch_records.sql`) serta menyertakan fallback penanganan error `colErr.code === "42703"` jika kolom `bottle_count` atau `verifier` belum ada di database. Audit log mencatat `selfVerified: true`, `operatorUsername`, dan `verifierUsername`.
 
 ---
 
@@ -952,13 +998,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/api/batch-records/export/route.js`
 - **Tipe**: API Route Handler
-- **Fungsi**: Mengekspor data riwayat batch ke format spreadsheet Excel XLSX atau JSON serta mencatat jejak audit aktivitas ekspor, termasuk kolom Jumlah Botol (`bottle_count`).
+- **Fungsi**: Mengekspor data riwayat batch ke format spreadsheet Excel XLSX atau JSON serta mencatat jejak audit aktivitas ekspor, memuat kolom Amount (Botol) dan Verifikator.
 - **Export utama**: `GET` (fungsi handler HTTP)
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js`, `src/lib/dateRange.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Menghasilkan berkas binary spreadsheet menggunakan pustaka `exceljs` dan mencatat audit ke database. Dilindungi `requirePermission(cookieStore, "data_report", "view")`.
-- **Bukti**: `src/app/api/batch-records/export/route.js:1-265`
-- **Catatan**: Menyertakan fallback query `NULL::integer AS bottle_count` jika kolom belum ada di skema PostgreSQL (`colErr.code === "42703"`). Menambahkan kolom Excel "Jumlah Botol" (width: 14) pada baris header dan format JSON.
+- **Bukti**: `src/app/api/batch-records/export/route.js:1-269`
+- **Catatan**: Menggantikan kolom `loadingNo` dengan `Amount (Botol)` (dari `bottle_count`) dan menambahkan kolom `Verifikator` (`verifier`). Menyertakan fallback query `NULL::integer AS bottle_count, NULL::text AS verifier` jika kolom belum ada di skema PostgreSQL (`colErr.code === "42703"`).
 
 ---
 
@@ -969,8 +1015,8 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auth.js`, `src/lib/recipeSnapshot.js`
 - **Dipakai oleh**: Tidak di-import oleh file mana pun
 - **Efek samping / dependensi eksternal**: Dilindungi `requireAnyPermission` (`data_report >= view` atau `trend >= view`). Menjalankan query SQL ke tabel `batch_records` dan `batch_trend`.
-- **Bukti**: `src/app/api/batch-records/[batchNo]/route.js:1-127`
-- **Catatan**: Mengembalikan field `bottleCount` dan `amount` (alias angka) dari kolom `batch_records.bottle_count` (`src/app/api/batch-records/[batchNo]/route.js:59-60`), serta parameter `recipeSource`.
+- **Bukti**: `src/app/api/batch-records/[batchNo]/route.js:1-137`
+- **Catatan**: Mengembalikan field `bottleCount`, `amount`, `verifier`, dan `verifierUsername` dari tabel `batch_records` (`src/app/api/batch-records/[batchNo]/route.js:55-60`), serta parameter `recipeSource`.
 
 ---
 
@@ -1216,13 +1262,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/roles/page.js`
 - **Tipe**: Client Component / Halaman Aplikasi
-- **Fungsi**: Menyediakan antarmuka visual Role Management untuk melihat daftar role, membuat custom role baru (dengan opsi kloning izin), mengubah nama/deskripsi, mengonfigurasi matriks izin per resource (none/view/edit), dan menghapus custom role non-sistem.
+- **Fungsi**: Menyediakan antarmuka visual Role Management untuk melihat daftar role, membuat custom role baru (dengan opsi kloning izin), mengubah nama/deskripsi, mengonfigurasi matriks izin per resource (none/view/edit), dan menghapus custom role non-sistem, dilindungi verifikasi ulang kata sandi (`ReAuthModal`).
 - **Export utama**: `default` RolesPage (fungsi komponen React)
-- **Meng-import (internal)**: `src/lib/permissionCatalog.js`
+- **Meng-import (internal)**: `src/lib/permissionCatalog.js`, `src/components/ReAuthModal.js`
 - **Dipakai oleh**: Di-render melalui routing Next.js App Router pada path `/roles`
 - **Efek samping / dependensi eksternal**: Memanggil endpoint `GET /api/roles`, `GET /api/roles/[id]`, `POST /api/roles`, `PUT /api/roles/[id]`, `DELETE /api/roles/[id]`, dan `GET /api/auth/me`.
-- **Bukti**: `src/app/(app)/roles/page.js:1-624`
-- **Catatan**: Role sistem (`is_system = true`, mis. admin/operator/qa/maintainer) dikunci key dan penghapusannya.
+- **Bukti**: `src/app/(app)/roles/page.js:1-655`
+- **Catatan**: Role sistem (`is_system = true`, mis. admin/operator/qa/maintainer) dikunci key dan penghapusannya. Aksi mutasi role (tambah, edit, hapus) dilindungi verifikasi password aktif melalui `ReAuthModal`.
 
 ---
 
@@ -1406,6 +1452,30 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
+### `migrations/008_dual_verification_batch_records.sql`
+- **Tipe**: SQL Migration
+- **Fungsi**: Menambahkan kolom `verifier` (text) dan `verifier_username` (text) ke tabel `batch_records` untuk mencatat identitas verifikator (operator kedua / self-verification) yang memverifikasi data batch sebelum eksekusi START.
+- **Export utama**: DDL SQL (`ALTER TABLE public.batch_records ADD COLUMN IF NOT EXISTS verifier text, ADD COLUMN IF NOT EXISTS verifier_username text;`)
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Dieksekusi via psql atau script runner migrasi database
+- **Efek samping / dependensi eksternal**: Menambahkan dua kolom baru pada skema tabel `batch_records` beserta komentar kolom.
+- **Bukti**: `migrations/008_dual_verification_batch_records.sql:1-14`
+- **Catatan**: Disertai skrip rollback `migrations/008_dual_verification_batch_records_rollback.sql`.
+
+---
+
+### `migrations/008_dual_verification_batch_records_rollback.sql`
+- **Tipe**: SQL Migration Rollback
+- **Fungsi**: Membatalkan migrasi 008 dengan menghapus kolom `verifier` dan `verifier_username` dari tabel `batch_records`.
+- **Export utama**: DDL SQL (`ALTER TABLE public.batch_records DROP COLUMN IF EXISTS verifier, DROP COLUMN IF EXISTS verifier_username;`)
+- **Meng-import (internal)**: Tidak ada
+- **Dipakai oleh**: Dieksekusi saat rollback skema 008
+- **Efek samping / dependensi eksternal**: Menghapus kolom verifikator dari tabel `batch_records`.
+- **Bukti**: `migrations/008_dual_verification_batch_records_rollback.sql:1-7`
+- **Catatan**: Disediakan sebagai mitigasi pembatalan migrasi 008.
+
+---
+
 ### `src/components/SearchableCombobox.js`
 - **Tipe**: Client Component / Input Combobox ("use client")
 - **Fungsi**: Antarmuka dropdown pencarian yang mendukung seleksi opsi master sekaligus pengisian nilai teks manual (free text), dilengkapi navigasi keyboard (panah atas/bawah, Enter, Escape) dan penutupan otomatis saat klik di luar area.
@@ -1486,7 +1556,7 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 - **Dipakai oleh**: `src/app/api/plc-manual/route.js`, `src/app/(app)/manual/page.js`
 - **Efek samping / dependensi eksternal**: Tidak ada.
 - **Bukti**: `src/lib/plcManualCatalog.js:1-66`
-- **Catatan**: Validasi `checkManualCommand` memastikan katup steam hanya dapat dibuka saat pintu tertutup rapat dan seal aktif, serta melarang pengaktifan bersamaan antara katup steam dan cooling.
+- **Catatan**: Validasi `checkManualCommand` memastikan katup steam hanya dapat dibuka saat pintu tertutup rapat dan seal aktif, serta melarang pengaktifan bersamaan antara katup steam dan cooling. Label katup pendingin diperjelas: Cooling 1 (`COOLING_1`) adalah Cooling Water PHE (V2-1), Cooling 2 (`COOLING_2`) adalah Cooling Water Spray (V2-2).
 
 ---
 
@@ -1671,32 +1741,32 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 - **Meng-import (internal)**: Tidak ada (hanya konstanta dan fungsi murni).
 - **Dipakai oleh**: `src/app/(app)/audit-log/page.js`, `src/app/print/audit-log/page.js`, `src/app/api/audit-log/export/route.js`, `src/lib/auditActionLabels.test.mjs`
 - **Efek samping / dependensi eksternal**: Tidak ada (fungsi murni).
-- **Bukti**: `src/lib/auditActionLabels.js:1-108`
-- **Catatan**: Memetakan 54 nama aksi unik sistem SCADA (termasuk aksi formula, produk, spesifikasi, batch, ekspor data, dan manajemen backup). Kode mentah di database tetap dipertahankan untuk kebutuhan filter, ekspor JSON, dan pencarian SQL.
+- **Bukti**: `src/lib/auditActionLabels.js:1-98`
+- **Catatan**: Memetakan 56 nama aksi unik sistem SCADA (termasuk aksi formula, produk, spesifikasi, batch, ekspor data, manajemen backup, dan `settings_update`). Kode mentah di database tetap dipertahankan untuk kebutuhan filter, ekspor JSON, dan pencarian SQL.
 
 ---
 
 ### `src/lib/auditActionLabels.test.mjs`
 - **Tipe**: Test / Unit Test
-- **Fungsi**: Memverifikasi 171 skenario pemetaan label aksi audit (mencakup seluruh 54 aksi sistem), penentuan tone warna, penanganan nilai null/undefined/string kosong, serta fallback nilai tak dikenal pada modul `auditActionLabels.js`.
+- **Fungsi**: Memverifikasi 174 skenario pemetaan label aksi audit (mencakup seluruh 56 aksi sistem termasuk `settings_update`), penentuan tone warna, penanganan nilai null/undefined/string kosong, serta fallback nilai tak dikenal pada modul `auditActionLabels.js`.
 - **Export utama**: Tidak ada (script pengujian Node.js).
 - **Meng-import (internal)**: `src/lib/auditActionLabels.js`
 - **Dipakai oleh**: Dijalankan mandiri via CLI (`node src/lib/auditActionLabels.test.mjs`).
-- **Efek samping / dependensi eksternal**: Mencetak hasil pengujian ke stdout (171 pass).
-- **Bukti**: `src/lib/auditActionLabels.test.mjs:1-43`
+- **Efek samping / dependensi eksternal**: Mencetak hasil pengujian ke stdout (174 pass).
+- **Bukti**: `src/lib/auditActionLabels.test.mjs:1-44`
 - **Catatan**: Tidak ada dependensi database atau network.
 
 ---
 
 ### `src/app/print/trend/[batchNo]/page.js`
 - **Tipe**: Client Component / Halaman Cetak Kurva Trend Mandiri ("use client")
-- **Fungsi**: Menyajikan format cetak kurva grafik suhu 9 sensor dan tekanan per nomor batch satu halaman penuh standar A4 landscape, dilengkapi header ringkasan batch, garis bantu fase proses (heat/ster/cool), legend garis, footer durasi proses, blok tanda tangan pengesahan `SignOffBlock`, dan penomoran halaman otomatis.
+- **Fungsi**: Menyajikan format cetak kurva grafik suhu 9 sensor dan tekanan per nomor batch satu halaman penuh standar A4 landscape, dilengkapi header ringkasan batch (Batch No, Amount, Produk, Spesifikasi, Verifikator, Operator, Mesin), garis bantu fase proses (heat/ster/cool), legend garis, footer durasi proses, blok tanda tangan pengesahan `SignOffBlock`, dan penomoran halaman otomatis.
 - **Export utama**: `default function PrintTrendPage`
 - **Meng-import (internal)**: `src/components/PermissionGate.js`, `src/components/SignOffBlock.js`
 - **Dipakai oleh**: Dibuka via tab baru dari tombol "🖨 Cetak / PDF" di `src/app/(app)/trend/page.js`.
 - **Efek samping / dependensi eksternal**: Mengambil data batch & deret sensor via `GET /api/batch-records/[batchNo]`, mengambil profil user via `GET /api/auth/me`, menggunakan Recharts (`LineChart`, `Line`, dll.), memanggil `window.print()`.
 - **Bukti**: `src/app/print/trend/[batchNo]/page.js:1-401`
-- **Catatan**: Dilindungi `PermissionGate resource="trend" minLevel="view"`. Tinggi grafik disesuaikan ke 360px dengan margin kompak agar seluruh konten (header, grafik, footer, dan `SignOffBlock`) muat tepat dalam 1 halaman A4 landscape tanpa terpotong. Menggunakan flag pembatalan `cancelled` pada `useEffect` untuk keamanan cleanup asinkron saat unmount komponen.
+- **Catatan**: Dilindungi `PermissionGate resource="trend" minLevel="view"`. Tinggi grafik disesuaikan ke 360px dengan margin kompak agar seluruh konten (header, grafik, footer, dan `SignOffBlock`) muat tepat dalam 1 halaman A4 landscape tanpa terpotong. Header kini menampilkan nama Verifikator menggantikan Loading No.
 
 ---
 
@@ -1714,24 +1784,24 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/app/(app)/backup/page.js`
 - **Tipe**: Client Component / Halaman Administrasi Backup ("use client")
-- **Fungsi**: Menyajikan antarmuka manajemen backup data: formulir pembuatan backup manual (rentang tanggal tertentu atau seluruh data), konfigurasi backup otomatis terjadwal (toggle aktif, interval harian/mingguan/30 hari, jam eksekusi HH:MM, dan retensi generasi 1-10 file), indikator waktu jatuh tempo berikutnya dan hasil terakhir, serta tabel daftar arsip tersimpan dengan tautan unduhan langsung.
+- **Fungsi**: Menyajikan antarmuka manajemen backup data: formulir pembuatan backup manual (rentang tanggal tertentu atau seluruh data), konfigurasi backup otomatis terjadwal (toggle aktif, interval harian/mingguan/30 hari, jam eksekusi HH:MM, dan retensi generasi 1-10 file), konfigurasi salinan otomatis arsip backup ke direktori tujuan sekunder (`autoCopyEnabled` dan `autoCopyDir`) beserta tombol pengujian direktori, indikator waktu jatuh tempo berikutnya dan hasil terakhir, serta tabel daftar arsip tersimpan dengan tautan unduhan langsung.
 - **Export utama**: `default function BackupPage`
 - **Meng-import (internal)**: `src/lib/permissionCatalog.js` (`hasLevel`)
 - **Dipakai oleh**: Rute `/backup` dalam route group `src/app/(app)/`
-- **Efek samping / dependensi eksternal**: Mengambil status backup via `GET /api/backup`, profil user via `GET /api/auth/me`, memicu backup manual via `POST /api/backup`, menyimpan konfigurasi via `PUT /api/backup`, dan mengunduh berkas arsip via `/api/backup/download`.
-- **Bukti**: `src/app/(app)/backup/page.js:1-283`
-- **Catatan**: Dilindungi izin granular `backup` (`view` untuk melihat status/daftar arsip, `edit` untuk membuat manual, mengubah jadwal, dan mengunduh file). Seluruh pembaruan state pada efek dibungkus di dalam callback promise.
+- **Efek samping / dependensi eksternal**: Mengambil status backup via `GET /api/backup`, profil user via `GET /api/auth/me`, memicu backup manual via `POST /api/backup`, menyimpan konfigurasi via `PUT /api/backup`, menguji folder via `POST /api/backup/check-dir`, dan mengunduh berkas arsip via `/api/backup/download`.
+- **Bukti**: `src/app/(app)/backup/page.js:1-390`
+- **Catatan**: Dilindungi izin granular `backup` (`view` untuk melihat status/daftar arsip dan uji direktori, `edit` untuk membuat manual, mengubah jadwal, dan mengunduh file). Menampilkan feedback hasil salinan otomatis (`autoCopy`) secara instan setelah pembuatan arsip.
 
 ---
 
 ### `src/app/api/backup/route.js`
 - **Tipe**: API Route Handler
-- **Fungsi**: Menyediakan endpoint GET untuk membaca status backup (pengaturan jadwal, waktu eksekusi berikutnya, status berjalan, dan daftar file arsip), PUT untuk memperbarui konfigurasi jadwal backup terjadwal, dan POST untuk mengeksekusi pembuatan backup manual.
+- **Fungsi**: Menyediakan endpoint GET untuk membaca status backup (pengaturan jadwal, waktu eksekusi berikutnya, status berjalan, dan daftar file arsip), PUT untuk memperbarui konfigurasi jadwal backup dan direktori salinan otomatis, dan POST untuk mengeksekusi pembuatan backup manual.
 - **Export utama**: `GET`, `PUT`, `POST`
 - **Meng-import (internal)**: `src/lib/auth.js` (`requirePermission`), `src/lib/backupService.js` (`getStatus`, `updateSettings`, `runBackup`), `src/lib/backupSchedule.js` (`validateSettingsInput`, `parseRange`)
 - **Dipakai oleh**: `src/app/(app)/backup/page.js`
-- **Efek samping / dependensi eksternal**: Membaca cookie sesi, memeriksa otorisasi `backup` (`view` untuk GET, `edit` untuk PUT/POST), membaca/menulis file pengaturan `backup_settings.json`, menjalankan transaksi database baca-saja, dan mencatat jejak audit ke tabel `audit_log`.
-- **Bukti**: `src/app/api/backup/route.js:1-76`
+- **Efek samping / dependensi eksternal**: Membaca cookie sesi, memeriksa otorisasi `backup` (`view` untuk GET, `edit` untuk PUT/POST), membaca/menulis file pengaturan `backup_settings.json` (termasuk `autoCopyEnabled` dan `autoCopyDir`), menjalankan transaksi database baca-saja, dan mencatat jejak audit ke tabel `audit_log`.
+- **Bukti**: `src/app/api/backup/route.js:1-77`
 - **Catatan**: Mengembalikan status 409 bila ada backup lain yang sedang berjalan (kode error `BUSY`).
 
 ---
@@ -1748,15 +1818,27 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ---
 
+### `src/app/api/backup/check-dir/route.js`
+- **Tipe**: API Route Handler
+- **Fungsi**: Memvalidasi keberadaan direktori tujuan sekunder dan menguji izin tulis secara nyata (via pembuatan dan penghapusan file uji sementara) untuk konfigurasi salinan otomatis berkas arsip backup.
+- **Export utama**: `POST`
+- **Meng-import (internal)**: `src/lib/auth.js` (`requirePermission`), `src/lib/backupService.js` (`testDirectoryAccess`)
+- **Dipakai oleh**: Tombol "Uji Direktori" pada antarmuka `src/app/(app)/backup/page.js`
+- **Efek samping / dependensi eksternal**: Membaca cookie sesi, memeriksa otorisasi `backup` level `view`, memanggil `testDirectoryAccess` untuk membuat dan menghapus file `.write_test_*.tmp` pada path yang ditentukan.
+- **Bukti**: `src/app/api/backup/check-dir/route.js:1-33`
+- **Catatan**: Mengembalikan pesan sukses dan path absolut direktori bila dapat diakses, atau pesan galat deskriptif bila izin tulis ditolak.
+
+---
+
 ### `src/lib/backupSchedule.js`
 - **Tipe**: Lib / Logika Jadwal & Penamaan Murni (Universal)
-- **Fungsi**: Menyediakan konstanta pengaturan jadwal backup (`INTERVAL_OPTIONS`, `MIN_GENERATIONS`, `MAX_GENERATIONS`, `RETRY_AFTER_FAIL_MS`, `DEFAULT_SETTINGS`), fungsi normalisasi dan validasi input pengaturan, parser rentang tanggal, kalkulator waktu jatuh tempo (`computeNextDue`, `isDue`), pembuat stempel waktu WIB (`stampWIB`), ekspresi reguler nama file (`SCHEDULED_RE`, `MANUAL_RE`), fungsi format nama file (`scheduledFileName`, `manualFileName`), serta fungsi pemilah generasi usang (`pickOldest`).
+- **Fungsi**: Menyediakan konstanta pengaturan jadwal backup (`INTERVAL_OPTIONS`, `MIN_GENERATIONS`, `MAX_GENERATIONS`, `RETRY_AFTER_FAIL_MS`, `DEFAULT_SETTINGS`), fungsi normalisasi dan validasi input pengaturan (termasuk validasi flag `autoCopyEnabled` dan direktori `autoCopyDir`), parser rentang tanggal, kalkulator waktu jatuh tempo (`computeNextDue`, `isDue`), pembuat stempel waktu WIB (`stampWIB`), ekspresi reguler nama file (`SCHEDULED_RE`, `MANUAL_RE`), fungsi format nama file (`scheduledFileName`, `manualFileName`), serta fungsi pemilah generasi usang (`pickOldest`).
 - **Export utama**: `INTERVAL_OPTIONS`, `MIN_GENERATIONS`, `MAX_GENERATIONS`, `RETRY_AFTER_FAIL_MS`, `DEFAULT_SETTINGS`, `SCHEDULED_RE`, `MANUAL_RE`, `intervalDays`, `normalizeSettings`, `validateSettingsInput`, `parseRange`, `computeNextDue`, `isDue`, `stampWIB`, `scheduledFileName`, `manualFileName`, `pickOldest`
 - **Meng-import (internal)**: `src/lib/dateRange.js` (`buildDateRangeFilter`)
 - **Dipakai oleh**: `src/lib/backupService.js`, `src/app/api/backup/route.js`, `src/lib/backup.test.mjs`
 - **Efek samping / dependensi eksternal**: Tidak ada (fungsi murni tanpa akses fs atau pg).
-- **Bukti**: `src/lib/backupSchedule.js:1-150`
-- **Catatan**: Menggunakan jam lokal PC server (WIB) untuk penamaan file dan evaluasi jadwal jatuh tempo.
+- **Bukti**: `src/lib/backupSchedule.js:1-165`
+- **Catatan**: Menggunakan jam lokal PC server (WIB) untuk penamaan file dan evaluasi jadwal jatuh tempo. Memvalidasi bahwa jika salinan otomatis diaktifkan, direktori tujuan tidak boleh string kosong.
 
 ---
 
@@ -1774,13 +1856,13 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ### `src/lib/backupService.js`
 - **Tipe**: Lib / Layanan Manajemen & Eksekutor Backup (Server-Only)
-- **Fungsi**: Mengelola folder backup (`BACKUP_DIR`), membaca/memperbarui file konfigurasi `backup_settings.json` secara atomik, mengelola kunci eksklusif file concurrency `.backup.lock` (dengan timeout stale 1 jam), menjalankan backup manual maupun terjadwal dengan verifikasi checksum pasca-pembuatan, merotasi berkas terjadwal lama, mencatat audit log aktivitas, dan menjalankan scheduler latar belakang berkala (`startBackupScheduler`).
-- **Export utama**: `backupRoot`, `readSettings`, `updateSettings`, `isRunning`, `listBackups`, `resolveBackupFile`, `getStatus`, `runBackup`, `auditDownload`, `startBackupScheduler`
+- **Fungsi**: Mengelola folder backup (`BACKUP_DIR`), membaca/memperbarui file konfigurasi `backup_settings.json` secara atomik (termasuk preferensi salinan otomatis `autoCopyEnabled` dan `autoCopyDir`), menguji akses tulis direktori sekunder (`testDirectoryAccess`), mengelola kunci eksklusif file concurrency `.backup.lock` (dengan timeout stale 1 jam), menjalankan backup manual maupun terjadwal dengan verifikasi checksum pasca-pembuatan, menyalin arsip otomatis ke folder/drive sekunder, merotasi berkas terjadwal lama, mencatat audit log aktivitas, dan menjalankan scheduler latar belakang berkala (`startBackupScheduler`).
+- **Export utama**: `backupRoot`, `readSettings`, `updateSettings`, `isRunning`, `listBackups`, `resolveBackupFile`, `getStatus`, `runBackup`, `auditDownload`, `testDirectoryAccess`, `startBackupScheduler`
 - **Meng-import (internal)**: `src/lib/db.js`, `src/lib/auditLog.js`, `src/lib/backupArchive.js`, `src/lib/backupSchedule.js`
-- **Dipakai oleh**: `server.js`, `src/app/api/backup/route.js`, `src/app/api/backup/download/route.js`
-- **Efek samping / dependensi eksternal**: Membaca `process.env.BACKUP_DIR`, membaca/menulis sistem berkas lokal via `node:fs/promises`, menjalankan query PostgreSQL, mencatat audit log ke database, menjalankan timer `setInterval` latar belakang pada proses Node.js.
-- **Bukti**: `src/lib/backupService.js:1-309`
-- **Catatan**: Di-import langsung oleh `server.js` (CommonJS / dynamic import) sehingga seluruh impor file internal menggunakan path relatif dengan ekstensi `.js`.
+- **Dipakai oleh**: `server.js`, `src/app/api/backup/route.js`, `src/app/api/backup/download/route.js`, `src/app/api/backup/check-dir/route.js`
+- **Efek samping / dependensi eksternal**: Membaca `process.env.BACKUP_DIR`, membaca/menulis sistem berkas lokal via `node:fs/promises`, menyalin file ZIP ke direktori auto-copy, menjalankan query PostgreSQL, mencatat audit log ke database, menjalankan timer `setInterval` latar belakang pada proses Node.js.
+- **Bukti**: `src/lib/backupService.js:1-365`
+- **Catatan**: Di-import langsung oleh `server.js` (CommonJS / dynamic import) sehingga seluruh impor file internal menggunakan path relatif dengan ekstensi `.js`. Mendukung pencatatan audit log `backup_auto_copy_success` / `backup_auto_copy_failed`.
 
 ---
 
@@ -1890,6 +1972,21 @@ Dokumen ini memuat dokumentasi teknis lengkap dan faktual untuk setiap file dala
 
 ## Change Log
 
+- [2026-11-21] ADDED: Menambahkan dokumentasi teknis 11 berkas baru di codebase: `migrations/008_dual_verification_batch_records.sql`, `migrations/008_dual_verification_batch_records_rollback.sql`, `migrations/009_system_settings.sql`, `migrations/009_system_settings_rollback.sql`, `scripts/clean-db-for-production.sql`, `src/app/(app)/settings/page.js`, `src/app/api/backup/check-dir/route.js`, `src/app/api/settings/route.js`, `src/components/ReAuthModal.js`, `src/lib/settings.js`, dan skrip peluncuran Windows `start-scada.bat`.
+- [2026-11-21] MOVED: Mengganti referensi master CSV tag dari `context/tag_paling_baru.csv` (116 tag) menjadi `context/SiemensS7-200_autoclave_pharma_1.csv` (118 tag, penambahan `DRAIN_COOL` Q1.2 dan `DRAIN_STEAM` Q1.0, serta klarifikasi label Cooling 1 PHE vs Cooling 2 Spray).
+- [2026-11-21] MODIFIED: Memperbarui dokumentasi teknis 33 berkas kode sumber yang diselaraskan:
+  - `src/lib/auth.js` & `src/app/api/auth/login/route.js`: Token JWT & cookie session berdurasi dinamis membaca `system_settings.session_timeout_hours`.
+  - `src/components/ScreenLock.js` & `src/app/api/auth/me/route.js`: Durasi idle lockscreen dinamis membaca `system_settings.lockscreen_idle_minutes`.
+  - `src/components/Navbar.js`: Navigasi Konfigurasi Sistem (`/settings`).
+  - `src/lib/trendRecorder.js`: Fitur auto-stop batch berbasis tekanan bejana ($P_1 \& P_2 \le 0\text{ kPa}$) atau idle fallback dengan opsi pulsa PLC `STOP` (M1.5).
+  - `src/lib/batchFinalize.js`: Kalkulasi `total_time_min` secara resmi menggunakan `MAX(ts)` dari baris trend terakhir.
+  - `src/components/StartDialog.js` & `src/app/api/batch/start/route.js`: Alur 2-step Self-Verification dengan password operator, verifikasi bcrypt, dan pencatatan `verifier` / `verifier_username` (`migrations/008`).
+  - `src/app/(app)/roles/page.js` & `src/app/(app)/users/page.js`: Pengamanan mutasi sensitif dengan modal re-autentikasi `ReAuthModal`.
+  - `src/app/(app)/backup/page.js`, `src/app/api/backup/route.js`, `src/lib/backupSchedule.js`, & `src/lib/backupService.js`: Fitur salinan otomatis arsip backup (`autoCopyEnabled`, `autoCopyDir`) dan pengujian direktori (`/api/backup/check-dir`).
+  - `src/lib/atvProcess.js`, `src/lib/plc.js`, & `src/components/AtvDiagram.js`: Integrasi 100% tag live untuk PHE drain (`DRAIN_STEAM`, `DRAIN_COOL`) dan udara tekan (`AIR_CMBR`).
+  - `src/app/(app)/data-report/[batchNo]/page.js`, `src/app/api/batch-records/[batchNo]/route.js`, `src/app/api/batch-records/export/route.js`, serta lembar cetak: Penyelarasan kolom verifier dan amount.
+  - `src/lib/auditActionLabels.js` & `src/lib/auditActionLabels.test.mjs`: Penambahan aksi `settings_update` (total 56 aksi unik, 174 unit test lolos).
+  - `package.json` & `start-scada.bat`: Script `start` menggunakan `cross-env NODE_ENV=production node server.js`.
 - [2026-11-14] ADDED: Menambahkan dokumentasi teknis fitur Menu Konfigurasi Sistem & Penghentian Otomatis Batch Berdasarkan Tekanan Bejana ($P_1 \& P_2 \le 0\text{ kPa}$): `migrations/009_system_settings.sql`, `migrations/009_system_settings_rollback.sql`, `src/lib/settings.js`, `src/app/api/settings/route.js`, dan `src/app/(app)/settings/page.js`.
 - [2026-11-14] MODIFIED: Memperbarui integrasi sistem:
   - `src/lib/trendRecorder.js`: Menambahkan logika auto-stop batch otomatis saat sterilisasi telah selesai (fase >= 4) dan tekanan $P_1 \& P_2 \le$ ambang batas (default 0 kPa) stabil selama 10 detik, dengan opsi otomatis mengirim pulsa `STOP` (`M1.5`) ke PLC untuk mereset mesin ke Idle dan mencatat jejak audit lengkap.

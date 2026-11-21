@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { hasLevel } from "@/lib/permissionCatalog";
 import PermissionGate from "@/components/PermissionGate";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // ── Helper: petakan nama field snake_case dari API ke camelCase key form ──────
 // Dipakai saat menampilkan error invalidFields dari server per-field di form.
@@ -121,6 +122,7 @@ function FieldRow({ field, value, onChange, disabled }) {
 // Komponen utama halaman
 // ──────────────────────────────────────────────
 function FormulaContent() {
+    const confirm = useConfirm();
     const [formulas, setFormulas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedNo, setSelectedNo] = useState(null);
@@ -408,7 +410,14 @@ function FormulaContent() {
             return;
         }
 
-        if (!window.confirm(`Yakin hapus formula ${selectedNo}? Tindakan ini tidak bisa dibatalkan.`)) return;
+        const ok = await confirm({
+            title: `Hapus Formula ${selectedNo}?`,
+            description: "Tindakan ini tidak bisa dibatalkan. Data formula akan dihapus secara permanen dari sistem.",
+            confirmText: "Hapus Permanen",
+            cancelText: "Batalkan",
+            variant: "danger",
+        });
+        if (!ok) return;
 
         setSaving(true);
         try {

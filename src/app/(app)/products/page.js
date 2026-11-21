@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { hasLevel } from "@/lib/permissionCatalog";
 import PermissionGate from "@/components/PermissionGate";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 function Toast({ toast }) {
     if (!toast) return null;
@@ -52,6 +53,7 @@ const inputClass =
 const labelClass = "block text-xs text-[#1E2A2E] font-bold uppercase mb-1";
 
 function MasterProductsContent() {
+    const confirm = useConfirm();
     // Tab: "products" (Nama Produk) | "specs" (Spesifikasi Kemasan)
     const [activeTab, setActiveTab] = useState("products");
 
@@ -77,9 +79,7 @@ function MasterProductsContent() {
     const [formSaving, setFormSaving] = useState(false);
     const [formError, setFormError] = useState(null);
 
-    // Modal Delete
-    // null | { tab: "products"|"specs", item: object }
-    const [deleteTarget, setDeleteTarget] = useState(null);
+    // State loading untuk hapus
     const [deleting, setDeleting] = useState(false);
 
     const showToast = useCallback((msg, type = "success") => {
@@ -206,13 +206,23 @@ function MasterProductsContent() {
     }
 
     // ── Delete Handler ────────────────────────────────────────────────────────
-    async function handleConfirmDelete() {
-        if (!deleteTarget || !canEdit) return;
+    async function handleDelete(tab, item) {
+        if (!canEdit) return;
+        const isProd = tab === "products";
+        const label = isProd ? item.name : item.spec;
+        const typeLabel = isProd ? "Nama Produk" : "Spesifikasi Kemasan";
+
+        const ok = await confirm({
+            title: `Hapus ${typeLabel}?`,
+            description: `"${label}" akan dihapus dari master data. Tindakan ini akan dicatat ke dalam Audit Log.`,
+            confirmText: "Ya, Hapus",
+            cancelText: "Batalkan",
+            variant: "danger",
+        });
+        if (!ok) return;
+
         setDeleting(true);
-        const isProd = deleteTarget.tab === "products";
-        const endpoint = isProd
-            ? `/api/products/${deleteTarget.item.id}`
-            : `/api/product-specs/${deleteTarget.item.id}`;
+        const endpoint = isProd ? `/api/products/${item.id}` : `/api/product-specs/${item.id}`;
 
         try {
             const res = await fetch(endpoint, { method: "DELETE" });
@@ -221,9 +231,7 @@ function MasterProductsContent() {
                 showToast(json.error ?? "Gagal menghapus", "error");
                 return;
             }
-            const label = isProd ? deleteTarget.item.name : deleteTarget.item.spec;
             showToast(`"${label}" berhasil dihapus dari master`);
-            setDeleteTarget(null);
             fetchAllData();
         } catch {
             showToast("Gagal menghapus data", "error");
@@ -432,8 +440,9 @@ function MasterProductsContent() {
                                                             {/* Tombol Hapus */}
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setDeleteTarget({ tab: "products", item: prod })}
-                                                                className="px-2.5 py-1 bg-rose-50 text-rose-900 border border-rose-300 hover:bg-rose-100 rounded text-xs font-bold transition-colors inline-flex items-center gap-1"
+                                                                onClick={() => handleDelete("products", prod)}
+                                                                className="px-2.5 py-1 bg-scada-stop/10 text-scada-stop border border-scada-stop/30 hover:bg-scada-stop/20 rounded text-xs font-bold transition-colors inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                disabled={deleting}
                                                             >
                                                                 🗑️ Hapus
                                                             </button>
@@ -571,8 +580,9 @@ function MasterProductsContent() {
                                                             {/* Tombol Hapus */}
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setDeleteTarget({ tab: "specs", item: sp })}
-                                                                className="px-2.5 py-1 bg-rose-50 text-rose-900 border border-rose-300 hover:bg-rose-100 rounded text-xs font-bold transition-colors inline-flex items-center gap-1"
+                                                                onClick={() => handleDelete("specs", sp)}
+                                                                className="px-2.5 py-1 bg-scada-stop/10 text-scada-stop border border-scada-stop/30 hover:bg-scada-stop/20 rounded text-xs font-bold transition-colors inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                disabled={deleting}
                                                             >
                                                                 🗑️ Hapus
                                                             </button>
@@ -670,46 +680,6 @@ function MasterProductsContent() {
                 </div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════════════════ */}
-            {/* MODAL KONFIRMASI HAPUS */}
-            {/* ═══════════════════════════════════════════════════════════════════ */}
-            {deleteTarget && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-white rounded-lg border border-red-300 shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-150">
-                        <div className="w-12 h-12 rounded-full bg-red-100 border border-red-300 flex items-center justify-center mx-auto mb-3 text-red-600 text-xl font-bold">
-                            ⚠️
-                        </div>
-                        <h3 className="text-base font-bold text-[#1E2A2E] mb-2">
-                            Hapus {deleteTarget.tab === "products" ? "Nama Produk" : "Spesifikasi"}?
-                        </h3>
-                        <p className="text-xs text-[#5C6B6A] mb-5 leading-relaxed font-medium">
-                            Anda yakin ingin menghapus{" "}
-                            <strong className="text-[#1E2A2E]">
-                                &quot;{deleteTarget.tab === "products" ? deleteTarget.item.name : deleteTarget.item.spec}&quot;
-                            </strong>{" "}
-                            dari master? Tindakan ini akan dicatat ke dalam Audit Log.
-                        </p>
-                        <div className="flex gap-2.5">
-                            <button
-                                type="button"
-                                disabled={deleting}
-                                onClick={handleConfirmDelete}
-                                className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-sm transition-colors disabled:opacity-50 shadow-sm"
-                            >
-                                {deleting ? "Menghapus…" : "Ya, Hapus"}
-                            </button>
-                            <button
-                                type="button"
-                                disabled={deleting}
-                                onClick={() => setDeleteTarget(null)}
-                                className="px-5 py-2 border border-[#D8DEDC] text-[#5C6B6A] hover:text-[#1E2A2E] hover:bg-gray-100 rounded font-semibold text-sm transition-colors"
-                            >
-                                Batal
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

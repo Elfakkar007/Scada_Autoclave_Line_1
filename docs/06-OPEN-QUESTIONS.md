@@ -103,6 +103,30 @@ Setiap poin di bawah ini tidak dapat dipastikan hanya dari membaca kode sumber d
     - **Status**: `[TERVERIFIKASI DARI KODE: gap audit label UI]`
     - **Fakta Kode**: Handler penyimpanan override HMI pengguna mencatat aksi `"update_hmi_overrides"` ke tabel `audit_log`, namun kamus translasi `AUDIT_ACTIONS` pada `src/lib/auditActionLabels.js` belum mendaftarkan aksi ini. Akibatnya, pada tampilan web dan lembar cetak log audit, label aksi menggunakan fallback string mentah `"update_hmi_overrides"` dengan tone badge netral (`idle`).
 
+20. **Bypass Kesiapan Mesin Aktif di Dashboard (`startAllowed = true`)**
+    - **Lokasi Kode**: `src/app/(app)/page.js:498-502`
+    - **Status**: `[TERVERIFIKASI DARI KODE: TEMUAN KRITIS RISIKO TINGGI]`
+    - **Fakta Kode**: Kode logika evaluasi kesiapan mesin aktual dinonaktifkan dengan komentar:
+      `// const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`
+      dan digantikan oleh baris bypass aktif tanpa pengaman:
+      `const startAllowed = true;`
+      Dampaknya: Tombol START di dashboard web selalu menyala dan dapat diklik kapan saja oleh operator tanpa memvalidasi apakah PLC terhubung, fase mesin berada di Idle (1), atau proses lain sedang berjalan. Penolakan baru terjadi di backend saat request POST dikirim, namun antarmuka tidak memberikan proteksi visual awal.
+
+21. **Ketergantungan Hilang `cross-env` di `package.json`**
+    - **Lokasi Kode**: `package.json:8` (`"start": "cross-env NODE_ENV=production node server.js"`)
+    - **Status**: `[TERVERIFIKASI DARI KODE: dependensi hilang dari manifest]`
+    - **Fakta Kode**: Skrip `start` memanggil CLI `cross-env`. Paket `cross-env` versi `^10.1.0` terpasang di folder `node_modules` dan tercatat di `package-lock.json:23`, tetapi hilang dari `devDependencies` atau `dependencies` pada `package.json`. Pada deployment instalasi baru tanpa lockfile, eksekusi `npm start` berpotensi gagal melempar pesan galat perintah tidak ditemukan.
+
+22. **Status Penerapan Migrasi 008 dan 009 pada Server Database Produksi**
+    - **Lokasi Kode**: `src/app/api/batch/start/route.js:703`, `src/lib/settings.js:15-30`
+    - **Status**: `[TIDAK TERVERIFIKASI: status penerapan migrasi 008 & 009 pada PostgreSQL pabrik]`
+    - **Fakta Kode**: Kode backend `batch/start` secara eksplisit memasang blok fallback bila kolom `verifier` belum ada (`colErr.code === "42703"`). Jika migrasi `008_dual_verification_batch_records.sql` atau `009_system_settings.sql` belum dieksekusi di server hosting pabrik, pencatatan identitas verifikator batch dan modul konfigurasi sistem dinamis akan memicu error relasi/kolom tidak ditemukan.
+
+23. **Kebijakan & Prosedur Penggunaan Skrip Pembersihan Produksi (`scripts/clean-db-for-production.sql`)**
+    - **Lokasi Kode**: `scripts/clean-db-for-production.sql:1-32`
+    - **Status**: `[TIDAK TERVERIFIKASI: SOP otorisasi eksekusi skrip destruktif database]`
+    - **Fakta Kode**: Skrip ini menjalankan perintah `TRUNCATE TABLE batch_records CASCADE; TRUNCATE TABLE alarm_log CASCADE; TRUNCATE TABLE audit_log CASCADE;`. Skrip bersifat sangat destruktif dan menghapus seluruh riwayat batch, alarm, serta jejak audit cGMP/FDA 21 CFR Part 11. Belum ada dokumentasi SOP tertulis kapan skrip ini boleh dijalankan.
+
 ---
 
 ## 2. Kode Mati / Bagian Terisolasi (Dead Code)
@@ -138,10 +162,17 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
    - `migrations/005_drop_legacy_role.sql` & `005_drop_legacy_role_rollback.sql`
    - `migrations/006_add_bottle_count.sql` & `006_add_bottle_count_rollback.sql`
    - `migrations/007_hmi_overrides.sql` & `007_hmi_overrides_rollback.sql`
+   - `migrations/008_dual_verification_batch_records.sql` & `008_dual_verification_batch_records_rollback.sql`
+   - `migrations/009_system_settings.sql` & `009_system_settings_rollback.sql`
    - `migrations/backup_271026.sql`
-   - **Keterangan**: Berkas DDL SQL yang dieksekusi langsung oleh database administrator menggunakan klien PostgreSQL (`psql` atau pgAdmin), bukan melalui modul import aplikasi JavaScript.
+   - `scripts/clean-db-for-production.sql`
+   - **Keterangan**: Berkas DDL/DML SQL yang dieksekusi langsung oleh database administrator menggunakan klien PostgreSQL (`psql` atau pgAdmin), bukan melalui modul import aplikasi JavaScript.
 
-5. **Berkas Pengujian Mandiri Unit Test Node.js**:
+5. **Skrip Otomasi Peluncuran Windows**:
+   - `start-scada.bat`
+   - **Keterangan**: Berkas batch Windows untuk melakukan kompilasi otomatis (`npm run build`) dan menjalankan server produksi SCADA (`npm start`), dieksekusi dari desktop operator.
+
+6. **Berkas Pengujian Mandiri Unit Test Node.js**:
    - `src/lib/f0.test.mjs`
    - `src/lib/alarmEpisodes.test.mjs`
    - `src/lib/alarmView.test.mjs`
@@ -150,11 +181,11 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
    - `src/lib/backup.test.mjs`
    - **Keterangan**: Berkas script pengujian Node.js yang dijalankan secara mandiri untuk memverifikasi logika modul tanpa di-bundle ke dalam antarmuka web.
 
-6. **Test Mock Door Operate**:
+7. **Test Mock Door Operate**:
    - `fase1/tests/plc_door_mock.mjs`
    - **Keterangan**: Berkas pengujian mock terpisah yang dijalankan via `node fase1/tests/plc_door_mock.mjs`. Berisi 21 tes mock pagar (`checkDoorCommand`) dan mekanisme deadman (`createDoorSafety`). Seluruh 21 pengujian berhasil lolos (pass).
 
-7. **Test Pemeriksaan Database Backup**:
+8. **Test Pemeriksaan Database Backup**:
    - `fase1/tests/backup_check.mjs`
    - **Keterangan**: Berkas script pengujian baca-saja yang dijalankan via `node fase1/tests/backup_check.mjs` untuk memverifikasi pembuatan arsip backup terhadap PostgreSQL riil, membandingkan jumlah baris, dan memvalidasi checksum SHA-256. Bersifat non-destruktif (membersihkan arsip sementara setelah pengujian).
 
@@ -163,6 +194,17 @@ Berdasarkan analisis graf dependensi impor, berkas-berkas berikut tidak di-impor
 ## 4. Hal yang Perlu Dikonfirmasi oleh Developer / Tim Otomasi
 
 1. **Konfirmasi Skala Pengukuran Konduktivitas & Sensor Level Air**:
+   - Perlu penentuan rumus konversi resmi untuk tag `L` (VW122) dan `WATER` (VW124) pada `src/lib/plc.js:338, 371`.
+2. **Pengembalian Evaluasi Kesiapan Mesin di Dashboard (`startAllowed`)**:
+   - Baris `const startAllowed = true;` di `src/app/(app)/page.js:502` harus segera dikembalikan ke evaluasi riil: `!noData && data.plcOk === true && phaseRaw === 1 && !data.running;` sebelum sistem diserahkan ke operator pabrik.
+3. **Penyelarasan Dependensi `cross-env` di `package.json`**:
+   - Tambahkan `"cross-env": "^10.1.0"` ke bagian `devDependencies` pada `package.json` agar `npm start` dapat dieksekusi dengan aman di seluruh mesin tanpa kegagalan command missing.
+4. **Verifikasi Penerapan Migrasi 008 dan 009**:
+   - Pastikan skrip `migrations/008_dual_verification_batch_records.sql` dan `migrations/009_system_settings.sql` telah dieksekusi secara sukses di pgAdmin server produksi.
+5. **Kebijakan Eksekusi Skrip `scripts/clean-db-for-production.sql`**:
+   - Dilarang mengeksekusi skrip ini di server produksi tanpa izin tertulis penjamin mutu (QA) karena akan menghapus seluruh data batch dan jejak audit cGMP secara permanen.
+6. **Pendaftaran Label Translasi Aksi Audit `update_hmi_overrides`**:
+   - Perlu penambahan entri kamus pada `src/lib/auditActionLabels.js` untuk aksi `update_hmi_overrides` (misal label: "Ubah Izin HMI User", tone: `water`) serta unit test di `auditActionLabels.test.mjs`.
    - Perlu konfirmasi dari tim instrumen/otomasi mengenai rentang output sinyal analog transmitter 4-20mA (atau 0-10V) yang masuk ke register VW122 (konduktivitas) dan VW124 (level bejana) agar visualisasi bar level dan angka konduktivitas pada laporan memiliki satuan resmi (misal: µS/cm atau % volume).
 2. **Ketiadaan Fallback String pada `JWT_SECRET`**:
    - Pada `src/lib/auth.js:19` dan `src/proxy.js:5`, fallback secret string dev bawaan telah dihapus total (`new TextEncoder().encode(process.env.JWT_SECRET)`). Pastikan variabel `JWT_SECRET` selalu terdefinisi pada environment server hosting produksi (`.env.local` / system env) agar verifikasi JWT tidak memicu galat otentikasi.
@@ -231,10 +273,16 @@ Poin-poin di bawah ini sebelumnya merupakan temuan kode mati, inkonsistensi, ata
 15. **Resolusi Masalah ScreenLock Lolos Saat Refresh Halaman (F5)**
     - **Status**: `RESOLVED` (`src/components/ScreenLock.js:90-118`, `src/app/login/page.js:192`)
     - **Keterangan**: Masalah penguncian layar otomatis (7 menit inaktivitas) yang sebelumnya lolos bila halaman web di-refresh (F5) telah dituntaskan dengan menyimpan status penguncian dan waktu inaktivitas di `localStorage` browser (`scada_screen_locked = "true"`). Saat pengguna me-refresh halaman, komponen langsung mengunci layar seketika pada saat mount via hydration-safe timeout. Event `storage` juga menyinkronkan status penguncian/buka kunci secara instan ke seluruh tab browser SCADA yang terbuka.
+16. **Integrasi Live Tag Katup Drain PHE (`DRAIN_STEAM` Q1.0 dan `DRAIN_COOL` Q1.2)**
+    - **Status**: `RESOLVED` (`context/SiemensS7-200_autoclave_pharma_1.csv`, `src/lib/plc.js`, `src/lib/atvProcess.js`, `src/components/AtvDiagram.js`)
+    - **Keterangan**: Katup pembuangan kondensat uap PHE (`DRAIN_STEAM` Q1.0) dan air pendingin PHE (`DRAIN_COOL` Q1.2) kini 100% terhubung ke tag live PLC nyata pada `TAG_MAP` dan diagram visual, mengeliminasi estimasi status simbolik ("≈") berbasis fase proses.
+17. **Formula Total Waktu Batch (`total_time_min`) pada Finalisasi**
+    - **Status**: `RESOLVED` (`src/lib/batchFinalize.js:111-120`)
+    - **Keterangan**: Catatan TODO pada `batchFinalize.js` mengenai definisi `Total.Time` telah diselesaikan secara definitif: waktu total batch kini resmi dihitung dari `run_begin` hingga timestamp baris trend terakhir yang terekam (`MAX(ts)`), mencakup durasi aktual hingga operator menekan tombol stop atau auto-stop bejana dingin selesai.
 
 ---
 
-## 6. Daftar Analisis Risiko Teknis & Keterbatasan Kode (Audit 2026-11-05)
+## 6. Daftar Analisis Risiko Teknis & Keterbatasan Kode (Audit 2026-11-21)
 
 Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, penanganan galat kosong, dan gap pengujian otomatis yang ditemukan pada audit kode:
 
@@ -242,21 +290,24 @@ Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, pe
    - **Lokasi**: `src/app/api/batch/start/route.js:353-358`
    - **Risiko**: Komentar kode mencatat bahwa guard web dicabut karena mesin autoclave tetap dapat memulai proses pada SCADA lama saat M6.0 aktif (uji lapangan 10 Okt 2026). Dari analisis file ladder AWL (`context/export_atv.awl:125-170`), M6.0 berfungsi sebagai bypass interlock tekanan pelepasan seal dan pembukaan pintu. Memulai siklus saat M6.0 aktif sepenuhnya bergantung pada proteksi internal ladder PLC.
 
-2. **Komentar Toggle Uji `startAllowed` di Dashboard**:
-   - **Lokasi**: `src/app/(app)/page.js:493-494`
-   - **Risiko**: Bukan bypass aktif saat ini (logika asli di baris 492 aktif penuh). Namun keberadaan baris komentar `// const startAllowed = true;` berisiko tidak sengaja diaktifkan kembali oleh pengembang saat maintenance tanpa verifikasi koneksi mesin fisik.
+2. **TEMUAN KRITIS: Bypass Kesiapan Mesin Aktif di Dashboard (`startAllowed = true`)**:
+   - **Lokasi**: `src/app/(app)/page.js:498-502`
+   - **Risiko**: SANGAT TINGGI. Baris evaluasi riil kesiapan mesin dinonaktifkan:
+     `// const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`
+     dan digantikan secara hardcoded oleh:
+     `const startAllowed = true;`
+     Hal ini menyebabkan tombol START di Dashboard selalu menyala dan dapat diklik kapan saja oleh operator tanpa memeriksa apakah PLC terhubung, fase mesin berada di Idle (1), atau proses lain sedang berjalan. Penolakan baru terjadi di backend bila mesin tidak siap, namun antarmuka tidak memberikan proteksi visual awal.
 
 3. **Keterbatasan Pengaman Rantai Door Operate saat Server Mati**:
    - **Lokasi**: `src/lib/plcDeadman.js:14-17`, `server.js:92-105`
    - **Risiko**: Mekanisme deadman rantai berjalan di memori Node.js (`setTimeout` 1000 ms). Bila proses server atau PC SCADA mati mendadak saat bit `M11.0` (Forward) atau `M11.1` (Backward) sedang bernilai `true`, server tidak dapat menulis `false`. Rantai fisik akan terus bergerak sampai sensor batas mesin (`I1.7`/`I2.0`) atau interlock PLC memotongnya. Penanganan saat ini: `server.js` menulis `false` secara best-effort saat startup (baris 101–111). Perlindungan mutlak membutuhkan timer internal pada ladder PLC.
 
 4. **[TERATASI] Ketiadaan Berkas CSV Resmi untuk 11 Tag Kontrol Manual**:
-   - **Lokasi**: `src/lib/plcManualCatalog.js:16-34`, `context/tag_paling_baru.csv`
-   - **Status**: Telah diselesaikan melalui kehadiran `context/tag_paling_baru.csv` (116 tag). Seluruh 11 tag kontrol manual (`MANUAL_OPER`, `MAN_STEAM_1` s.d. `MAN_BUZZER`) dan tag kalibrasi `CAL_WATER` kini telah resmi terdaftar di baris 31 dan 58–68 master CSV.
+   - **Lokasi**: `src/lib/plcManualCatalog.js:16-34`, `context/SiemensS7-200_autoclave_pharma_1.csv`
+   - **Status**: Telah diselesaikan penuh melalui kehadiran berkas master CSV 118 tag.
 
 5. **Catatan TODO Kritis Terbengkalai di Pustaka Inti**:
    - `src/lib/batchFinalize.js:22`: `// TODO: konfirmasikan ke QA apakah kode 5 (cooling) sudah cukup sebagai bukti sterilisasi selesai.`
-   - `src/lib/batchFinalize.js:115`: `// TODO (pertanyaan terbuka #2): definisi Total.Time di printout lama belum pasti`
    - `src/lib/plc.js:338, 339, 371, 372`: Formula scaling konduktivitas (`L` / VW122) dan level air bejana (`WATER` / VW124) belum dikonfirmasi.
 
 6. **Penyembunyian Peringatan Kompiler (21 Baris `eslint-disable`)**:
@@ -272,10 +323,20 @@ Berikut adalah rangkuman inventarisasi risiko teknis, kode komentar pengaman, pe
 9. **[TERATASI] Peringatan Linting `react-hooks/set-state-in-effect` pada Halaman Cetak Trend**:
    - **Status**: Telah diselesaikan pada `src/app/print/trend/[batchNo]/page.js:176` via `Promise.resolve().then(...)`. Hasil uji linter kini bersih 100% (0 error, 0 warning).
 
+10. **Ketergantungan Hilang `cross-env` di `package.json`**:
+    - **Lokasi**: `package.json:8`
+    - **Risiko**: Script `npm start` memanggil `cross-env`, namun paket `cross-env` tidak terdaftar di `devDependencies` maupun `dependencies` pada `package.json`. Hal ini berisiko menyebabkan kegagalan deployment pada sistem baru jika dependensi dipasang tanpa `package-lock.json`.
+
+11. **Skrip Pembersihan Database Produksi Sangat Destruktif**:
+    - **Lokasi**: `scripts/clean-db-for-production.sql`
+    - **Risiko**: Skrip ini menjalankan perintah `TRUNCATE TABLE batch_records CASCADE; TRUNCATE TABLE alarm_log CASCADE; TRUNCATE TABLE audit_log CASCADE;`. Sangat berbahaya jika tidak sengaja dijalankan pada instance database produksi pabrik karena menghapus seluruh riwayat cGMP permanen.
+
 ---
 
 ## Change Log
 
+- [2026-11-21] ADDED: Menambahkan butir 20 (TEMUAN KRITIS: Bypass kesiapan mesin aktif di `page.js:502`), butir 21 (Ketergantungan hilang `cross-env` di `package.json`), butir 22 (Status eksekusi migrasi 008 dan 009 di produksi), dan butir 23 (Kebijakan skrip pembersihan destruktif `clean-db-for-production.sql`) pada Seksi 1 dan Seksi 6.
+- [2026-11-21] RESOLVED: Menambahkan item teratasi 16 (Live tag katup PHE `DRAIN_STEAM` Q1.0 dan `DRAIN_COOL` Q1.2 pada master CSV 118 tag) dan item teratasi 17 (Formula resmi waktu total batch `total_time_min` berbasis `MAX(ts)` di `batchFinalize.js`) pada Seksi 5.
 - [2026-11-07] RESOLVED: Memindahkan isu pemetaan buzzer M10.6 dan motor rantai M11.0/M11.1 ke Seksi 5 setelah verifikasi fisik di lapangan oleh user membuktikan buzzer berbunyi nyata dan rantai berputar kontinyu.
 - [2026-11-07] RESOLVED: Menambahkan item teratasi 15 pada Seksi 5 terkait penyelesaian bug ScreenLock lolos saat refresh F5 via penyimpanan persisten localStorage dan sinkronisasi multi-tab.
 - [2026-11-07] ADDED: Menambahkan butir 18 (Status eksekusi migrasi 007 di database produksi) dan butir 19 (Gap audit label `update_hmi_overrides` di `auditActionLabels.js`) pada Seksi 1. Menambahkan migrasi 007 pada Seksi 3, serta butir 7 dan 8 pada Seksi 4.

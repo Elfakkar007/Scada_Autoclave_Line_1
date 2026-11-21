@@ -32,27 +32,30 @@ Pengguna memilih akun dari dropdown nama pengguna aktif dan memasukkan password.
 ## 2. Fitur Pengunci Layar Otomatis & Buka Kunci (Screen Lock)
 
 ### Deskripsi Faktual
-Setelah 7 menit tanpa adanya interaksi fisik (pergerakan mouse, penekanan keyboard, sentuhan, atau scroll), antarmuka menampilkan overlay pengunci layar penuh untuk mengamankan konsol SCADA. Pengguna harus memasukkan kembali kata sandi akunnya untuk membuka kunci tanpa membatalkan proses yang sedang berjalan.
+Setelah durasi inaktivitas tanpa adanya interaksi fisik (pergerakan mouse, penekanan keyboard, sentuhan, atau scroll) yang dikonfigurasi secara dinamis melalui Konfigurasi Sistem (`system_settings.lockscreen_idle_minutes`, default 7 menit, rentang 1–60 menit), antarmuka menampilkan overlay pengunci layar penuh untuk mengamankan konsol SCADA. Pengguna harus memasukkan kembali kata sandi akunnya untuk membuka kunci tanpa membatalkan proses yang sedang berjalan.
 
-Status penguncian layar kini bersifat **persisten tahan refresh halaman (F5) dan tersinkronisasi lintas-tab (multi-tab sync)** menggunakan `localStorage` browser. Jika layar dalam kondisi terkunci dan halaman di-refresh, antarmuka langsung kembali terkunci seketika tanpa jeda kebocoran visual data. Jika layar terkunci di salah satu tab, seluruh tab browser SCADA yang terbuka otomatis ikut terkunci seketika.
+Status penguncian layar bersifat **persisten tahan refresh halaman (F5) dan tersinkronisasi lintas-tab (multi-tab sync)** menggunakan `localStorage` browser. Jika layar dalam kondisi terkunci dan halaman di-refresh, antarmuka langsung kembali terkunci seketika tanpa jeda kebocoran visual data. Jika layar terkunci di salah satu tab, seluruh tab browser SCADA yang terbuka otomatis ikut terkunci seketika.
 
 ### Rantai Alur Kode
 1. **Layout Wrapper**: Komponen `src/components/ScreenLock.js` dipasang di `src/app/(app)/layout.js:49`.
-2. **Penyimpanan Status Persisten**: Tiga kunci di `localStorage` memelihara status penguncian:
+2. **Pengambilan Durasi Dinamis**: Handler `GET /api/auth/me` mengembalikan properti `lockscreenIdleMinutes` yang dibaca dari tabel `system_settings`. Komponen `ScreenLock.js` mengonversinya ke milidetik dan menyimpannya di `localStorage.getItem("scada_lock_timeout_ms")` (fallback 7 menit = 420.000 ms).
+3. **Penyimpanan Status Persisten**: Kunci di `localStorage` memelihara status penguncian:
    - `scada_screen_locked`: string `"true"` atau `"false"`.
    - `scada_lock_user`: username pemilik sesi yang terkunci.
    - `scada_last_activity`: timestamp milidetik aktivitas interaksi terakhir.
-3. **Inisialisasi & Anti-Refresh (F5)**: Saat komponen mount (`src/components/ScreenLock.js:90-118`), komponen memeriksa apakah `scada_screen_locked === "true"` atau `Date.now() - lastActivity > LOCK_TIMEOUT_MS`. Jika ya, layar langsung disetel terkunci seketika via `setTimeout(() => setIsLocked(true), 0)` (bebas peringatan linter cascading render).
-4. **Deteksi Inaktivitas Real-Time**: Event listener `mousemove`, `mousedown`, `keydown`, `touchstart`, dan `scroll` memperbarui timestamp `lastActivity` di memori dan `localStorage` (`src/components/ScreenLock.js:125-145`). Timer interval setiap 1000 ms memeriksa apakah `Date.now() - lastActivity >= LOCK_TIMEOUT_MS = 420000` (7 menit). Jika terlewati, state `isLocked` menjadi `true` dan `scada_screen_locked` disetel `"true"`.
-5. **Sinkronisasi Multi-Tab**: Memasang listener `window.addEventListener("storage", handleStorageChange)` (`src/components/ScreenLock.js:150-165`). Perubahan kunci `scada_screen_locked` di tab lain langsung mengunci atau membuka kunci tab saat ini.
-6. **Form Buka Kunci**: Pengguna memasukkan kata sandi ke modal pengunci dan memicu `handleUnlock` (`src/components/ScreenLock.js:200-230`).
-7. **API Handler**: Permintaan dikirim ke `POST /api/auth/unlock/route.js`.
-8. **Verifikasi & Audit**: Endpoint mengambil user dari database (`src/app/api/auth/unlock/route.js:30`), mencocokkan password dengan `bcrypt.compare`, dan mencatat aksi `unlock_screen` ke `audit_log` (`src/app/api/auth/unlock/route.js:63`).
-9. **Buka Kunci & Pembersihan Storage**: Jika valid, komponen menyetel `isLocked = false`, mereset `scada_screen_locked` menjadi `"false"`, dan memperbarui `scada_last_activity`. Pembersihan juga dijalankan saat logout via `src/components/Navbar.js:77-81` dan saat login baru di `src/app/login/page.js:192-194`.
+   - `scada_lock_timeout_ms`: durasi batas inaktivitas dinamis dari server.
+4. **Inisialisasi & Anti-Refresh (F5)**: Saat komponen mount (`src/components/ScreenLock.js`), komponen memeriksa apakah `scada_screen_locked === "true"` atau `Date.now() - lastActivity > timeoutMs`. Jika ya, layar langsung disetel terkunci seketika via `setTimeout(() => setIsLocked(true), 0)`.
+5. **Deteksi Inaktivitas Real-Time**: Event listener `mousemove`, `mousedown`, `keydown`, `touchstart`, dan `scroll` memperbarui timestamp `lastActivity` di memori dan `localStorage`. Timer interval setiap 1000 ms memeriksa apakah `Date.now() - lastActivity >= timeoutMs`. Jika terlewati, state `isLocked` menjadi `true` dan `scada_screen_locked` disetel `"true"`.
+6. **Sinkronisasi Multi-Tab**: Memasang listener `window.addEventListener("storage", handleStorageChange)`. Perubahan kunci `scada_screen_locked` di tab lain langsung mengunci atau membuka kunci tab saat ini.
+7. **Form Buka Kunci**: Pengguna memasukkan kata sandi ke modal pengunci dan memicu `handleUnlock`.
+8. **API Handler**: Permintaan dikirim ke `POST /api/auth/unlock/route.js`.
+9. **Verifikasi & Audit**: Endpoint mengambil user dari database, mencocokkan password dengan `bcrypt.compare`, dan mencatat aksi `unlock_screen` ke `audit_log`.
+10. **Buka Kunci & Pembersihan Storage**: Jika valid, komponen menyetel `isLocked = false`, mereset `scada_screen_locked` menjadi `"false"`, dan memperbarui `scada_last_activity`. Pembersihan juga dijalankan saat logout via `src/components/Navbar.js` dan saat login baru di `src/app/login/page.js`.
 
 ### Bukti Kode
-- `src/components/ScreenLock.js:1-429`
+- `src/components/ScreenLock.js:1-435`
 - `src/app/api/auth/unlock/route.js:1-75`
+- `src/app/api/auth/me/route.js:50-65`
 - `src/components/Navbar.js:77-81`
 - `src/app/login/page.js:192-194`
 
@@ -61,83 +64,89 @@ Status penguncian layar kini bersifat **persisten tahan refresh halaman (F5) dan
 ## 3. Fitur Pengawasan Proses & Visualisasi Autoclave Real-Time
 
 ### Deskripsi Faktual
-Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data status mesin ke backend. Data sensor ditampilkan dalam bentuk kartu metrik digital, status posisi pintu, kartu detail resep berjalan (termasuk F0 Target jika ada), kontrol tombol proses (START, STOP, Reset), blok pengendali pintu interaktif (Door Sealing dan tombol cerdas Door Release / MATIKAN), serta diagram visual interaktif yang menggambarkan animasi katup, level air, dan status pompa sirkulasi.
+Halaman dashboard utama secara berkala setiap 1000 ms melakukan polling data status mesin ke backend. Data sensor ditampilkan dalam bentuk kartu metrik digital, status posisi pintu, kartu detail resep berjalan (termasuk F0 Target jika ada), tombol intip "Resep Mesin" (live setpoints PLC), kontrol tombol proses (START, STOP, Reset), blok pengendali pintu interaktif (Door Sealing dan tombol cerdas Door Release / MATIKAN), serta diagram visual interaktif yang menggambarkan animasi katup, level air, dan status pompa sirkulasi.
+
+> [!WARNING]
+> **TEMUAN KRITIS AUDIT 2026-11-21 (BYPASS KESIAPAN MESIN AKTIF)**:
+> Pada kode sumber `src/app/(app)/page.js:498-502`, baris evaluasi kesiapan mesin aktual dinonaktifkan:
+> `// const startAllowed = !noData && data.plcOk === true && phaseRaw === 1 && !data.running;`
+> dan digantikan oleh hardcoded:
+> `const startAllowed = true;`
+> Hal ini menyebabkan tombol START di Dashboard selalu menyala dan dapat diklik operator kapan saja tanpa memvalidasi apakah PLC terhubung, fase mesin berada di Idle (1), atau proses lain sedang berjalan! Penolakan baru terjadi di backend bila mesin tidak siap, namun tombol UI tidak memberikan proteksi visual awal.
 
 ### Rantai Alur Kode
-1. **Polling Dashboard**: Komponen `src/app/(app)/page.js:102` menjalankan `setInterval` setiap 1000 ms yang memanggil `fetch("/api/status")`.
-2. **Backend Agregator**: Handler `src/app/api/status/route.js:17` memanggil fungsi `readPlcSnapshot()` dari `src/lib/plc.js:125`.
+1. **Polling Dashboard**: Komponen `src/app/(app)/page.js` menjalankan `setInterval` setiap 1000 ms yang memanggil `fetch("/api/status")`.
+2. **Backend Agregator**: Handler `src/app/api/status/route.js:17` memanggil fungsi `readPlcSnapshot()` dari `src/lib/plc.js`.
 3. **Komunikasi IoT Gateway**:
-   - `readPlcSnapshot` mengirim HTTP GET ke endpoint KEPServerEX `/iotgateway/read` (`src/lib/plc.js:145`).
+   - `readPlcSnapshot` mengirim HTTP GET ke endpoint KEPServerEX `/iotgateway/read`.
    - Menerima array tag pembacaan PLC Siemens S7-200.
-   - Melakukan penskalaan nilai: suhu dibagi 10 (`src/lib/plc.js:189-197`), tekanan kPa diambil langsung (`src/lib/plc.js:198`), target F0 dibagi 10 ke satuan menit (`src/lib/plc.js:78`), serta memetakan nilai integer register `PROCCES_TEXT` (VW98) ke objek fase proses (`src/lib/plc.js:213-233`).
-4. **Pengambilan Status Batch**: Handler `src/app/api/status/route.js:23` menjalankan query `SELECT ... FROM batch_records WHERE status = 'running'` untuk menyematkan metadata batch aktif.
+   - Melakukan penskalaan nilai: suhu dibagi 10, tekanan kPa diambil langsung, target F0 dibagi 10 ke satuan menit, serta memetakan nilai integer register `PROCCES_TEXT` (VW98) ke objek fase proses.
+   - Membaca status seluruh aktuator katup secara LIVE (termasuk `drainSteam` Q1.0, `drainCool` Q1.2, dan `airCmbr` Q1.3).
+4. **Pengambilan Status Batch**: Handler `src/app/api/status/route.js` menjalankan query `SELECT ... FROM batch_records WHERE status = 'running'` untuk menyematkan metadata batch aktif.
 5. **Rendering Visual**:
-   - Komponen internal `Gauge` pada `src/app/(app)/page.js:50-65` merender kartu indikator suhu dan tekanan (`src/app/(app)/page.js:471-488`).
-   - Kartu Formula pada `src/app/(app)/page.js:754-759` menampilkan "F0 Target" bila `data.setpoints?.f0Val` terdefinisi.
-   - Tombol Door Sealing dan Door Release pada `src/app/(app)/page.js:818-848`: Tombol Door Release kini berstatus cerdas (toggle); bila release sedang aktif (`releaseOn = !!data.door?.releaseCmd`), tombol berubah label menjadi "Release: MATIKAN" dengan warna merah (`#A23B2E`) untuk menonaktifkan pelepasan seal; bila tidak aktif, berlabel "Door Release" untuk mengaktifkan seal lepas.
-   - Komponen `src/components/AtvDiagram.js` menerima properti sensor dan merender gambar bejana SVG beserta indikator katup aktif berwarna hijau/merah (`src/components/AtvDiagram.js:120-280`).
+   - Komponen internal `Gauge` pada `src/app/(app)/page.js` merender kartu indikator suhu dan tekanan bejana.
+   - Kartu Formula pada `src/app/(app)/page.js` menampilkan "F0 Target" bila `data.setpoints?.f0Val` terdefinisi, serta tombol modal "Resep Mesin" untuk melihat parameter setpoint aktif dari PLC.
+   - Tombol Door Sealing dan Door Release pada `src/app/(app)/page.js`: Tombol Door Release berstatus cerdas (toggle); bila release sedang aktif (`releaseOn = !!data.door?.releaseCmd`), tombol berubah label menjadi "Release: MATIKAN" dengan warna merah (`#A23B2E`); bila tidak aktif, berlabel "Door Release" untuk mengaktifkan seal lepas.
+   - Komponen `src/components/AtvDiagram.js` menerima properti sensor dan merender gambar bejana SVG beserta indikator katup aktif berwarna hijau/merah dengan pemetaan 100% tag live PLC.
 
 ### Bukti Kode
-- `src/app/(app)/page.js:102-120, 754-759, 818-848`
-- `src/app/api/status/route.js:17-60`
-- `src/lib/plc.js:78, 125-240`
-- `src/components/AtvDiagram.js:120-280`
+- `src/app/(app)/page.js:102-120, 498-502, 754-759, 818-848`
+- `src/app/api/status/route.js:1-65`
+- `src/lib/plc.js:1-468`
+- `src/components/AtvDiagram.js:1-285`
 
 ---
 
-## 4. Fitur Memulai Batch Sterilisasi (Start Batch Sequence & Dual Verification)
+## 4. Fitur Memulai Batch Sterilisasi (Start Batch Sequence & Self-Verification)
 
 ### Deskripsi Faktual
-Proses memulai batch sterilisasi menerapkan **Verifikasi 2 Langkah (Four-Eyes Principle / Dual Authorization)** dengan fleksibilitas koreksi (*overwrite*) verifikator:
-1. **Langkah 1 (Operator / User 1)**: Operator yang sedang login membuka modal START, memasukkan Batch No, Amount / Jumlah Botol (integer bulat positif), memilih Nama Produk (dropdown/ketik manual), Spesifikasi Kemasan (dropdown/ketik manual), dan Formula Resep.
-2. **Langkah 2 (Verifikasi Berdampingan / Side-by-Side)**: Modal melebar menampilkan dua panel berdampingan: panel kiri adalah data awal Operator User 1 (read-only), dan panel kanan adalah form verifikasi User 2 yang awalnya terisi otomatis (*pre-filled*) sama dengan isian User 1, namun User 2 berhak mengoreksi / meng-*overwrite* nilai mana pun jika ada kesalahan ketik dari inisiator.
-3. **Langkah 3 (Preview Isian Final)**: Menampilkan ringkasan data akhir hasil verifikasi User 2 yang akan dikirim ke mesin serta rekam jejak koreksi field yang di-overwrite.
-4. **Langkah 4 (Otentikasi Kredensial Verifikator)**: Pop-up pemilihan akun verifikator langsung dari daftar user terdaftar di sistem (*User Management* via `/api/auth/users`), dengan penyaringan otomatis akun User 1 (sehingga inisiator tidak dapat memverifikasi dirinya sendiri), serta input password verifikator.
-Sistem mengunci eksekusi START dengan advisory lock `START_LOCK_KEY` agar tidak bisa ditekan ganda, memvalidasi verifikator via `bcrypt`, memeriksa hak akses kontrol batch verifikator, memvalidasi resep, memeriksa ketiadaan batch aktif lain, memeriksa interlock fisik PLC (kedua pintu tertutup rapat dan segel aktif), menulis setpoint resep final ke register PLC, melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records` (termasuk kolom `bottle_count`, `verifier`, dan `verifier_username`).
+Proses memulai batch sterilisasi menerapkan **Verifikasi 2 Langkah dengan Tanda Tangan Digital Mandiri (Self-Verification / Operator Re-Authentication)**:
+1. **Langkah 1 (Input Data Batch)**: Operator yang sedang login membuka modal START, memasukkan Batch No, Amount / Jumlah Botol (integer bulat positif), memilih Nama Produk (dropdown combobox / ketik manual), Spesifikasi Kemasan (dropdown combobox / ketik manual), dan Formula Resep. Field `loadingNo` tidak lagi diwajibkan (opsional/otomatis ditangani).
+2. **Langkah 2 (Preview & Konfirmasi Digital Mandiri)**: Modal beralih menampilkan ringkasan data final batch yang jelas (Batch No, Jumlah Botol, Produk, Spesifikasi, Resep Terpilih, Mesin, dan Nama Operator Inisiator). Untuk mengesahkan dan mengeksekusi START, operator wajib memasukkan kata sandi akunnya sendiri sebagai tanda tangan digital (re-autentikasi mandiri).
+
+Sistem mengunci eksekusi START dengan advisory lock `START_LOCK_KEY` agar tidak bisa ditekan ganda, memverifikasi kata sandi operator via `bcrypt.compare`, memeriksa hak akses kontrol batch operator (`dashboard >= edit` dan `action.batch_control = edit`), memvalidasi parameter resep, memeriksa ketiadaan batch aktif lain di database, memeriksa interlock fisik PLC (fase Idle 1, kedua pintu tertutup rapat `clsFrnt` & `clsRear`, door seal aktif `door.seal`, dan mesin bukan mode manual), menulis setpoint resep ke register PLC (termasuk `F0_VAL` dibagi 10), melakukan verifikasi baca-balik setpoint hingga 4000 ms, mencatat audit setpoint terverifikasi, mengirim pulsa START (M1.4), menunggu konfirmasi PLC masuk fase proses (kode 2/3/4) maksimal 10 detik, dan membuat record baru di tabel `batch_records` dengan kolom `bottle_count`, `verifier`, dan `verifier_username` (`migrations/008_dual_verification_batch_records.sql`).
 
 ### Rantai Alur Kode
-1. **Dialog Input Langkah 1 (Operator)**: Tombol "START BATCH" di `src/app/(app)/page.js:380` membuka modal `src/components/StartDialog.js`. Operator mengisi 6 field identitas batch. Setelah valid, operator menekan tombol "Lanjut ke Verifikasi (User 2) →".
-2. **Dialog Verifikasi Langkah 2 (Side-by-Side Panel)**: Modal beralih ke layout `max-w-5xl`. Panel kiri menampilkan data awal inisiator, panel kanan form verifikasi User 2 yang mendukung overwrite. Field yang diubah diberi penanda visual badge "Dikoreksi Verifikator".
-3. **Preview Langkah 3**: Menampilkan ringkasan data final hasil verifikasi dan catatan koreksi verifikator.
-4. **Otentikasi Langkah 4**: Memilih user verifikator dari dropdown `eligibleVerifiers` (memfilter akun `currentUsername`), memasukkan password, dan menekan tombol "▶ Ya, Mulai Sterilisasi Sekarang".
-5. **Kirim START**: Mengirim request `POST /api/batch/start` dengan data final batch, objek `initiatorForm`, `verifierUsername`, dan `verifierPassword`.
-6. **Advisory Lock Server**: Handler `src/app/api/batch/start/route.js:108` memanggil `acquireStartLock()` menggunakan kunci advisory `START_LOCK_KEY` (`7401001` dari `src/lib/recipeGuard.js:10`) pada PostgreSQL.
-7. **Autentikasi & Verifikasi Verifikator Server-Side**:
-   - Memastikan `verifierUsername` dan `verifierPassword` terisi, dan `verifierUsername` bukan user yang sama dengan sesi operator (`src/app/api/batch/start/route.js:175-190`).
-   - Memverifikasi akun verifikator di tabel `users` (aktif, belum dihapus-lunak, dan kecocokan hash password via `bcrypt.compare`).
-   - Memverifikasi izin verifikator (`dashboard >= view` dan `action.batch_control >= edit`).
-   - Mendeteksi dan merekam jejak overwrite koreksi verifikator terhadap data inisiator ke dalam objek `recipe_snapshot.overwrites`.
-8. **Validasi Parameter Resep & Batch**:
-   - Memvalidasi Batch No melalui `validateBatchNo` (`src/lib/batchNo.js:16`).
-   - Memeriksa keunikan Batch No pada tabel `batch_records` (`src/app/api/batch/start/route.js`).
-   - Memvalidasi rentang fisik resep melalui `validateRecipe` (`src/lib/recipeValidation.js:52`).
-   - Membangun snapshot formula resep melalui `buildRecipeSnapshot` (`src/lib/recipeSnapshot.js:18`).
-9. **Guard Interlock Mesin**:
-   - Membaca snapshot PLC via `readPlcSnapshot` (`src/app/api/batch/start/route.js`).
+1. **Dialog Input Langkah 1 (Operator)**: Tombol "START BATCH" di `src/app/(app)/page.js` membuka modal `src/components/StartDialog.js`. Operator mengisi field identitas batch (Batch No, Bottle Count, Nama Produk, Spesifikasi, Formula). Setelah validasi lokal berhasil, operator menekan tombol "Lanjut ke Konfirmasi →".
+2. **Dialog Preview & Tanda Tangan Langkah 2**: Modal beralih ke tampilan ringkasan. Operator meninjau seluruh parameter batch, lalu memasukkan kata sandinya ke input "Kata Sandi Anda (Verifikasi)".
+3. **Kirim START**: Menekan tombol "▶ Ya, Mulai Sterilisasi Sekarang" yang mengirim request `POST /api/batch/start` dengan payload batch, `verifierUsername` (username operator aktif), dan `verifierPassword`.
+4. **Advisory Lock Server**: Handler `src/app/api/batch/start/route.js:32-52` memanggil `acquireStartLock()` menggunakan kunci advisory `START_LOCK_KEY` (`7401001` dari `src/lib/recipeGuard.js:10`) pada PostgreSQL.
+5. **Autentikasi Ulang Mandiri (Server-Side Re-Authentication)**:
+   - Memastikan `verifierUsername` dan `verifierPassword` terisi, serta `verifierUsername` cocok dengan akun operator yang sedang terotentikasi (`src/app/api/batch/start/route.js:175-185`).
+   - Mengambil data user dari database dan memverifikasi kata sandi via `bcrypt.compare`.
+   - Memverifikasi izin kontrol batch operator (`dashboard >= edit` dan `action.batch_control = edit`).
+6. **Validasi Parameter Resep & Batch**:
+   - Memvalidasi Batch No melalui `validateBatchNo` (`src/lib/batchNo.js`).
+   - Memeriksa keunikan Batch No pada tabel `batch_records`.
+   - Memvalidasi rentang fisik resep melalui `validateRecipe` (`src/lib/recipeValidation.js`).
+   - Membangun snapshot formula resep melalui `buildRecipeSnapshot` (`src/lib/recipeSnapshot.js`).
+7. **Guard Interlock Mesin Fisik**:
+   - Membaca snapshot PLC via `readPlcSnapshot`.
    - Menolak jika rawPhase !== 1 (Idle siap).
    - Menolak jika pintu terbuka (`opnFrnt` / `opnRear`), pintu belum rapat tertutup (`!clsFrnt` / `!clsRear`), atau door seal belum aktif (`!door.seal`).
    - Menolak jika `ctrlSel === true` (mesin dalam mode F0 manual).
-10. **Penulisan Setpoint ke PLC**:
-    - Menyusun pasangan tag: `CTRL_TEMP`, `TEMP_SPACE`, `STER_SET`, `STER_SET_TIME`, `ALRM_PRES`, `COOL1_TEMP`, `COOL2_TEMP`, dan menyertakan `F0_VAL` (`Math.round(foValSetting * 10)`) bila target F0 terdefinisi.
-    - Mengirim request ke KEPServerEX via `writePlcTags` (`src/lib/plcWrite.js:16`).
-11. **Verifikasi Pasca-Tulis**:
-    - Melakukan polling pembacaan ulang setpoint ke PLC hingga 4000 ms, mencocokkan seluruh setpoint dasar dan `F0_VAL`.
-    - Jika terjadi selisih nilai, membatalkan START dan mencatat audit `start_batch_rejected`.
-12. **Audit Pre-Start (Fail-Closed)**:
+8. **Penulisan Setpoint ke PLC**:
+   - Menyusun pasangan tag: `CTRL_TEMP`, `TEMP_SPACE`, `STER_SET`, `STER_SET_TIME`, `ALRM_PRES`, `COOL1_TEMP`, `COOL2_TEMP`, dan menyertakan `F0_VAL` (`Math.round(foValSetting * 10)`) bila target F0 terdefinisi.
+   - Mengirim request ke KEPServerEX via `writePlcTags` (`src/lib/plcWrite.js:16`).
+9. **Verifikasi Pasca-Tulis**:
+   - Melakukan polling pembacaan ulang setpoint ke PLC hingga 4000 ms, mencocokkan seluruh setpoint dasar dan `F0_VAL`.
+   - Jika terjadi selisih nilai, membatalkan START dan mencatat audit `start_batch_rejected`.
+10. **Audit Pre-Start (Fail-Closed)**:
     - Mencatat aksi `plc_setpoints_written` ke tabel `audit_log` via `insertAudit`. Jika pencatatan audit gagal, proses START dibatalkan.
-13. **Kirim Pulsa START**:
+11. **Kirim Pulsa START**:
     - Mengirim pulsa tag START (M1.4): menulis true, jeda 1000 ms, menulis false melalui `pulsePlcTag("START")` (`src/lib/plcWrite.js:58`).
-14. **Polling Fase PLC**:
+12. **Polling Fase PLC**:
     - Memanggil `pollUntilPhase([2, 3, 4], 10000, 500)` menunggu hingga register `PROCCES_TEXT` berubah menjadi kode 2 (Filling), 3 (Heating), atau 4 (Steril).
-15. **Pencatatan Batch Record & Dual Audit Trail**:
-    - Menjalankan `INSERT INTO batch_records` dengan data final yang disetujui verifikator, kolom `bottle_count`, `verifier`, `verifier_username`, status `'running'`, dan snapshot resep JSON.
+13. **Pencatatan Batch Record & Audit Trail**:
+    - Menjalankan `INSERT INTO batch_records` dengan data final, kolom `bottle_count`, `verifier` (nama lengkap verifikator), `verifier_username`, status `'running'`, dan snapshot resep JSON.
     - Menyediakan fallback bila kolom belum ada di database (`colErr.code === "42703"`).
-    - Mencatat aksi `start_batch` ke tabel `audit_log` dengan rincian operator inisiator, verifikator, dan daftar field yang dikoreksi (bila ada).
+    - Mencatat aksi `start_batch` ke tabel `audit_log` dengan rincian operator inisiator dan verifikator.
 
 ### Bukti Kode
-- `src/components/StartDialog.js:1-600`
+- `src/components/StartDialog.js:1-581`
 - `src/components/SearchableCombobox.js:1-204`
-- `src/app/api/batch/start/route.js:1-870`
+- `src/app/api/batch/start/route.js:1-826`
+- `migrations/008_dual_verification_batch_records.sql:1-46`
 - `src/lib/recipeGuard.js:1-55`
 - `src/lib/recipeValidation.js:52-120`
 - `src/lib/plcWrite.js:16-85`
@@ -762,9 +771,9 @@ Setiap perintah pintu dicatat dengan teks deskriptif spesifik mencantumkan aktor
 
 ---
 
-## 27. Matriks Hak Akses & Perizinan Seluruh Endpoint API (Audit 2026-11-07)
+## 27. Matriks Hak Akses & Perizinan Seluruh Endpoint API (Audit 2026-11-21)
 
-Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status cakupan pengujian otomatis pada skrip harness `fase1/tests/matrix.mjs` untuk seluruh 41 berkas route handler backend (`src/app/api/**/route.js`):
+Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status cakupan pengujian otomatis pada skrip harness `fase1/tests/matrix.mjs` untuk seluruh 43 berkas route handler backend (`src/app/api/**/route.js`):
 
 | Endpoint Route | Metode | Guard / Aturan Izin yang Diminta | Status Publik / Sensitif | Cakupan `matrix.mjs` |
 |:---|:---:|:---|:---|:---:|
@@ -829,14 +838,17 @@ Tabel berikut mendokumentasikan aturan hak akses, guard otorisasi, dan status ca
 | `/api/backup` | PUT | `requirePermission`: `backup >= edit` | Konfigurasi Backup | ❌ Belum tercakup |
 | `/api/backup` | POST | `requirePermission`: `backup >= edit` | Eksekusi Backup | ❌ Belum tercakup |
 | `/api/backup/download` | GET | `requirePermission`: `backup >= edit` | Unduhan Backup | ❌ Belum tercakup |
+| `/api/backup/check-dir` | POST | `requirePermission`: `backup >= view` | Uji Akses Salinan Backup | ❌ Belum tercakup |
+| `/api/settings` | GET | `requirePermission`: `settings >= view` | Konfigurasi Sistem | ❌ Belum tercakup |
+| `/api/settings` | PUT | `requirePermission`: `settings >= edit` | Konfigurasi Sistem | ❌ Belum tercakup |
 
-**Catatan Cakupan Pengujian**: Skrip `fase1/tests/matrix.mjs` telah diperbarui dengan safe probe untuk endpoint PLC (`/api/plc-door`, `/api/plc-manual`, `/api/plc-clock`, `/api/plc-params`, `/api/batch/start`, serta penolakan mesin kondisional `/api/batch/stop` dan `/api/plc/reset` via bendera `PROBE_MACHINE_DENY=yes`). Hanya `POST /api/auth/unlock` (potensi memicu throttle login) dan field bertingkat `restricted` pada `/api/plc-params` yang belum tercakup probe otomatis.
+**Catatan Cakupan Pengujian**: Skrip `fase1/tests/matrix.mjs` telah diperbarui dengan safe probe untuk endpoint PLC (`/api/plc-door`, `/api/plc-manual`, `/api/plc-clock`, `/api/plc-params`, `/api/batch/start`, serta penolakan mesin kondisional `/api/batch/stop` dan `/api/plc/reset` via bendera `PROBE_MACHINE_DENY=yes`). Hanya `POST /api/auth/unlock` (potensi memicu throttle login), field bertingkat `restricted` pada `/api/plc-params`, serta endpoint baru `/api/settings` dan `/api/backup/check-dir` yang belum tercakup probe otomatis harness.
 
 ---
 
-## 28. Inventarisasi Aksi Audit Log & Pemetaan Label UI (Audit 2026-11-07)
+## 28. Inventarisasi Aksi Audit Log & Pemetaan Label UI (Audit 2026-11-21)
 
-Terdapat **56 nama aksi unik** yang dicatat ke tabel database `audit_log` di seluruh aplikasi melalui modul `insertAudit`/`tryAudit` dan proses latar belakang. Sejak implementasi modul `src/lib/auditActionLabels.js`, 55 aksi audit memiliki label tampilan resmi berbahasa Indonesia dan pewarnaan badge yang terstandarisasi untuk antarmuka web (`src/app/(app)/audit-log/page.js:203`) dan lembar cetak (`src/app/print/audit-log/page.js:154`), sementara 1 aksi baru (`update_hmi_overrides`) saat ini menggunakan fallback label string mentah dengan tone abu-abu netral (`idle`):
+Terdapat **57 nama aksi unik** yang dicatat ke tabel database `audit_log` di seluruh aplikasi melalui modul `insertAudit`/`tryAudit` dan proses latar belakang. Sejak implementasi modul `src/lib/auditActionLabels.js`, **56 aksi audit** memiliki label tampilan resmi berbahasa Indonesia dan pewarnaan badge yang terstandarisasi untuk antarmuka web (`src/app/(app)/audit-log/page.js:203`) dan lembar cetak (`src/app/print/audit-log/page.js:154`), sementara 1 aksi (`update_hmi_overrides`) menggunakan fallback label string mentah dengan tone abu-abu netral (`idle`):
 
 | No | Nama Aksi Audit (`action`) | Entity Type | Berkas & Baris Pemanggil | Label Tampilan UI (Bahasa Indonesia) | Tone Badge UI |
 |:---:|:---|:---|:---|:---|:---:|
@@ -895,63 +907,74 @@ Terdapat **56 nama aksi unik** yang dicatat ke tabel database `audit_log` di sel
 | 53 | `backup_failed` | `backup` | `src/lib/backupService.js:260` | Backup gagal | `stop` (merah) |
 | 54 | `backup_settings_update` | `backup` | `src/lib/backupService.js:90` | Ubah pengaturan backup | `water` (biru) |
 | 55 | `backup_downloaded` | `backup` | `src/lib/backupService.js:277` | Unduh backup | `steam` (oranye) |
-| 56 | `update_hmi_overrides` | `user` | `src/app/api/users/[username]/hmi-overrides/route.js:77` | `update_hmi_overrides` *(belum terdaftar di `auditActionLabels.js`)* | `idle` (abu-abu) |
+| 56 | `settings_update` | `settings` | `src/app/api/settings/route.js:125` | Ubah konfigurasi sistem | `water` (biru) |
+| 57 | `update_hmi_overrides` | `user` | `src/app/api/users/[username]/hmi-overrides/route.js:77` | `update_hmi_overrides` *(belum terdaftar di `auditActionLabels.js`)* | `idle` (abu-abu) |
 
 ---
 
-## 29. Komparasi Faktual Tag PLC: Kode Sumber vs Dokumen CSV (Audit 2026-11-07)
+## 29. Komparasi Faktual Tag PLC: Kode Sumber vs Dokumen CSV (Audit 2026-11-21)
 
-Pemeriksaan komparatif dilakukan antara seluruh tag yang didefinisikan pada berkas master CSV `context/tag_paling_baru.csv` terhadap pemanggilan tag nyata di kode sumber (`src/lib/plc.js`, `plcManualCatalog.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcWrite.js`, `plcClock.js`, `batch/start`, `batch/stop`, `plc/reset`, `server.js`):
+Pemeriksaan komparatif dilakukan antara seluruh tag yang didefinisikan pada berkas master CSV `context/SiemensS7-200_autoclave_pharma_1.csv` terhadap pemanggilan tag nyata di kode sumber (`src/lib/plc.js`, `plcManualCatalog.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcWrite.js`, `plcClock.js`, `atvProcess.js`, `batch/start`, `batch/stop`, `plc/reset`, `server.js`):
 
-- Total baris data tag pada `context/tag_paling_baru.csv`: **116 tag** (menggantikan berkas staging `tag_terbaru_kepsrvr.csv` 105 tag).
-- Total tag aktif yang diakses kode sumber: **116 tag** (100% terpetakan).
+- Total baris data tag pada `context/SiemensS7-200_autoclave_pharma_1.csv`: **118 tag** (menggantikan berkas lama `tag_paling_baru.csv` 116 tag).
+- Total tag aktif yang diakses kode sumber: **118 tag** (100% terpetakan).
 
-### Integrasi Penuh Tag CSV Master Terbaru (`tag_paling_baru.csv`):
-1. **Tag Kontrol Manual (11 Tag)**: Seluruh 11 tag kontrol manual yang sebelumnya belum terdaftar di CSV kini telah resmi masuk:
+### Integrasi Penuh Tag CSV Master Terbaru (`SiemensS7-200_autoclave_pharma_1.csv`):
+1. **Penambahan 2 Tag Katup Live Drain PHE (Output Digital Q)**:
+   - `DRAIN_STEAM` (Q1.0): Katup drain kondensat sisi uap Plate Heat Exchanger (PHE), aktif pada fase Filling, Heating, dan Steril.
+   - `DRAIN_COOL` (Q1.2): Katup drain air pendingin sisi PHE, aktif pada fase Cooling.
+   Kedua tag ini kini terpetakan di `src/lib/plc.js:TAG_MAP`, `src/lib/atvProcess.js`, dan dirender LIVE pada `src/components/AtvDiagram.js` tanpa lagi menggunakan estimasi simbolik ("≈").
+2. **Klarifikasi Label Katup Pendingin (Swap Disambiguation)**:
+   - Tag `COOLING_1` (Q1.1) dipetakan sebagai **Cooling Water PHE (V2-1)**.
+   - Tag `COOLING_2` (Q1.7) dipetakan sebagai **Cooling Water Spray (V2-2)**.
+   Label pada katalog manual `src/lib/plcManualCatalog.js` dan diagram proses telah diselaraskan.
+3. **Tag Kontrol Manual (11 Tag)**:
    - `MANUAL_OPER` (M5.0), `MAN_STEAM_1` (M2.0), `MAN_STEAM_2` (M2.1), `MAN_WTR_DRAIN` (M2.5), `MAN_COOLING_1` (M2.2), `MAN_COOLING_2` (M2.3), `MAN_STEAM_EXHS` (M2.6), `MAN_WTR_FILL` (M4.0), `MAN_AIR_CMBR` (M2.4), `MAN_WTR_PUMP` (M2.7), `MAN_BUZZER` (M10.6).
-2. **Tag Offset Kalibrasi Level Air**: Tag `CAL_WATER` (register VW324) telah resmi masuk ke CSV dan katalog kalibrasi `src/lib/plcParamCatalog.js`.
-3. **Resolusi Diskrepansi Penamaan Tag F0 (`F0_VAL`)**:
-   - Tag register VW220 resmi dinamai `"F0_VAL"` pada `tag_paling_baru.csv:55` dan diselaraskan di `src/lib/plcParamCatalog.js:50`, `src/lib/plc.js:78`, `src/app/api/batch/start/route.js:390`, serta kartu ringkasan Dashboard (`src/app/(app)/page.js:754`).
-4. **Resolusi Alamat Register Offset Konduktivitas (`CAL_L`)**:
-   - Register `CAL_L` resmi beralamat `VW322` selaras antara kode katalog dan CSV.
-5. **Tag Jam RTC PLC**:
-   - Seluruh tag pembacaan BCD (`R_YEAR`..`R_SECOND` VB2000..VB2005), penulisan BCD (`S_YEAR`..`S_SECOND` VB3000..VB3005), dan picu eksekusi RTC (`ENTER_RTC` M31.0) terdaftar resmi di berkas CSV master.
+4. **Tag Offset Kalibrasi Level Air**: Tag `CAL_WATER` (register VW324) terdaftar resmi di CSV dan katalog kalibrasi `src/lib/plcParamCatalog.js`.
+5. **Tag F0 (`F0_VAL`)**: Tag register VW220 resmi dinamai `"F0_VAL"` pada CSV baris 55 dan diselaraskan di seluruh kode.
+6. **Tag Jam RTC PLC**: Seluruh tag pembacaan BCD (`R_YEAR`..`R_SECOND` VB2000..VB2005), penulisan BCD (`S_YEAR`..`S_SECOND` VB3000..VB3005), dan picu eksekusi RTC (`ENTER_RTC` M31.0) 100% cocok dengan CSV.
 
-Seluruh 116 tag PLC Siemens S7-200 kini telah memiliki pemetaan identik antara file CSV konfigurasi KEPServerEX dengan seluruh lapisan aplikasi SCADA web.
+Seluruh 118 tag PLC Siemens S7-200 kini memiliki pemetaan identik antara file CSV konfigurasi KEPServerEX dengan seluruh lapisan aplikasi SCADA web.
 
 ---
 
 ## 30. Fitur Backup & Pengarsipan Data Sistem (Backup Service)
 
 ### Deskripsi Faktual
-Menyediakan sistem backup dan pengarsipan data batch, kurva trend sensor, riwayat alarm, dan jejak audit ke dalam berkas arsip ZIP tunggal yang berisi 4 file CSV (RFC 4180 dengan UTF-8 BOM dan CRLF) serta satu berkas `manifest.json`. Fitur ini mendukung dua metode:
+Menyediakan sistem backup dan pengarsipan data batch, kurva trend sensor, riwayat alarm, dan jejak audit ke dalam berkas arsip ZIP tunggal yang berisi 4 file CSV (RFC 4180 dengan UTF-8 BOM dan CRLF) serta satu berkas `manifest.json`. Fitur ini mendukung dua metode utama dan satu fitur ekspansi salinan sekunder:
 1. **Backup Manual**: Pengguna berwenang dapat menentukan rentang tanggal tertentu atau mengosongkannya untuk mencakup seluruh data (arsip penuh vs parsial). Berkas manual disimpan di folder `<BACKUP_DIR>/manual/` dan tidak dihapus secara otomatis.
 2. **Backup Otomatis Terjadwal**: Berjalan di latar belakang server (`server.js`) setiap menit memeriksa jadwal jatuh tempo. Mendukung interval harian (1 hari), mingguan (7 hari), atau 30 hari pada jam yang ditentukan (HH:MM), dengan rotasi otomatis mempertahankan N generasi berkas terbaru (1–10 file). Berkas terjadwal disimpan di `<BACKUP_DIR>/terjadwal/`.
+3. **Salinan Otomatis ke Direktori Sekunder (Auto-Copy to Secondary Directory / USB Drive)**: Menyediakan opsi konfigurasi `autoCopyEnabled` dan `autoCopyDir` untuk menyalin berkas arsip ZIP yang baru selesai dibuat secara otomatis ke path sekunder (misalnya drive USB eksternal atau share storage jaringan). Dilengkapi tombol "Uji Direktori" di antarmuka web yang memicu endpoint `POST /api/backup/check-dir` untuk menguji keberadaan path dan hak akses tulis secara nyata (via pembuatan dan penghapusan berkas temporer).
 
 Seluruh proses pembuatan arsip dilakukan dalam transaksi database tunggal `REPEATABLE READ READ ONLY` dengan pembacaan bertahap berbasis keyset (LIMIT 5000), dikompresi secara streaming menggunakan pustaka `fflate`, dan diverifikasi ulang integritasnya (mencocokkan hash SHA-256 setiap CSV ke manifest) sebelum berkas diresmikan. Sistem dilindungi oleh kunci eksklusif concurrency berkas `.backup.lock`, kontrol hak akses RBAC granular (`backup >= view` / `edit`), dan pencatatan audit log otomatis untuk setiap aktivitas pembuatan, kegagalan, perubahan konfigurasi, serta pengunduhan arsip.
 
 ### Rantai Alur Kode
-1. **Halaman UI**: Pengguna mengakses `/backup` (`src/app/(app)/backup/page.js`). `useEffect` memanggil `GET /api/backup` dan `GET /api/auth/me`. Bila pengguna memiliki izin `backup >= edit`, formulir pembuatan manual, pengaturan jadwal, dan tombol "Unduh" diaktifkan.
-2. **Status & Pengaturan Jadwal**:
-   - `GET /api/backup`: Memeriksa izin `backup >= view`, memanggil `getStatus()` (`src/lib/backupService.js:161`) yang membaca `backup_settings.json`, menghitung waktu jatuh tempo `computeNextDue`, memeriksa status proses berjalan `isRunning()`, serta membaca daftar file di folder manual dan terjadwal.
-   - `PUT /api/backup`: Memeriksa izin `backup >= edit`, memvalidasi input via `validateSettingsInput` (`src/lib/backupSchedule.js:63`), mencatat audit `backup_settings_update` ke `audit_log`, lalu memperbarui berkas `backup_settings.json` secara atomik via file temporer.
-3. **Eksekusi Backup (Manual & Terjadwal)**:
-   - Permintaan manual dikirim via `POST /api/backup` (`body: { from, to }`), sedangkan backup terjadwal dipicu oleh scheduler interval 60 detik di `server.js:92-97` via `startBackupScheduler()` (`src/lib/backupService.js:287`).
+1. **Halaman UI**: Pengguna mengakses `/backup` (`src/app/(app)/backup/page.js`). `useEffect` memanggil `GET /api/backup` dan `GET /api/auth/me`. Bila pengguna memiliki izin `backup >= edit`, formulir pembuatan manual, pengaturan jadwal (termasuk toggle dan path salinan otomatis), tombol uji direktori, dan tombol "Unduh" diaktifkan.
+2. **Uji Akses Direktori Salinan**:
+   - Operator memasukkan path (misalnya `E:\Backup_SCADA`) dan menekan tombol "Uji Direktori".
+   - Klien mengirim `POST /api/backup/check-dir` dengan `body: { path }`.
+   - Handler memvalidasi izin `backup >= view`, memanggil `testDirectoryAccess(path)` (`src/lib/backupService.js`), mencoba menulis dan menghapus file `.write_test_*.tmp`, lalu mengembalikan status akses sukses atau pesan kegagalan izin tulis.
+3. **Status & Pengaturan Jadwal**:
+   - `GET /api/backup`: Memeriksa izin `backup >= view`, memanggil `getStatus()` (`src/lib/backupService.js`) yang membaca `backup_settings.json`, menghitung waktu jatuh tempo `computeNextDue`, memeriksa status proses berjalan `isRunning()`, serta membaca daftar file di folder manual dan terjadwal.
+   - `PUT /api/backup`: Memeriksa izin `backup >= edit`, memvalidasi input via `validateSettingsInput` (`src/lib/backupSchedule.js:63`) termasuk validasi flag dan path salinan otomatis, mencatat audit `backup_settings_update` ke `audit_log`, lalu memperbarui berkas `backup_settings.json` secara atomik via file temporer.
+4. **Eksekusi Backup (Manual & Terjadwal)**:
+   - Permintaan manual dikirim via `POST /api/backup` (`body: { from, to }`), sedangkan backup terjadwal dipicu oleh scheduler interval 60 detik di `server.js:92-97` via `startBackupScheduler()` (`src/lib/backupService.js`).
    - Handler memanggil `runBackup({ kind, range, actor, actorRole })`:
      a. **Kunci Concurrency**: Memanggil `acquireLock()` yang membuat file `.backup.lock` secara eksklusif (`wx`). Jika sedang berjalan atau kunci belum berumur > 1 jam, melempar error `BUSY` (status HTTP 409 pada API).
      b. **Penamaan File**: Format terjadwal `backup_terjadwal_YYYYMMDD-HHMMSS.zip` atau manual `backup_manual_{from}_{to}_dibuatYYYYMMDD-HHMMSS.zip` berbasis zona waktu WIB (`Asia/Jakarta`).
-     c. **Streaming & Transaksi**: Memanggil `createBackupArchive()` (`src/lib/backupArchive.js:155`):
+     c. **Streaming & Transaksi**: Memanggil `createBackupArchive()` (`src/lib/backupArchive.js`):
         - Menginisialisasi koneksi pool dan memulai transaksi `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`.
         - Membaca daftar kolom dinamis setiap tabel dari `information_schema.columns` (schema `public`).
         - Menulis CSV 4 tabel (`batch_records`, `batch_trend` yang di-join ke `batch_records` untuk field `batch_no`, `alarm_log`, dan `audit_log`) menggunakan keyset pagination `id > $1::bigint ORDER BY t.id ASC LIMIT 5000`.
         - Menghitung hash SHA-256 secara streaming untuk setiap berkas CSV.
         - Melakukan `COMMIT` transaksi.
         - Menulis `manifest.json` yang memuat metadata versi format, jenis backup, pembuat, rentang tanggal, status kelengkapan (`complete`), daftar kolom, jumlah baris, rentang min/max id, dan SHA-256 masing-masing berkas CSV.
-     d. **Verifikasi Integritas Otomatis**: Memanggil `verifyArchive(tmpPath)` (`src/lib/backupArchive.js:286`) yang membaca ulang berkas ZIP dari disk secara streaming via `fflate.Unzip`, menghitung ulang SHA-256 setiap berkas CSV, dan mencocokkannya dengan `manifest.json`. Bila tidak cocok, proses dibatalkan dan berkas temporer dihapus.
-     e. **Rotasi Berkas**: Pada mode terjadwal, memanggil `rotateScheduled(generations)` (`src/lib/backupService.js:184`) yang menghapus file terjadwal terlama melebihi kuota retensi yang dikonfigurasi.
-     f. **Pencatatan Audit**: Memanggil `tryAudit` dengan aksi `backup_created` (mencatat ukuran file, SHA-256 berkas utuh, jumlah baris per tabel, dan flag kelengkapan) atau `backup_failed` saat terjadi galat.
-     g. **Pelepasan Kunci**: Menghapus file `.backup.lock` dalam blok `finally`.
-4. **Pengunduhan Berkas Arsip**:
+     d. **Verifikasi Integritas Otomatis**: Memanggil `verifyArchive(tmpPath)` (`src/lib/backupArchive.js`) yang membaca ulang berkas ZIP dari disk secara streaming via `fflate.Unzip`, menghitung ulang SHA-256 setiap berkas CSV, dan mencocokkannya dengan `manifest.json`. Bila tidak cocok, proses dibatalkan dan berkas temporer dihapus.
+     e. **Salinan Otomatis (Auto-Copy)**: Bila `autoCopyEnabled === true` dan `autoCopyDir` valid, file ZIP langsung disalin ke folder tujuan sekunder via `copyFile()`. Status keberhasilan atau kegagalan salinan dicatat ke audit log.
+     f. **Rotasi Berkas**: Pada mode terjadwal, memanggil `rotateScheduled(generations)` (`src/lib/backupService.js`) yang menghapus file terjadwal terlama melebihi kuota retensi yang dikonfigurasi.
+     g. **Pencatatan Audit**: Memanggil `tryAudit` dengan aksi `backup_created` (mencatat ukuran file, SHA-256 berkas utuh, jumlah baris per tabel, status salinan otomatis, dan flag kelengkapan) atau `backup_failed` saat terjadi galat.
+     h. **Pelepasan Kunci**: Menghapus file `.backup.lock` dalam blok `finally`.
+5. **Pengunduhan Berkas Arsip**:
    - Tautan unduh mengarah ke `GET /api/backup/download?kind=...&name=...`.
    - Handler memvalidasi izin `backup >= edit`.
    - Memanggil `resolveBackupFile(kind, name)` yang memvalidasi nama file terhadap regex ketat `SCHEDULED_RE` / `MANUAL_RE` guna mencegah path traversal.
@@ -959,14 +982,15 @@ Seluruh proses pembuatan arsip dilakukan dalam transaksi database tunggal `REPEA
    - Mengembalikan response stream file ZIP dengan header `Content-Disposition: attachment; filename="..."` dan `Cache-Control: no-store`.
 
 ### Bukti Kode
-- `src/lib/backupSchedule.js:1-150`
+- `src/lib/backupSchedule.js:1-165`
 - `src/lib/backupArchive.js:1-330`
-- `src/lib/backupService.js:1-309`
+- `src/lib/backupService.js:1-365`
 - `src/lib/backup.test.mjs:1-197`
 - `fase1/tests/backup_check.mjs:1-67`
-- `src/app/api/backup/route.js:1-76`
+- `src/app/api/backup/route.js:1-77`
 - `src/app/api/backup/download/route.js:1-37`
-- `src/app/(app)/backup/page.js:1-283`
+- `src/app/api/backup/check-dir/route.js:1-33`
+- `src/app/(app)/backup/page.js:1-390`
 - `server.js:92-97`
 
 ---
@@ -1083,8 +1107,31 @@ Fitur Konfigurasi Sistem menyajikan antarmuka terpusat bagi Administrator untuk 
 
 ---
 
+## 33. Fitur Step-Up Re-Authentication (Modal Verifikasi Ulang Kata Sandi / ReAuthModal)
+
+### Deskripsi Faktual
+Untuk memenuhi kepatuhan regulasi integritas data farmasi (FDA 21 CFR Part 11 / cGMP Annex 11), tindakan administratif berkategori kritis dan berisiko tinggi mewajibkan konfirmasi ulang kata sandi pengguna aktif (*Step-Up Re-Authentication*) sebelum instruksi dikirim ke server. Komponen dialog modal `src/components/ReAuthModal.js` diintegrasikan pada dua modul utama:
+1. **Role Management (`src/app/(app)/roles/page.js`)**: Diwajibkan saat membuat custom role baru, mengubah nama/matriks izin role, dan menghapus custom role.
+2. **User Management (`src/app/(app)/users/page.js`)**: Diwajibkan saat membuat user baru, memperbarui profil/role user, menonaktifkan user, mengeksekusi reset password, mengeksekusi hapus-lunak user (soft-delete), dan menyimpan pembaruan konfigurasi izin khusus HMI (`HmiOverridePanel`).
+
+### Rantai Alur Kode
+1. **Pemicuan Dialog Kritis**: Saat tombol aksi simpan/hapus ditekan di antarmuka web, fungsi handler menyimpan aksi tertunda ke dalam ref/state lokal dan membuka `<ReAuthModal open={true} />`.
+2. **Input Kredensial**: Dialog menampilkan username akun aktif (read-only) dan kolom input kata sandi.
+3. **Verifikasi Kredensial Klien/Server**: Pengguna memasukkan password dan menekan konfirmasi. Sistem memverifikasi kredensial via request verifikasi atau memvalidasi password via endpoint unlock/auth terkait.
+4. **Eksekusi Mutasi Asli**: Bila kata sandi terbukti valid, callback `onSuccess` dipanggil untuk mengeksekusi payload mutasi API yang sebenarnya ke backend (`/api/roles/*`, `/api/users/*`).
+5. **Pencatatan Audit Trail**: Backend mencatat aksi audit spesifik beserta aktor yang terverifikasi ke dalam tabel `audit_log`.
+
+### Bukti Kode
+- `src/components/ReAuthModal.js:1-120`
+- `src/app/(app)/roles/page.js:1-655`
+- `src/app/(app)/users/page.js:1-930`
+
+---
+
 ## Change Log
 
+- [2026-11-21] ADDED: Menambahkan dokumentasi Fitur 33 (Fitur Step-Up Re-Authentication / `ReAuthModal`) pada mutasi kritis Role Management dan User Management.
+- [2026-11-21] MODIFIED: Memperbarui Fitur 3 (Catatan TEMUAN KRITIS bypass `startAllowed = true` di `page.js:502`, tombol live setpoint "Resep Mesin", dan katup live PHE), Fitur 4 (Alur 2-Step Self-Verification operator, verifikasi password bcrypt, pencatatan `verifier` / `verifier_username` dari migrasi 008, peniadaan kewajiban loadingNo), Fitur 6 (Auto-stop bejana dingin stabil $\le 0\text{ kPa}$ dan pulsa STOP M1.5 ke PLC, kalkulasi `total_time_min` via `MAX(ts)`), Fitur 30 (Salinan Otomatis Arsip Backup ke direktori sekunder dan uji direktori via `POST /api/backup/check-dir`), Seksi 27 (Perluasan ke 43 endpoint API), Seksi 28 (Penambahan aksi audit `settings_update` ke-56 dan total 57 aksi unik di kode), dan Seksi 29 (Master CSV `SiemensS7-200_autoclave_pharma_1.csv` 118 tag, +2 tag katup PHE).
 - [2026-11-14] ADDED: Menambahkan dokumentasi Fitur 32 (Fitur Konfigurasi Sistem & Penghentian Otomatis Batch Berdasarkan Tekanan Bejana): `migrations/009_system_settings.sql`, `src/lib/settings.js`, `src/app/api/settings/route.js`, `src/app/(app)/settings/page.js`.
 - [2026-11-14] MODIFIED: Memperbarui Fitur 1 (Masa Berlaku Sesi Dinamis), Fitur 2 (Auto-Lockscreen Timeout Dinamis), Fitur 6 (Auto-Stop Batch Tekanan Nol & Pulsa STOP ke PLC), dan Seksi 28 (Penambahan aksi audit `settings_update`).
 

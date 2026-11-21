@@ -7,6 +7,7 @@ import {
     OVERRIDE_PAGES, OVERRIDE_ITEMS, getItemGroups,
 } from "@/lib/hmiOverrideCatalog";
 import ReAuthModal from "@/components/ReAuthModal";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // ── Toast ───────────────────────────────────────────────────────────────────────────────────────────
 function Toast({ toast }) {
@@ -383,7 +384,7 @@ function HmiOverridePanel({ username, onClose, onToast, reAuthRef }) {
 }
 
 // ── Baris tabel satu user ──────────────────────────────────────────────────────────────────────
-function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, reAuthRef }) {
+function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, reAuthRef, confirmFn }) {
     const isSelf = user.username === currentUsername;
 
     // State untuk form edit inline
@@ -396,8 +397,7 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
     const [newPassword, setNewPassword] = useState("");
     const [resetting, setResetting] = useState(false);
 
-    // State untuk konfirmasi hapus
-    const [deleteOpen, setDeleteOpen] = useState(false);
+    // State untuk hapus (tidak perlu deleteOpen lagi; pakai dialog modal)
     const [deleting, setDeleting] = useState(false);
 
     // State untuk HMI override panel
@@ -406,7 +406,6 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
     function closeAll() {
         setEditOpen(false);
         setResetOpen(false);
-        setDeleteOpen(false);
         setHmiOpen(false);
     }
 
@@ -444,17 +443,21 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
 
     // ── Toggle aktif/nonaktif ────────────────────────────────────────────────────────────────────
     async function handleToggleActive() {
-        const label = user.isActive
-            ? `nonaktifkan user ${user.username}`
-            : `aktifkan kembali user ${user.username}`;
-
-        // ── Re-auth ──
-        const ok = await reAuthRef.current?.prompt(label);
-        if (!ok) return;
-
         if (user.isActive) {
-            // Nonaktifkan
-            if (!window.confirm(`Yakin nonaktifkan user ${user.username}?`)) return;
+            // Nonaktifkan: tampilkan konfirmasi dulu, baru re-auth
+            const ok = await confirmFn({
+                title: `Nonaktifkan User ${user.username}?`,
+                description: `User ${user.username} tidak akan bisa login setelah dinonaktifkan. Status dapat dipulihkan kapan saja.`,
+                confirmText: "Nonaktifkan",
+                cancelText: "Batalkan",
+                variant: "warning",
+            });
+            if (!ok) return;
+
+            // ── Re-auth ──
+            const authOk = await reAuthRef.current?.prompt(`nonaktifkan user ${user.username}`);
+            if (!authOk) return;
+
             setSaving(true);
             try {
                 const res = await fetch(`/api/users/${encodeURIComponent(user.username)}`, {
@@ -474,6 +477,9 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
             }
         } else {
             // Aktifkan kembali via PUT isActive:true
+            const authOk = await reAuthRef.current?.prompt(`aktifkan kembali user ${user.username}`);
+            if (!authOk) return;
+
             setSaving(true);
             try {
                 const res = await fetch(`/api/users/${encodeURIComponent(user.username)}`, {
@@ -503,9 +509,19 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
             return;
         }
 
-        // ── Re-auth sebelum set password ──
-        const ok = await reAuthRef.current?.prompt(`reset password user ${user.username}`);
+        // Konfirmasi intent sebelum re-auth
+        const ok = await confirmFn({
+            title: `Reset Password ${user.username}?`,
+            description: `Password lama user ${user.username} akan diganti dengan password baru yang Anda masukkan.`,
+            confirmText: "Ya, Reset Password",
+            cancelText: "Batalkan",
+            variant: "warning",
+        });
         if (!ok) return;
+
+        // ── Re-auth sebelum set password ──
+        const authOk = await reAuthRef.current?.prompt(`reset password user ${user.username}`);
+        if (!authOk) return;
 
         setResetting(true);
         try {
@@ -531,9 +547,33 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
 
     // ── Hapus lunak (permanent soft-delete) ─────────────────────────────────────────────────────
     async function handleDelete() {
-        // ── Re-auth sebelum hapus ──
-        const ok = await reAuthRef.current?.prompt(`hapus akun ${user.username} secara permanen`);
+        // Konfirmasi intent dengan detail dampak
+        const ok = await confirmFn({
+            title: `Hapus Akun ${user.username}?`,
+            description: "Akun akan dihapus dan tidak bisa login lagi. Riwayat tetap tersimpan dan username tidak dapat dipakai ulang.",
+            confirmText: "Ya, Hapus Akun",
+            cancelText: "Batalkan",
+            variant: "danger",
+            children: (
+                <div className="space-y-2">
+                    <div className="text-sm text-scada-ink">
+                        <span className="text-scada-muted">Username: </span>
+                        <span className="font-mono font-semibold">{user.username}</span>
+                        <span className="text-scada-muted mx-2">|</span>
+                        <span className="text-scada-muted">Nama: </span>
+                        <span className="font-semibold">{user.fullName}</span>
+                    </div>
+                    <div className="px-3 py-2.5 bg-scada-stop/10 border border-scada-stop/30 text-scada-stop rounded-lg text-xs font-medium">
+                        ⚠️ Username <span className="font-mono font-semibold">{user.username}</span> tidak bisa dipakai lagi setelah dihapus.
+                    </div>
+                </div>
+            ),
+        });
         if (!ok) return;
+
+        // ── Re-auth sebelum hapus ──
+        const authOk = await reAuthRef.current?.prompt(`hapus akun ${user.username} secara permanen`);
+        if (!authOk) return;
 
         setDeleting(true);
         try {
@@ -546,7 +586,6 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
                 return;
             }
             onToast(`User ${user.username} berhasil dihapus`);
-            setDeleteOpen(false);
             onUpdated();
         } catch {
             onToast("Gagal terhubung ke server", "error");
@@ -582,7 +621,7 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
                         <div className="flex flex-wrap gap-1.5">
                             <button
                                 className={`${btnSm} bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink`}
-                                onClick={() => { setEditOpen((v) => !v); setResetOpen(false); setDeleteOpen(false); }}
+                                onClick={() => { setEditOpen((v) => !v); setResetOpen(false); setHmiOpen(false); }}
                                 disabled={saving}
                             >
                                 Edit
@@ -597,14 +636,14 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
                             </button>
                             <button
                                 className={`${btnSm} bg-scada-steam hover:bg-scada-steam-hover text-white`}
-                                onClick={() => { setResetOpen((v) => !v); setEditOpen(false); setDeleteOpen(false); setHmiOpen(false); }}
+                                onClick={() => { setResetOpen((v) => !v); setEditOpen(false); setHmiOpen(false); }}
                                 disabled={saving}
                             >
                                 Reset PW
                             </button>
                             <button
                                 className={`${btnSm} bg-scada-water hover:bg-scada-water-hover text-white`}
-                                onClick={() => { setHmiOpen((v) => !v); setEditOpen(false); setResetOpen(false); setDeleteOpen(false); }}
+                                onClick={() => { setHmiOpen((v) => !v); setEditOpen(false); setResetOpen(false); }}
                                 disabled={saving}
                                 title="Konfigurasi izin HMI khusus untuk user ini"
                             >
@@ -612,12 +651,12 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
                             </button>
                             {!isSelf && (
                                 <button
-                                    className={`${btnSm} bg-red-700 hover:bg-red-800 text-white`}
-                                    onClick={() => { setDeleteOpen((v) => !v); setEditOpen(false); setResetOpen(false); setHmiOpen(false); }}
+                                    className={`${btnSm} bg-scada-stop hover:bg-scada-stop-hover text-white`}
+                                    onClick={handleDelete}
                                     disabled={saving || deleting}
                                     title="Hapus akun (akun akan dihapus dan tidak bisa login lagi. Riwayat tetap tersimpan dan username tidak dapat dipakai ulang)"
                                 >
-                                    Hapus
+                                    {deleting ? "Menghapus…" : "Hapus"}
                                 </button>
                             )}
                         </div>
@@ -713,39 +752,6 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
                     </td>
                 </tr>
             )}
-            {/* ── Dialog konfirmasi hapus ── */}
-            {deleteOpen && !isSelf && canEdit && (
-                <tr className="bg-red-50 border-b border-red-200">
-                    <td colSpan={6} className="px-4 py-4">
-                        <div className="text-sm">
-                            <p className="font-semibold text-red-800 mb-1">Hapus akun ini? Akun akan dihapus dan tidak bisa login lagi. Riwayat tetap tersimpan dan username tidak dapat dipakai ulang.</p>
-                            <p className="text-scada-ink mb-1">
-                                Username: <span className="font-mono font-semibold">{user.username}</span>
-                                &ensp;|&ensp;
-                                Nama: <span className="font-semibold">{user.fullName}</span>
-                            </p>
-                            <p className="text-red-700 text-xs mb-3">
-                                ⚠️ Username <span className="font-mono font-semibold">{user.username}</span> tidak bisa dipakai lagi setelah dihapus.
-                            </p>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={handleDelete}
-                                    disabled={deleting}
-                                    className="px-4 py-1.5 bg-red-700 hover:bg-red-800 text-white disabled:opacity-40 rounded text-sm font-semibold transition-colors"
-                                >
-                                    {deleting ? "Menghapus…" : "Ya, Hapus"}
-                                </button>
-                                <button
-                                    onClick={() => setDeleteOpen(false)}
-                                    className="px-4 py-1.5 bg-white border border-scada-idle hover:bg-scada-bg text-scada-ink rounded text-sm font-semibold transition-colors"
-                                >
-                                    Batal
-                                </button>
-                            </div>
-                        </div>
-                    </td>
-                </tr>
-            )}
             {/* ── HMI Override Panel ── */}
             {hmiOpen && canEdit && (
                 <HmiOverridePanel
@@ -762,6 +768,7 @@ function UserRow({ user, roles, canEdit, currentUsername, onUpdated, onToast, re
 // ── Halaman utama ───────────────────────────────────────────────────────────────────────────────
 export default function UsersPage() {
     const router = useRouter();
+    const confirm = useConfirm();
     const [authorized, setAuthorized] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
     const [currentUsername, setCurrentUsername] = useState("");
@@ -923,6 +930,7 @@ export default function UsersPage() {
                                         onUpdated={fetchUsers}
                                         onToast={showToast}
                                         reAuthRef={reAuthRef}
+                                        confirmFn={confirm}
                                     />
                                 ))}
                             </tbody>

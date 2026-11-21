@@ -34,19 +34,21 @@ Daftar pustaka dan versi yang tercantum pada `package.json`:
 - `@tailwindcss/postcss`: `^4` — Plugin PostCSS untuk Tailwind CSS v4 (`postcss.config.mjs:4`).
 - `eslint`: `^9` — Linter JavaScript (`eslint.config.mjs:3`).
 - `eslint-config-next`: `16.3.5` — Aturan lint standar Next.js (`eslint.config.mjs:4`).
+- *(Catatan Dependensi)*: `cross-env: ^10.1.0` terpasang di `node_modules` dan tercatat di `package-lock.json:23`, digunakan oleh script `start`, namun tidak tercantum secara eksplisit di blok `devDependencies` berkas `package.json`.
 
 ---
 
 ## 3. Script Proyek
 
-Daftar script yang terdaftar pada `package.json:5-10`:
+Daftar script yang terdaftar pada `package.json:5-10` dan launcher eksekusi:
 
-| Script | Perintah | Fungsi Faktual |
+| Script / Launcher | Perintah | Fungsi Faktual |
 | :--- | :--- | :--- |
 | `dev` | `node server.js` | Menjalankan server HTTP kustom pada mode pengembangan (`server.js:15`). |
 | `build` | `next build` | Mengompilasi aplikasi Next.js untuk produksi. |
-| `start` | `NODE_ENV=production node server.js` | Menjalankan server HTTP kustom pada mode produksi (`server.js:15`). |
+| `start` | `cross-env NODE_ENV=production node server.js` | Menjalankan server HTTP kustom pada mode produksi dengan environment cross-platform (`package.json:8`). |
 | `lint` | `eslint` | Menjalankan pemeriksaan kode menggunakan ESLint (`eslint.config.mjs:6`). |
+| `start-scada.bat` | `start-scada.bat` | Berkas launcher batch Windows untuk menjalankan aplikasi produksi via klik dua kali (`start-scada.bat:1-34`). |
 
 ---
 
@@ -56,13 +58,16 @@ Aplikasi dijalankan menggunakan server HTTP berbasis Node.js `http.createServer`
 
 1. **Penanganan Permintaan HTTP**: Meneruskan request ke Next.js request handler (`server.js:61`).
 2. **Ekstraksi Client IP**: Menyediakan header `x-client-ip` dari alamat koneksi TCP, atau dari entri pertama `x-forwarded-for` bila `TRUST_PROXY=true` (`server.js:53-59`).
-3. **Background Worker 1 — Trend Recorder**: Memanggil fungsi `recordTrendTick()` setiap 5000 ms (5 detik) untuk merekam data sensor PLC ke tabel `batch_trend` (`server.js:75-79`). Dimulai 10 detik setelah server siap.
+3. **Background Worker 1 — Trend Recorder**: Memanggil fungsi `recordTrendTick()` setiap 5000 ms (5 detik) untuk merekam data sensor PLC ke tabel `batch_trend` (`server.js:75-79`). Dimulai 10 detik setelah server siap. Worker ini kini juga mengelola auto-stop batch saat sterilisasi selesai (fase >= 4) dan tekanan $P_1 \& P_2 \le 0\text{ kPa}$ stabil selama 10 detik, serta opsi mengirim pulsa STOP ke PLC (`src/lib/trendRecorder.js`).
 4. **Background Worker 2 — Alarm Monitor**: Memanggil fungsi `startAlarmMonitor()` yang memantau status alarm mesin setiap 1000 ms (1 detik) (`server.js:88-90`).
 5. **Background Worker 3 — Backup Scheduler**: Memanggil fungsi `startBackupScheduler()` yang memeriksa jadwal backup data setiap 60 detik (`server.js:92-97`). Nonaktif secara default dan terisolasi dari proses utama.
 6. **Blok Reset Rantai**: Saat server start, secara *best-effort* menulis `CHAIN_FWD` / `CHAIN_BWD` = false ke PLC (`server.js:101-111`) untuk memastikan rantai pintu tidak tertinggal menyala dari sesi sebelum server mati.
 7. **Proxy Middleware Konvensi Next.js 16**: Menggunakan `src/proxy.js` dengan ekspor fungsi `proxy(request)` untuk memeriksa sesi token JWT pada route yang dilindungi. Verifikasi izin granular per resource/level dilakukan pada server runtime melalui fungsi `requirePermission` / `requireAnyPermission` di masing-masing route handler, serta komponen `PermissionGate` pada sisi klien.
 8. **Subsistem User HMI Overrides (Izin Khusus Per User)**: Memungkinkan penugasan hak akses granular per item/halaman HMI (`calibration`, `machine_params`, `manual_control`, `door_operate`) yang menimpa (override) hak bawaan role RBAC. Disimpan dalam kolom `users.hmi_overrides` (JSONB) via migrasi `migrations/007_hmi_overrides.sql`, dievaluasi secara server-side dan client-side via `src/lib/hmiOverrideCatalog.js` dan hook `src/hooks/useHmiPermission.js`.
-9. **Screen Lock Persisten (Anti-Bypass Refresh & Multi-Tab Sync)**: Pengunci layar otomatis 7 menit di `src/components/ScreenLock.js` kini persisten terhadap refresh halaman (F5) menggunakan `localStorage` (`scada_screen_locked`, `scada_last_activity`, `scada_lock_user`) serta sinkronisasi lintas-tab via event `storage`.
+9. **Screen Lock Persisten (Anti-Bypass Refresh & Multi-Tab Sync)**: Pengunci layar otomatis di `src/components/ScreenLock.js` persisten terhadap refresh halaman (F5) menggunakan `localStorage` (`scada_screen_locked`, `scada_last_activity`, `scada_lock_user`, `scada_lock_timeout_ms`) serta sinkronisasi lintas-tab via event `storage`. Durasi idle kini dikonfigurasi dinamis dari `system_settings.lockscreen_idle_minutes`.
+10. **Subsistem Konfigurasi Sistem Dinamis (`system_settings`)**: Pengaturan runtime yang disimpan di database PostgreSQL (tabel `system_settings` via `migrations/009_system_settings.sql` dan modul `src/lib/settings.js`) meliputi durasi sesi JWT (`session_timeout_hours`), durasi idle screen lock (`lockscreen_idle_minutes`), mode dan batas tekanan auto-stop batch, serta opsi pulsa STOP PLC. Dikelola via panel `/settings` dan endpoint `/api/settings`.
+11. **Subsistem Dual Verification (Self-Verification / Tanda Tangan Digital)**: Form Start Batch di `src/components/StartDialog.js` dan endpoint `/api/batch/start` mengimplementasikan alur verifikasi dua tahap: Step 1 isian data batch dan Step 2 konfirmasi ringkasan data beserta input kata sandi operator (`verifierPassword`) sebagai tanda tangan elektronik. Kolom `verifier` dan `verifier_username` disimpan ke tabel `batch_records` (`migrations/008_dual_verification_batch_records.sql`). Selain itu, komponen modal `ReAuthModal.js` diintegrasikan pada Role Management dan User Management untuk re-autentikasi sebelum aksi administratif sensitif.
+12. **Salinan Backup Otomatis ke Direktori Sekunder (`autoCopyDir`)**: Subsistem backup data mendukung penyalinan otomatis berkas arsip ZIP backup ke direktori sekunder (flashdisk, drive jaringan, atau folder lokal lain) untuk backup manual maupun terjadwal (`src/lib/backupService.js`), dengan uji akses tulis direktori via endpoint `POST /api/backup/check-dir`.
 
 ---
 
@@ -74,7 +79,7 @@ Variabel lingkungan yang diakses langsung melalui `process.env.*` pada kode sumb
 | :--- | :--- | :--- |
 | `DATABASE_URL` | `src/lib/db.js:14` | [TIDAK TERVERIFIKASI: format URL kredensial PostgreSQL aktual di server produksi]. |
 | `JWT_SECRET` | `src/lib/auth.js:19`, `src/proxy.js:5` | Tidak ada fallback string dev (wajib didefinisikan pada environment host). Di-encode langsung via `new TextEncoder().encode(process.env.JWT_SECRET)`. |
-| `COOKIE_SECURE` | `src/lib/auth.js:41` | Bernilai `true` hanya bila diset `"true"`. Default bernilai `false` (tidak lagi mengikuti `NODE_ENV` agar akses HTTP lokal mesin pabrik tidak tertolak browser, `src/lib/auth.js:33-41`). |
+| `COOKIE_SECURE` | `src/lib/auth.js:58` | Bernilai `true` hanya bila diset `"true"`. Default bernilai `false` (tidak lagi mengikuti `NODE_ENV` agar akses HTTP lokal mesin pabrik tidak tertolak browser, `src/lib/auth.js:58`). |
 | `IOT_GATEWAY_PROTOCOL` | `src/lib/plc.js:31`, `src/lib/plcAccess.js:26` | Default `"http"`. |
 | `IOT_GATEWAY_HOST` | `src/lib/plc.js:32`, `src/lib/plcAccess.js:27` | Default `"127.0.0.1"` di `plc.js`. Pada `plcAccess.js`, bernilai wajib (fail-closed jika tidak diset). |
 | `IOT_GATEWAY_PORT` | `src/lib/plc.js:33`, `src/lib/plcAccess.js:28` | Default `39320` di `plc.js`. Pada `plcAccess.js`, bernilai wajib. |
@@ -90,6 +95,8 @@ Variabel lingkungan yang diakses langsung melalui `process.env.*` pada kode sumb
 
 ## Change Log
 
+- [2026-11-21] ADDED: Menambahkan dokumentasi script launcher Windows `start-scada.bat`, arsitektur Konfigurasi Sistem dinamis (`system_settings`, `migrations/009`, `/settings`), Dual Verification / Self-Verification (`migrations/008`, `ReAuthModal.js`, password verifikasi operator), dan salinan otomatis backup sekunder (`autoCopyDir`, `/api/backup/check-dir`) pada Seksi 3 dan Seksi 4.
+- [2026-11-21] MODIFIED: Memperbarui perintah script `start` (`cross-env NODE_ENV=production node server.js`), mencatat anomali keberadaan `cross-env` di `package-lock.json` tanpa pendaftaran di `devDependencies` `package.json`, memperbarui baris `COOKIE_SECURE` (`src/lib/auth.js:58`), dan memperbarui deskripsi auto-stop recorder pada Seksi 4.
 - [2026-11-07] ADDED: Menambahkan dokumentasi Subsistem User HMI Overrides (migrasi `007_hmi_overrides.sql`, `hmiOverrideCatalog.js`, `useHmiPermission.js`, dan endpoint `/api/users/[username]/hmi-overrides`) serta mekanisme Screen Lock persisten berbasis `localStorage` dan multi-tab sync pada Seksi 4.
 - [2026-11-07] MODIFIED: Memperbarui rentang baris dependencies (`11-21`) dan devDependencies (`22-27`) pada `package.json`, memperbarui baris pembacaan variabel lingkungan di `server.js` (`NODE_ENV:30`, `HOSTNAME:31`, `PORT:32`, `TRUST_PROXY:54`), serta memverifikasi status commit `74e7b89` dan passing 366 unit test.
 

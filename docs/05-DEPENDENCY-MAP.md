@@ -30,6 +30,7 @@ flowchart TD
         R_Manual["src/app/(app)/manual/page.js"]
         R_Door["src/app/(app)/door-operate/page.js"]
         R_Backup["src/app/(app)/backup/page.js"]
+        R_Settings["src/app/(app)/settings/page.js"]
         R_PrintTrend["src/app/print/trend/[batchNo]/page.js"]
         R_PrintAudit["src/app/print/audit-log/page.js"]
     end
@@ -46,6 +47,7 @@ flowchart TD
         C_SignOff["SignOffBlock.js"]
         C_PlcDialog["PlcDialog.js"]
         C_PlcParamEditor["PlcParamEditor.js"]
+        C_ReAuthModal["ReAuthModal.js"]
     end
 
     subgraph API["Backend API Handlers (src/app/api)"]
@@ -67,6 +69,8 @@ flowchart TD
         API_PlcDoor["plc-door/route.js"]
         API_Backup["backup/route.js"]
         API_BackupDown["backup/download/route.js"]
+        API_BackupCheckDir["backup/check-dir/route.js"]
+        API_Settings["settings/route.js"]
         API_Roles["roles/route.js"]
         API_RolesId["roles/[id]/route.js"]
         API_RolesOptions["roles/options/route.js"]
@@ -96,6 +100,7 @@ flowchart TD
         L_BackupSched["backupSchedule.js"]
         L_BackupArch["backupArchive.js"]
         L_BackupServ["backupService.js"]
+        L_Settings["settings.js"]
         L_Finalize["batchFinalize.js"]
         L_F0["f0.js"]
         L_RecipeVal["recipeValidation.js"]
@@ -169,6 +174,7 @@ flowchart TD
     R_Audit --> L_PermCat
     R_PrintAudit --> L_AuditActionLabels
     R_Roles --> L_PermCat
+    R_Roles --> C_ReAuthModal
     R_MachParams --> C_PermGate
     R_MachParams --> C_PlcParamEditor
     R_Calib --> C_PermGate
@@ -184,6 +190,9 @@ flowchart TD
     R_Manual --> L_HmiCat
     R_Users --> L_PermCat
     R_Users --> L_HmiCat
+    R_Users --> C_ReAuthModal
+    R_Settings --> C_PermGate
+    R_Settings --> L_PermCat
     C_StartDialog --> C_SearchCombobox
     C_PlcParamEditor --> C_PlcDialog
     C_PlcParamEditor --> L_PlcParamCat
@@ -214,6 +223,8 @@ flowchart TD
     R_Users -.-> API_Users
     R_Users -.-> API_UsersDelete
     R_Users -.-> API_HmiOverrides
+    R_Backup -.-> API_BackupCheckDir
+    R_Settings -.-> API_Settings
     C_PlcParamEditor -.-> API_PlcParams
     R_Clock -.-> API_PlcClock
     R_Manual -.-> API_PlcManual
@@ -258,6 +269,12 @@ flowchart TD
     API_HmiOverrides --> L_Audit
     API_HmiOverrides --> L_Db
     API_HmiOverrides --> L_HmiCat
+    API_BackupCheckDir --> L_Auth
+    API_BackupCheckDir --> L_BackupServ
+    API_Settings --> L_Auth
+    API_Settings --> L_Audit
+    API_Settings --> L_Settings
+    API_Settings --> L_Db
     API_PlcParams --> L_PlcAccess
     API_PlcParams --> L_PlcParamCat
     API_PlcParams --> L_Auth
@@ -280,7 +297,14 @@ flowchart TD
     L_PlcAccess --> L_PlcParamCat
     L_PlcAccess --> L_Db
     L_Auth --> L_PermCat
+    L_Auth --> L_Settings
     L_Auth --> L_Db
+    L_TrendRec --> L_Db
+    L_TrendRec --> L_Plc
+    L_TrendRec --> L_Finalize
+    L_TrendRec --> L_Settings
+    L_TrendRec --> L_PlcWrite
+    L_TrendRec --> L_Audit
 ```
 
 ---
@@ -364,7 +388,7 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `.gitignore` | — | — |
 | `README.md` | — | — |
 | `context/ROADMAP (12).md` [REMOVED] | — | — |
-| `context/tag_paling_baru.csv` | — | Acuan pemetaan tag di `src/lib/plc.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcManualCatalog.js`, `plcClock.js` |
+| `context/SiemensS7-200_autoclave_pharma_1.csv` | — | Acuan master pemetaan 118 tag PLC di `src/lib/plc.js`, `plcParamCatalog.js`, `plcDoorCatalog.js`, `plcManualCatalog.js`, `plcClock.js`, `atvProcess.js` |
 | `context/export_atv.awl` | — | — |
 | `eslint.config.mjs` | — | — |
 | `jsconfig.json` | — | — |
@@ -374,6 +398,8 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `postcss.config.mjs` | — | — |
 | `public/satoria-logo.png` | — | — |
 | `public/sounds/alarm.wav` | — | — |
+| `start-scada.bat` | — | Skrip peluncuran Windows (build & start SCADA) |
+| `scripts/clean-db-for-production.sql` | — | Skrip SQL pembersihan data transaksi batch/alarm/audit untuk deployment |
 | `fase1/tests/backup_check.mjs` | `src/lib/backupArchive.js` | — |
 | `fase1/tests/matrix.mjs` | — | — |
 | `fase1/tests/plc_door_mock.mjs` | `src/lib/plcDoorCatalog.js`<br>`src/lib/plcDeadman.js` | — |
@@ -383,6 +409,10 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `migrations/006_add_bottle_count_rollback.sql` | — | — |
 | `migrations/007_hmi_overrides.sql` | — | — |
 | `migrations/007_hmi_overrides_rollback.sql` | — | — |
+| `migrations/008_dual_verification_batch_records.sql` | — | Skrip SQL DDL penambahan kolom verifier dan verifier_username pada batch_records |
+| `migrations/008_dual_verification_batch_records_rollback.sql` | — | Skrip SQL DDL rollback kolom verifier |
+| `migrations/009_system_settings.sql` | — | Skrip SQL DDL pembuatan tabel system_settings dan data inisial |
+| `migrations/009_system_settings_rollback.sql` | — | Skrip SQL DDL rollback tabel system_settings |
 | `migrations/backup_271026.sql` | — | — |
 | `scripts/hash-password.js` | — | — |
 | `server.js` | `src/lib/trendRecorder.js` (dynamic import, baris 42)<br>`src/lib/alarmMonitor.js` (dynamic import, baris 44)<br>`src/lib/backupService.js` (dynamic import, baris 94)<br>`src/lib/plcWrite.js` (dynamic import best-effort, baris 101) | — |
@@ -400,9 +430,10 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/app/(app)/page.js` | `src/components/DeletedUserBadge.js`<br>`src/lib/plcCommandAlert.js`<br>`src/components/AtvDiagram.js`<br>`src/lib/atvProcess.js`<br>`src/components/StartDialog.js` | — |
 | `src/app/(app)/plc-clock/page.js` | `src/lib/permissionCatalog.js`<br>`src/lib/plcClock.js`<br>`src/components/PermissionGate.js`<br>`src/components/PlcDialog.js` | — |
 | `src/app/(app)/products/page.js` | `src/components/PermissionGate.js` | — |
-| `src/app/(app)/roles/page.js` | `src/lib/permissionCatalog.js` | — |
+| `src/app/(app)/roles/page.js` | `src/lib/permissionCatalog.js`<br>`src/components/ReAuthModal.js` | — |
+| `src/app/(app)/settings/page.js` | `src/lib/permissionCatalog.js`<br>`src/components/PermissionGate.js` | — |
 | `src/app/(app)/trend/page.js` | `src/components/DeletedUserBadge.js`<br>`src/components/PermissionGate.js` | — |
-| `src/app/(app)/users/page.js` | `src/lib/permissionCatalog.js`<br>`src/lib/hmiOverrideCatalog.js` | — |
+| `src/app/(app)/users/page.js` | `src/lib/permissionCatalog.js`<br>`src/lib/hmiOverrideCatalog.js`<br>`src/components/ReAuthModal.js` | — |
 | `src/app/api/alarms/active/route.js` | `src/lib/db.js`<br>`src/lib/alarmCatalog.js` | — |
 | `src/app/api/alarms/by-batch/[batchNo]/route.js` | `src/lib/db.js` | — |
 | `src/app/api/alarms/event-types/route.js` | `src/lib/db.js` | — |
@@ -416,6 +447,7 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/app/api/auth/me/route.js` | `src/lib/auth.js`<br>`src/lib/db.js` | — |
 | `src/app/api/auth/unlock/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js` | — |
 | `src/app/api/auth/users/route.js` | `src/lib/db.js` | — |
+| `src/app/api/backup/check-dir/route.js` | `src/lib/auth.js`<br>`src/lib/backupService.js` | `src/app/(app)/backup/page.js` |
 | `src/app/api/backup/download/route.js` | `src/lib/auth.js`<br>`src/lib/backupService.js` | — |
 | `src/app/api/backup/route.js` | `src/lib/auth.js`<br>`src/lib/backupService.js`<br>`src/lib/backupSchedule.js` | — |
 | `src/app/api/batch-records/[batchNo]/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/recipeSnapshot.js` | — |
@@ -437,6 +469,7 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/app/api/roles/options/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/roleAdmin.js` | — |
 | `src/app/api/roles/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/permissionCatalog.js`<br>`src/lib/roleAdmin.js`<br>`src/lib/roleQueries.js` | — |
 | `src/app/api/roles/[id]/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/permissionCatalog.js`<br>`src/lib/roleAdmin.js`<br>`src/lib/roleQueries.js` | — |
+| `src/app/api/settings/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/settings.js` | `src/app/(app)/settings/page.js` |
 | `src/app/api/status/route.js` | `src/lib/plc.js`<br>`src/lib/db.js` | — |
 | `src/app/api/users/[username]/delete/route.js` | `src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/roleAdmin.js`<br>`src/lib/userQueries.js` | — |
 | `src/app/api/users/[username]/hmi-overrides/route.js` | `src/lib/db.js`<br>`src/lib/auth.js`<br>`src/lib/auditLog.js`<br>`src/lib/hmiOverrideCatalog.js` | `src/app/(app)/users/page.js` |
@@ -456,9 +489,10 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/components/AtvDiagram.js` | `src/lib/atvProcess.js` | `src/app/(app)/page.js` |
 | `src/components/DeletedUserBadge.js` | — | `src/app/(app)/alarm/page.js`<br>`src/app/(app)/audit-log/page.js`<br>`src/app/(app)/data-report/[batchNo]/page.js`<br>`src/app/(app)/data-report/page.js`<br>`src/app/(app)/page.js`<br>`src/app/(app)/trend/page.js` |
 | `src/components/Navbar.js` | `src/lib/permissionCatalog.js` | `src/app/(app)/layout.js` |
-| `src/components/PermissionGate.js` | `src/lib/permissionCatalog.js`<br>`src/lib/hmiOverrideCatalog.js` | `src/app/(app)/alarm/page.js`<br>`src/app/(app)/calibration/page.js`<br>`src/app/(app)/data-report/[batchNo]/page.js`<br>`src/app/(app)/data-report/page.js`<br>`src/app/(app)/formula/page.js`<br>`src/app/(app)/machine-params/page.js`<br>`src/app/(app)/manual/page.js`<br>`src/app/(app)/plc-clock/page.js`<br>`src/app/(app)/products/page.js`<br>`src/app/(app)/trend/page.js`<br>`src/app/print/alarm/page.js`<br>`src/app/print/batch-records/page.js`<br>`src/app/print/data-report/[batchNo]/page.js`<br>`src/app/print/trend/[batchNo]/page.js` |
+| `src/components/PermissionGate.js` | `src/lib/permissionCatalog.js`<br>`src/lib/hmiOverrideCatalog.js` | `src/app/(app)/alarm/page.js`<br>`src/app/(app)/calibration/page.js`<br>`src/app/(app)/data-report/[batchNo]/page.js`<br>`src/app/(app)/data-report/page.js`<br>`src/app/(app)/formula/page.js`<br>`src/app/(app)/machine-params/page.js`<br>`src/app/(app)/manual/page.js`<br>`src/app/(app)/plc-clock/page.js`<br>`src/app/(app)/products/page.js`<br>`src/app/(app)/settings/page.js`<br>`src/app/(app)/trend/page.js`<br>`src/app/print/alarm/page.js`<br>`src/app/print/batch-records/page.js`<br>`src/app/print/data-report/[batchNo]/page.js`<br>`src/app/print/trend/[batchNo]/page.js` |
 | `src/components/PlcDialog.js` | — | `src/components/PlcParamEditor.js`<br>`src/app/(app)/plc-clock/page.js`<br>`src/app/(app)/manual/page.js` |
 | `src/components/PlcParamEditor.js` | `src/lib/permissionCatalog.js`<br>`src/lib/plcParamCatalog.js`<br>`src/components/PlcDialog.js`<br>`src/lib/hmiOverrideCatalog.js` | `src/app/(app)/machine-params/page.js`<br>`src/app/(app)/calibration/page.js` |
+| `src/components/ReAuthModal.js` | — | `src/app/(app)/roles/page.js`<br>`src/app/(app)/users/page.js` |
 | `src/components/ScreenLock.js` | — | `src/app/(app)/layout.js` |
 | `src/components/SearchableCombobox.js` | — | `src/components/StartDialog.js` |
 | `src/components/SignOffBlock.js` | — | `src/app/print/alarm/page.js`<br>`src/app/print/data-report/[batchNo]/page.js`<br>`src/app/print/data-report/[batchNo]/curve/page.js`<br>`src/app/print/trend/[batchNo]/page.js` |
@@ -476,21 +510,21 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/lib/atvProcess.js` | — | `src/app/(app)/page.js`<br>`src/components/AtvDiagram.js` |
 | `src/lib/auditActionLabels.js` | — | `src/app/(app)/audit-log/page.js`<br>`src/app/print/audit-log/page.js`<br>`src/app/api/audit-log/export/route.js`<br>`src/lib/auditActionLabels.test.mjs` |
 | `src/lib/auditActionLabels.test.mjs` | `src/lib/auditActionLabels.js` | — |
-| `src/lib/auditLog.js` | `src/lib/db.js` | `src/app/api/auth/login/route.js`<br>`src/app/api/auth/logout/route.js`<br>`src/app/api/auth/unlock/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/app/api/users/route.js`<br>`src/app/api/users/[username]/delete/route.js`<br>`src/app/api/users/[username]/reset-password/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/[username]/hmi-overrides/route.js`<br>`src/app/api/plc-door/route.js`<br>`src/lib/backupService.js` |
-| `src/lib/auth.js` | `src/lib/db.js`<br>`src/lib/permissionCatalog.js` | `src/app/api/audit-log/export/route.js`<br>`src/app/api/audit-log/filters/route.js`<br>`src/app/api/audit-log/route.js`<br>`src/app/api/auth/login/route.js`<br>`src/app/api/auth/logout/route.js`<br>`src/app/api/auth/me/route.js`<br>`src/app/api/auth/unlock/route.js`<br>`src/app/api/backup/download/route.js`<br>`src/app/api/backup/route.js`<br>`src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/batch-records/export/route.js`<br>`src/app/api/batch-records/route.js`<br>`src/app/api/batch-records/[batchNo]/route.js`<br>`src/app/api/formulas/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/plc-door/route.js`<br>`src/app/api/product-specs/route.js`<br>`src/app/api/product-specs/[id]/route.js`<br>`src/app/api/products/route.js`<br>`src/app/api/products/[id]/route.js`<br>`src/app/api/roles/options/route.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/app/api/users/route.js`<br>`src/app/api/users/[username]/delete/route.js`<br>`src/app/api/users/[username]/reset-password/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/[username]/hmi-overrides/route.js` |
+| `src/lib/auditLog.js` | `src/lib/db.js` | `src/app/api/auth/login/route.js`<br>`src/app/api/auth/logout/route.js`<br>`src/app/api/auth/unlock/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/app/api/settings/route.js`<br>`src/app/api/users/route.js`<br>`src/app/api/users/[username]/delete/route.js`<br>`src/app/api/users/[username]/reset-password/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/[username]/hmi-overrides/route.js`<br>`src/app/api/plc-door/route.js`<br>`src/lib/backupService.js`<br>`src/lib/trendRecorder.js` |
+| `src/lib/auth.js` | `src/lib/db.js`<br>`src/lib/permissionCatalog.js`<br>`src/lib/settings.js` | `src/app/api/audit-log/export/route.js`<br>`src/app/api/audit-log/filters/route.js`<br>`src/app/api/audit-log/route.js`<br>`src/app/api/auth/login/route.js`<br>`src/app/api/auth/logout/route.js`<br>`src/app/api/auth/me/route.js`<br>`src/app/api/auth/unlock/route.js`<br>`src/app/api/backup/check-dir/route.js`<br>`src/app/api/backup/download/route.js`<br>`src/app/api/backup/route.js`<br>`src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/batch-records/export/route.js`<br>`src/app/api/batch-records/route.js`<br>`src/app/api/batch-records/[batchNo]/route.js`<br>`src/app/api/formulas/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/plc-door/route.js`<br>`src/app/api/product-specs/route.js`<br>`src/app/api/product-specs/[id]/route.js`<br>`src/app/api/products/route.js`<br>`src/app/api/products/[id]/route.js`<br>`src/app/api/roles/options/route.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/app/api/settings/route.js`<br>`src/app/api/users/route.js`<br>`src/app/api/users/[username]/delete/route.js`<br>`src/app/api/users/[username]/reset-password/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/[username]/hmi-overrides/route.js` |
 | `src/lib/backup.test.mjs` | `src/lib/backupSchedule.js`<br>`src/lib/backupArchive.js` | — |
 | `src/lib/backupArchive.js` | `src/lib/dateRange.js` | `src/lib/backupService.js`<br>`src/lib/backup.test.mjs`<br>`fase1/tests/backup_check.mjs` |
 | `src/lib/backupSchedule.js` | `src/lib/dateRange.js` | `src/lib/backupService.js`<br>`src/app/api/backup/route.js`<br>`src/lib/backup.test.mjs` |
-| `src/lib/backupService.js` | `src/lib/db.js`<br>`src/lib/auditLog.js`<br>`src/lib/backupArchive.js`<br>`src/lib/backupSchedule.js` | `server.js`<br>`src/app/api/backup/route.js`<br>`src/app/api/backup/download/route.js` |
-| `src/lib/batchFinalize.js` | `src/lib/batchFinalize.js`<br>`src/lib/db.js`<br>`src/lib/f0.js` | `src/app/api/batch/stop/route.js`<br>`src/lib/batchFinalize.js`<br>`src/lib/trendRecorder.js` |
+| `src/lib/backupService.js` | `src/lib/db.js`<br>`src/lib/auditLog.js`<br>`src/lib/backupArchive.js`<br>`src/lib/backupSchedule.js` | `server.js`<br>`src/app/api/backup/route.js`<br>`src/app/api/backup/download/route.js`<br>`src/app/api/backup/check-dir/route.js` |
+| `src/lib/batchFinalize.js` | `src/lib/db.js`<br>`src/lib/f0.js` | `src/app/api/batch/stop/route.js`<br>`src/lib/trendRecorder.js` |
 | `src/lib/batchNo.js` | — | `src/app/api/batch/start/route.js`<br>`src/components/StartDialog.js` |
 | `src/lib/dateRange.js` | — | `src/app/api/audit-log/export/route.js`<br>`src/app/api/audit-log/route.js`<br>`src/app/api/batch-records/export/route.js`<br>`src/app/api/batch-records/route.js`<br>`src/lib/alarmQuery.js`<br>`src/lib/backupSchedule.js`<br>`src/lib/backupArchive.js` |
-| `src/lib/db.js` | — | `src/app/api/alarms/active/route.js`<br>`src/app/api/alarms/by-batch/[batchNo]/route.js`<br>`src/app/api/alarms/event-types/route.js`<br>`src/app/api/alarms/print-data/route.js`<br>`src/app/api/alarms/route.js`<br>`src/app/api/audit-log/export/route.js`<br>`src/app/api/audit-log/filters/route.js`<br>`src/app/api/audit-log/route.js`<br>`src/app/api/auth/login/route.js`<br>`src/app/api/auth/me/route.js`<br>`src/app/api/auth/unlock/route.js`<br>`src/app/api/auth/users/route.js`<br>`src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/batch-records/export/route.js`<br>`src/app/api/batch-records/route.js`<br>`src/app/api/batch-records/[batchNo]/route.js`<br>`src/app/api/formulas/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/product-specs/route.js`<br>`src/app/api/product-specs/[id]/route.js`<br>`src/app/api/products/route.js`<br>`src/app/api/products/[id]/route.js`<br>`src/app/api/roles/options/route.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/app/api/status/route.js`<br>`src/app/api/users/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/[username]/hmi-overrides/route.js`<br>`src/lib/alarmMonitor.js`<br>`src/lib/auditLog.js`<br>`src/lib/auth.js`<br>`src/lib/batchFinalize.js`<br>`src/lib/plcAccess.js`<br>`src/lib/roleAdmin.js`<br>`src/lib/trendRecorder.js`<br>`src/lib/backupService.js` |
+| `src/lib/db.js` | — | `src/app/api/alarms/active/route.js`<br>`src/app/api/alarms/by-batch/[batchNo]/route.js`<br>`src/app/api/alarms/event-types/route.js`<br>`src/app/api/alarms/print-data/route.js`<br>`src/app/api/alarms/route.js`<br>`src/app/api/audit-log/export/route.js`<br>`src/app/api/audit-log/filters/route.js`<br>`src/app/api/audit-log/route.js`<br>`src/app/api/auth/login/route.js`<br>`src/app/api/auth/me/route.js`<br>`src/app/api/auth/unlock/route.js`<br>`src/app/api/auth/users/route.js`<br>`src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/batch-records/export/route.js`<br>`src/app/api/batch-records/route.js`<br>`src/app/api/batch-records/[batchNo]/route.js`<br>`src/app/api/formulas/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/product-specs/route.js`<br>`src/app/api/product-specs/[id]/route.js`<br>`src/app/api/products/route.js`<br>`src/app/api/products/[id]/route.js`<br>`src/app/api/roles/options/route.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/app/api/settings/route.js`<br>`src/app/api/status/route.js`<br>`src/app/api/users/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/[username]/hmi-overrides/route.js`<br>`src/lib/alarmMonitor.js`<br>`src/lib/auditLog.js`<br>`src/lib/auth.js`<br>`src/lib/batchFinalize.js`<br>`src/lib/plcAccess.js`<br>`src/lib/roleAdmin.js`<br>`src/lib/trendRecorder.js`<br>`src/lib/backupService.js`<br>`src/lib/settings.js` |
 | `src/lib/f0.js` | — | `src/lib/batchFinalize.js`<br>`src/lib/f0.test.mjs` |
 | `src/lib/f0.test.mjs` | `src/lib/f0.js`<br>`src/lib/__fixtures__/printout_2026-10-03.js` | — |
 | `src/lib/hmiOverrideCatalog.js` | — | `src/hooks/useHmiPermission.js`<br>`src/components/PermissionGate.js`<br>`src/components/PlcParamEditor.js`<br>`src/app/(app)/manual/page.js`<br>`src/app/(app)/door-operate/page.js`<br>`src/app/(app)/users/page.js`<br>`src/app/api/users/[username]/hmi-overrides/route.js`<br>`src/app/api/plc-door/route.js` |
 | `src/lib/operatorLabel.js` | — | `src/app/print/data-report/[batchNo]/curve/page.js`<br>`src/app/print/data-report/[batchNo]/page.js` |
-| `src/lib/permissionCatalog.js` | — | `src/app/(app)/audit-log/page.js`<br>`src/app/(app)/backup/page.js`<br>`src/app/(app)/door-operate/page.js`<br>`src/app/(app)/manual/page.js`<br>`src/app/(app)/plc-clock/page.js`<br>`src/app/(app)/roles/page.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/components/Navbar.js`<br>`src/components/PermissionGate.js`<br>`src/components/PlcParamEditor.js`<br>`src/lib/auth.js`<br>`src/lib/roleQueries.js` |
+| `src/lib/permissionCatalog.js` | — | `src/app/(app)/audit-log/page.js`<br>`src/app/(app)/backup/page.js`<br>`src/app/(app)/door-operate/page.js`<br>`src/app/(app)/manual/page.js`<br>`src/app/(app)/plc-clock/page.js`<br>`src/app/(app)/roles/page.js`<br>`src/app/(app)/settings/page.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/components/Navbar.js`<br>`src/components/PermissionGate.js`<br>`src/components/PlcParamEditor.js`<br>`src/lib/auth.js`<br>`src/lib/roleQueries.js` |
 | `src/lib/plc.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/status/route.js`<br>`src/lib/alarmMonitor.js`<br>`src/lib/trendRecorder.js` |
 | `src/lib/plcAccess.js` | `src/lib/db.js`<br>`src/lib/plcWrite.js`<br>`src/lib/recipeGuard.js`<br>`src/lib/plcParamCatalog.js` | `src/app/api/plc-clock/route.js`<br>`src/app/api/plc-manual/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/app/api/plc-door/route.js` |
 | `src/lib/plcClock.js` | — | `src/app/(app)/plc-clock/page.js`<br>`src/app/api/plc-clock/route.js` |
@@ -500,13 +534,14 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 | `src/lib/plcDoorCatalog.js` | `src/lib/plcManualCatalog.js` (MANUAL_MODE_TAG) | `src/lib/plcDeadman.js`<br>`src/app/api/plc-door/route.js`<br>`src/app/(app)/door-operate/page.js`<br>`fase1/tests/plc_door_mock.mjs` |
 | `src/lib/plcDeadman.js` | `src/lib/plcDoorCatalog.js` (statis)<br>`src/lib/plcAccess.js` (dynamic import)<br>`src/lib/plcWrite.js` (dynamic import) | `src/app/api/plc-door/route.js`<br>`fase1/tests/plc_door_mock.mjs` |
 | `src/lib/plcParamCatalog.js` | — | `src/app/api/plc-clock/route.js`<br>`src/app/api/plc-params/route.js`<br>`src/components/PlcParamEditor.js`<br>`src/lib/plcAccess.js` |
-| `src/lib/plcWrite.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/plc-door/route.js`<br>`src/lib/plcAccess.js`<br>`src/lib/plcDeadman.js` (dynamic import)<br>`server.js` (dynamic import baris 101) |
+| `src/lib/plcWrite.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch/stop/route.js`<br>`src/app/api/plc-clock/route.js`<br>`src/app/api/plc/reset/route.js`<br>`src/app/api/plc-door/route.js`<br>`src/lib/plcAccess.js`<br>`src/lib/plcDeadman.js` (dynamic import)<br>`server.js` (dynamic import baris 101)<br>`src/lib/trendRecorder.js` |
 | `src/lib/recipeGuard.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js`<br>`src/lib/alarmMonitor.js`<br>`src/lib/plcAccess.js` |
 | `src/lib/recipeSnapshot.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/batch-records/[batchNo]/route.js`<br>`src/lib/alarmMonitor.js` |
 | `src/lib/recipeValidation.js` | — | `src/app/api/batch/start/route.js`<br>`src/app/api/formulas/route.js`<br>`src/app/api/formulas/[formulaNo]/route.js` |
 | `src/lib/roleAdmin.js` | `src/lib/db.js` | `src/app/api/roles/options/route.js`<br>`src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js`<br>`src/app/api/users/[username]/delete/route.js`<br>`src/app/api/users/[username]/reset-password/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/route.js`<br>`src/lib/roleQueries.js` |
 | `src/lib/roleQueries.js` | `src/lib/permissionCatalog.js`<br>`src/lib/roleAdmin.js` | `src/app/api/roles/route.js`<br>`src/app/api/roles/[id]/route.js` |
-| `src/lib/trendRecorder.js` | `src/lib/db.js`<br>`src/lib/plc.js`<br>`src/lib/batchFinalize.js` | `server.js` |
+| `src/lib/settings.js` | `src/lib/db.js` | `src/app/api/settings/route.js`<br>`src/lib/auth.js`<br>`src/lib/trendRecorder.js` |
+| `src/lib/trendRecorder.js` | `src/lib/db.js`<br>`src/lib/plc.js`<br>`src/lib/batchFinalize.js`<br>`src/lib/settings.js`<br>`src/lib/plcWrite.js`<br>`src/lib/auditLog.js` | `server.js` |
 | `src/lib/userQueries.js` | — | `src/app/api/users/[username]/delete/route.js`<br>`src/app/api/users/[username]/route.js`<br>`src/app/api/users/route.js` |
 | `src/proxy.js` | — | — |
 
@@ -514,6 +549,9 @@ Tabel berikut memuat daftar seluruh berkas kode sumber beserta file yang di-impo
 
 ## Change Log
 
+- [2026-11-21] ADDED: Menambahkan pemetaan dependensi modul Konfigurasi Sistem, Salinan Otomatis Backup, Self-Verification Batch Records, dan ReAuthModal: `migrations/008_dual_verification_batch_records.sql` & rollback, `migrations/009_system_settings.sql` & rollback, `scripts/clean-db-for-production.sql`, `start-scada.bat`, `src/app/(app)/settings/page.js`, `src/app/api/backup/check-dir/route.js`, `src/app/api/settings/route.js`, `src/components/ReAuthModal.js`, dan `src/lib/settings.js`.
+- [2026-11-21] MOVED: Mengganti entri CSV master dari `context/tag_paling_baru.csv` menjadi `context/SiemensS7-200_autoclave_pharma_1.csv` (118 tag, +2 tag drain PHE).
+- [2026-11-21] MODIFIED: Memperbarui relasi impor `src/app/(app)/roles/page.js` dan `src/app/(app)/users/page.js` (meng-import `ReAuthModal`), `src/lib/auth.js` (meng-import `settings.js`), `src/lib/trendRecorder.js` (meng-import `settings.js`, `plcWrite.js`, `auditLog.js`), `src/lib/backupService.js` (dipakai oleh `check-dir/route.js`), dan membersihkan referensi impor diri sendiri pada `batchFinalize.js`.
 - [2026-11-07] ADDED: Menambahkan pemetaan node dan hubungan impor untuk Subsistem User HMI Overrides: `migrations/007_hmi_overrides.sql`, `migrations/007_hmi_overrides_rollback.sql`, `src/lib/hmiOverrideCatalog.js`, `src/hooks/useHmiPermission.js`, dan `src/app/api/users/[username]/hmi-overrides/route.js`.
 - [2026-11-07] MODIFIED: Memperbarui relasi impor `src/app/(app)/users/page.js`, `src/app/(app)/manual/page.js`, `src/app/(app)/door-operate/page.js`, `src/components/PermissionGate.js`, `src/components/PlcParamEditor.js`, dan `src/app/api/plc-door/route.js` yang kini meng-import `src/lib/hmiOverrideCatalog.js`, serta memperluas pemakai `src/lib/auth.js`, `src/lib/auditLog.js`, dan `src/lib/db.js`.
 
